@@ -5,6 +5,8 @@ from pytorch_lightning import LightningModule
 from torchmetrics import MaxMetric
 from torchmetrics.classification.accuracy import Accuracy
 
+from src.datamodules.components.dataparams import DataParameters
+
 
 class MNISTLitModule(LightningModule):
     """Example of LightningModule for MNIST classification.
@@ -25,6 +27,7 @@ class MNISTLitModule(LightningModule):
         self,
         net: torch.nn.Module,
         optimizer: torch.optim.Optimizer,
+        data_params: DataParameters,
     ):
         super().__init__()
 
@@ -33,6 +36,10 @@ class MNISTLitModule(LightningModule):
         self.save_hyperparameters(logger=False, ignore=["net"])
 
         self.net = net
+        
+        # parameters related to the data
+        self.data_params = data_params
+        self.example_input_array = torch.rand(1, *self.hparams.data_params.in_shape, device=self.device)
 
         # loss function
         self.criterion = torch.nn.CrossEntropyLoss()
