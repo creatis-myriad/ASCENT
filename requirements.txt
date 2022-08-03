@@ -1,5 +1,5 @@
 # --------- pytorch --------- #
-torch>=1.10.0
+torch~=1.11.0
 torchvision>=0.11.0
 pytorch-lightning==1.6.5
 torchmetrics==0.9.2
@@ -13,11 +13,16 @@ hydra-optuna-sweeper==1.2.0
 # wandb
 # neptune-client
 # mlflow
-# comet-ml
+comet-ml
 
 # --------- others --------- #
-pyrootutils     # standardizing the project root setup
-pre-commit      # hooks for applying linters on commit
-rich            # beautiful text formatting in terminal
-pytest          # tests
-sh<=1.14.2      # for running bash commands in some tests
+pyrootutils     		# standardizing the project root setup
+pre-commit      		# hooks for applying linters on commit
+rich            		# beautiful text formatting in terminal
+pytest          		# tests
+sh~=1.14.2      		# for running bash commands in some tests
+batchgenerators>=0.23	# data augmentations library
+torchinfo 				# for model summary printing
+matplotlib				# for plotting
+SimpleITK				# read_io for data
+nibabel					# manipulate nifti files
