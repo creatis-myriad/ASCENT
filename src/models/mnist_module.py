@@ -36,10 +36,12 @@ class MNISTLitModule(LightningModule):
         self.save_hyperparameters(logger=False, ignore=["net"])
 
         self.net = net
-        
+
         # parameters related to the data
         self.data_params = data_params
-        self.example_input_array = torch.rand(1, *self.hparams.data_params.in_shape, device=self.device)
+        self.example_input_array = torch.rand(
+            1, *self.hparams.data_params.in_shape, device=self.device
+        )
 
         # loss function
         self.criterion = torch.nn.CrossEntropyLoss()
