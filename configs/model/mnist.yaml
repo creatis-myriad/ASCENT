@@ -1,4 +1,4 @@
-_target_: src.models.mnist_module.MNISTLitModule
+_target_: covid.models.mnist_module.MNISTLitModule
 
 optimizer:
   _target_: torch.optim.Adam
@@ -7,7 +7,7 @@ optimizer:
   weight_decay: 0.0
 
 net:
-  _target_: src.models.components.simple_dense_net.SimpleDenseNet
+  _target_: covid.models.components.simple_dense_net.SimpleDenseNet
   input_size: 784
   lin1_size: 64
   lin2_size: 128
@@ -15,6 +15,6 @@ net:
   output_size: 10
 
 data_params:
-  _target_: src.datamodules.components.dataparams.DataParameters
+  _target_: covid.datamodules.components.dataparams.DataParameters
   in_shape: [1, 28, 28]
   out_shape: [1, 10]

@@ -4,7 +4,7 @@ import pytest
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import open_dict
 
-from src.tasks import eval_task, train_task
+from covid.tasks import eval_task, train_task
 
 
 @pytest.mark.slow
