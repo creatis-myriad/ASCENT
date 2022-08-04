@@ -14,7 +14,7 @@ builtins.__COVID_SETUP__ = True
 def load_requirements(
     path_dir=PATH_ROOT, file_name="requirements.txt", comment_char="#"
 ):  # noqa: D103
-    with open(os.path.join(path_dir, "requirements", file_name)) as file:
+    with open(os.path.join(path_dir, file_name)) as file:
         lines = [ln.strip() for ln in file.readlines()]
     reqs = []
     for ln in lines:
@@ -43,6 +43,10 @@ setup(
     author="Hang Jung Ling",
     author_email="hang-jung.ling@insa-lyon.fr",
     url="https://github.com/HangJung97/CoVID",  # REPLACE WITH YOUR OWN GITHUB PROJECT LINK
-    install_requires=["pytorch-lightning", "hydra-core"],
+    install_requires=load_requirements(),
     packages=find_packages(),
+    long_description=load_long_description(),
+    long_description_content_type="text/markdown",
+    python_requires=">=3.9",
+    setup_requires=[],
 )
