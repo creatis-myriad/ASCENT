@@ -4,7 +4,7 @@ import pytest
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import open_dict
 
-from src.tasks import train_task
+from covid.tasks import train_task
 from tests.helpers.run_if import RunIf
 
 

@@ -5,7 +5,7 @@ from pytorch_lightning import LightningModule
 from torchmetrics import MaxMetric
 from torchmetrics.classification.accuracy import Accuracy
 
-from src.datamodules.components.dataparams import DataParameters
+from covid.datamodules.components.dataparams import DataParameters
 
 
 class MNISTLitModule(LightningModule):

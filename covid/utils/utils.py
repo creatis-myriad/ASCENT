@@ -10,7 +10,7 @@ from pytorch_lightning import Callback
 from pytorch_lightning.loggers import LightningLoggerBase
 from pytorch_lightning.utilities import rank_zero_only
 
-from src.utils import pylogger, rich_utils
+from covid.utils import pylogger, rich_utils
 
 log = pylogger.get_pylogger(__name__)
 
