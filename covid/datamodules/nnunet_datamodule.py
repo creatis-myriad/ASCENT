@@ -192,7 +192,7 @@ class nnUNetDataModule(LightningDataModule):
         if self.hparams.do_test:
             return DataLoader(
                 dataset=self.data_test,
-                batch_size=self.hparams.batch_size,
+                batch_size=1,
                 num_workers=self.hparams.num_workers,
                 pin_memory=self.hparams.pin_memory,
                 shuffle=False,
