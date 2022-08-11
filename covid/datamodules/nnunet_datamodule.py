@@ -165,7 +165,7 @@ class nnUNetDataModule(LightningDataModule):
 
         if self.hparams.do_test:
             self.data_test = CacheDataset(
-                data=self.test_files, transform=self.test_transform, cache_rate=1.0
+                data=self.test_files, transform=self.test_transforms, cache_rate=1.0
             )
 
     def train_dataloader(self):
@@ -318,6 +318,9 @@ class nnUNetDataModule(LightningDataModule):
             NormalizeIntensityd(keys="image", nonzero=False, channel_wise=True),
         ]
 
+        if not self.threeD:
+            test_transforms.append(MayBeSqueezed(keys=["image", "label"], dim=-1))
+
         self.train_transforms = Compose(shared_train_val_transforms + other_transforms)
         self.val_transforms = Compose(val_transforms)
         self.test_transforms = Compose(test_transforms)
@@ -334,10 +337,12 @@ if __name__ == "__main__":
     cfg.patch_size = [640, 512]
     # cfg.patch_size = [128, 128, 12]
     cfg.batch_size = 1
+    cfg.fold = 0
     camus_datamodule = hydra.utils.instantiate(cfg)
     camus_datamodule.prepare_data()
     camus_datamodule.setup()
     train_dl = camus_datamodule.train_dataloader()
+    train_dl = camus_datamodule.test_dataloader()
 
     batch = next(iter(train_dl))
 

@@ -7,7 +7,7 @@ defaults:
 
 # output directory, generated dynamically on each run
 run:
-  dir: ${paths.log_dir}/${task_name}/nnUNet/${nnUNet_variant}/${fold}/runs/${now:%Y-%m-%d}_${now:%H-%M-%S}
+  dir: ${paths.log_dir}/${task_name}/nnUNet/${nnUNet_variant}/Fold_${fold}/runs/${now:%Y-%m-%d}_${now:%H-%M-%S}
 sweep:
-  dir: ${paths.log_dir}/${task_name}/nnUNet/${nnUNet_variant}/${fold}/multiruns/${now:%Y-%m-%d}_${now:%H-%M-%S}
+  dir: ${paths.log_dir}/${task_name}/nnUNet/${nnUNet_variant}/Fold_${fold}/multiruns/${now:%Y-%m-%d}_${now:%H-%M-%S}
   subdir: ${hydra.job.num}

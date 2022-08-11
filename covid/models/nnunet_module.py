@@ -21,7 +21,7 @@ class nnUNetLitModule(LightningModule):
         deep_supervision=True,
         save_predictions=True,
         tta=True,
-        sliding_window_overlap=True,
+        sliding_window_overlap=0.5,
         sliding_windows_importance_map="gaussian",
     ):
         super().__init__()
@@ -71,8 +71,16 @@ class nnUNetLitModule(LightningModule):
         # Need to handle carefully the multi-scale outputs from deep supervision heads
         pred = self.forward(img)
         loss = self.compute_loss(pred, label)
-        self.log("train/loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        return loss
+        self.log(
+            "train/loss",
+            loss,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=self.trainer.datamodule.hparams.batch_size,
+        )
+        return {"loss": loss}
 
     def validation_step(self, batch, batch_idx):
         img, label = batch["image"], batch["label"]
@@ -136,17 +144,49 @@ class nnUNetLitModule(LightningModule):
         self.update_eval_criterion_MA()
         self.maybe_update_best_val_eval_criterion_MA()
 
-        self.log("val/loss", loss)
-        self.log("val/dice_MA", self.val_eval_criterion_MA)
-        for label, dice in zip(range(1, len(global_dc_per_class)), global_dc_per_class):
-            self.log(f"val/dice/{label}", np.round(dice, 4))
+        self.log(
+            "val/loss",
+            loss,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=self.trainer.datamodule.hparams.batch_size,
+        )
+        self.log(
+            "val/dice_MA",
+            self.val_eval_criterion_MA,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=self.trainer.datamodule.hparams.batch_size,
+        )
+        for label, dice in zip(range(len(global_dc_per_class)), global_dc_per_class):
+            self.log(
+                f"val/dice/{label}",
+                np.round(dice, 4),
+                on_step=False,
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
+                batch_size=self.trainer.datamodule.hparams.batch_size,
+            )
 
     def test_step(self, batch, batch_idx):
         img, label = batch["image"], batch["label"]
-        preds = self.tta_predict(img) if self.args.tta else self.predict(img)
+        preds = self.tta_predict(img) if self.tta else self.predict(img)
         test_dice = self.test_dice(preds, label)
-        self.log("test/dice", test_dice, on_step=False, on_epoch=True)
-        return {"preds": preds, "targets": label}
+        self.log(
+            "test/dice",
+            test_dice,
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=self.trainer.datamodule.hparams.batch_size,
+        )
+        return {"test/dice": test_dice, "preds": preds, "targets": label}
 
     # def test_step_end(self, test_step_outputs):
     #     preds = test_step_outputs["preds"]
@@ -184,14 +224,14 @@ class nnUNetLitModule(LightningModule):
         return self.loss(preds, label)
 
     def predict(self, image):
-        if len(image.size()) == 5:
+        if len(image.shape) == 5:
             if len(self.patch_size) == 3:
                 return self.predict_3D_3Dconv_tiled(image)
             elif len(self.patch_size) == 2:
                 return self.predict_3D_2Dconv_tiled(image)
             else:
                 raise NotImplementedError
-        if len(image.size()) == 4:
+        if len(image.shape) == 4:
             if len(self.patch_size) == 2:
                 return self.predict_2D_2Dconv_tiled(image)
             elif len(self.patch_size) == 3:
@@ -207,15 +247,15 @@ class nnUNetLitModule(LightningModule):
         return preds
 
     def predict_2D_2Dconv_tiled(self, image):
-        assert len(image.size()) == 4, "data must be b, c, w, h"
+        assert len(image.shape) == 4, "data must be b, c, w, h"
         return self.sliding_window_inference(image)
 
     def predict_3D_3Dconv_tiled(self, image):
-        assert len(image.size()) == 5, "data must be b, c, w, h, d"
+        assert len(image.shape) == 5, "data must be b, c, w, h, d"
         return self.sliding_window_inference(image)
 
     def predict_3D_2Dconv_tiled(self, image):
-        assert len(image.size()) == 5, "data must be b, c, w, h, d"
+        assert len(image.shape) == 5, "data must be b, c, w, h, d"
         preds_shape = (image.shape[0], self.num_classes, *image.shape[2:])
         preds = torch.zeros(preds_shape, dtype=image.dtype, device=image.device)
         for depth in range(image.shape[2]):
@@ -257,7 +297,7 @@ class nnUNetLitModule(LightningModule):
         return sliding_window_inference(
             inputs=image,
             roi_size=self.patch_size,
-            sw_batch_size=self.trainer.datamodule.batch_size,
+            sw_batch_size=self.trainer.datamodule.hparams.batch_size,
             predictor=self.net,
             overlap=self.hparams.sliding_window_overlap,
             mode=self.hparams.sliding_windows_importance_map,
@@ -266,10 +306,6 @@ class nnUNetLitModule(LightningModule):
     @staticmethod
     def metric_mean(name, outputs):
         return torch.stack([out[name] for out in outputs]).mean(dim=0)
-
-    def test_epoch_end(self, outputs):
-        if self.args.exec_mode == "evaluate":
-            self.eval_dice = self.dice.compute()
 
     def configure_optimizers(self):
         optimizer = self.hparams.optimizer(params=self.parameters())
@@ -308,11 +344,48 @@ class nnUNetLitModule(LightningModule):
 
 
 if __name__ == "__main__":
+    from typing import List
+
     import hydra
     import omegaconf
     import pyrootutils
+    from pytorch_lightning import (
+        Callback,
+        LightningDataModule,
+        LightningModule,
+        Trainer,
+    )
+
+    from covid import utils
 
     root = pyrootutils.setup_root(__file__, pythonpath=True)
     cfg = omegaconf.OmegaConf.load(root / "configs" / "model" / "camus.yaml")
     cfg.scheduler.max_decay_steps = 1000
-    nnunet = hydra.utils.instantiate(cfg)
+    nnunet: LightningModule = hydra.utils.instantiate(cfg)
+
+    cfg = omegaconf.OmegaConf.load(root / "configs" / "datamodule" / "camus.yaml")
+    cfg.data_dir = str(root / "data")
+    cfg.patch_size = [128, 128]
+    # cfg.patch_size = [128, 128, 12]
+    cfg.batch_size = 1
+    cfg.fold = 0
+    camus_datamodule: LightningDataModule = hydra.utils.instantiate(cfg)
+
+    cfg = omegaconf.OmegaConf.load(root / "configs" / "callbacks" / "nnunet.yaml")
+    callbacks: List[Callback] = utils.instantiate_callbacks(cfg)
+
+    # cfg = omegaconf.OmegaConf.load(root / "configs" / "trainer" / "nnunet.yaml")
+    # trainer: Trainer = hydra.utils.instantiate(cfg, callbacks=callbacks)
+    trainer = Trainer(
+        max_epochs=1000,
+        deterministic=False,
+        limit_train_batches=250,
+        limit_val_batches=50,
+        gradient_clip_val=12,
+        callbacks=callbacks,
+        accelerator="gpu",
+        devices=1,
+    )
+
+    # trainer.fit(model=nnunet, datamodule=camus_datamodule)
+    trainer.test(model=nnunet, datamodule=camus_datamodule)

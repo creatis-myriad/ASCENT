@@ -18,8 +18,7 @@ tags: ["camus", "nnunet_2d"]
 task_name: "CAMUS"
 
 nnUNet_variant: "2D"
-
-logger:
-  comet:
-    project_name: "CAMUS"
-    experiment_name: "nnUNet_2D"
+# logger:
+#   comet:
+#     project_name: "CAMUS"
+#     experiment_name: "nnUNet_2D"
