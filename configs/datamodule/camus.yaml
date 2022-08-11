@@ -1,6 +1,6 @@
 _target_: covid.datamodules.nnunet_datamodule.nnUNetDataModule
 data_dir: ${paths.data_dir}
-batch_size: 2
+batch_size: 10
 dataset_name: "CAMUS"
 patch_size: ${model.net.patch_size}
 in_channels: 1

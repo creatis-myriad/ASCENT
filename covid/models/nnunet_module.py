@@ -7,7 +7,6 @@ from pytorch_lightning import LightningModule
 from skimage.transform import resize
 
 from covid.datamodules.components.inferers import sliding_window_inference
-from covid.models.components.unet_related.metrics import Dice
 from covid.models.components.unet_related.utils import softmax_helper, sum_tensor
 
 
@@ -35,9 +34,9 @@ class nnUNetLitModule(LightningModule):
         self.num_classes = self.net.num_classes
 
         # parameters related to the data
-        # self.example_input_array = torch.rand(
-        #     self.net.in_channels, *self.patch_size, device=self.device
-        # )
+        self.example_input_array = torch.rand(
+            1, self.net.in_channels, *self.patch_size, device=self.device
+        )
 
         # loss function (CE - Dice), min = -1
         self.loss = loss
@@ -51,8 +50,6 @@ class nnUNetLitModule(LightningModule):
         self.online_eval_tp = []
         self.online_eval_fp = []
         self.online_eval_fn = []
-
-        self.test_dice = Dice(self.num_classes)
 
         self.tta = tta
         if self.tta:
@@ -176,7 +173,36 @@ class nnUNetLitModule(LightningModule):
     def test_step(self, batch, batch_idx):
         img, label = batch["image"], batch["label"]
         preds = self.tta_predict(img) if self.tta else self.predict(img)
-        test_dice = self.test_dice(preds, label)
+        # test_dice = self.test_dice(preds, label)
+        # Compute the stats that will be used to compute the final dice metric during the end of epoch
+        num_classes = preds.shape[1]
+        pred_softmax = softmax_helper(preds)
+        pred_seg = pred_softmax.argmax(1)
+        label = label[:, 0]
+        axes = tuple(range(1, len(label.shape)))
+        tp_hard = torch.zeros((label.shape[0], num_classes - 1)).to(pred_seg.device.index)
+        fp_hard = torch.zeros((label.shape[0], num_classes - 1)).to(pred_seg.device.index)
+        fn_hard = torch.zeros((label.shape[0], num_classes - 1)).to(pred_seg.device.index)
+        for c in range(1, num_classes):
+            tp_hard[:, c - 1] = sum_tensor(
+                (pred_seg == c).float() * (label == c).float(), axes=axes
+            )
+            fp_hard[:, c - 1] = sum_tensor(
+                (pred_seg == c).float() * (label != c).float(), axes=axes
+            )
+            fn_hard[:, c - 1] = sum_tensor(
+                (pred_seg != c).float() * (label == c).float(), axes=axes
+            )
+
+        tp_hard = tp_hard.sum(0, keepdim=False).detach().cpu().numpy()
+        fp_hard = fp_hard.sum(0, keepdim=False).detach().cpu().numpy()
+        fn_hard = fn_hard.sum(0, keepdim=False).detach().cpu().numpy()
+        test_dice = (2 * tp_hard) / (2 * tp_hard + fp_hard + fn_hard + 1e-8)
+
+        test_dice = np.mean(test_dice, 0)
+
+        # test_dice = dice(preds, label, average='samples', num_classes=num_classes)
+
         self.log(
             "test/dice",
             test_dice,
@@ -268,31 +294,6 @@ class nnUNetLitModule(LightningModule):
         else:
             return [[2], [3], [2, 3]]
 
-    def inference2d(self, image):
-        batch_modulo = image.shape[2] % self.args.val_batch_size
-        if batch_modulo != 0:
-            batch_pad = self.args.val_batch_size - batch_modulo
-            image = nn.ConstantPad3d((0, 0, 0, 0, batch_pad, 0), 0)(image)
-        image = torch.transpose(image.squeeze(0), 0, 1)
-        preds_shape = (image.shape[0], self.num_classes + 1, *image.shape[2:])
-        preds = torch.zeros(preds_shape, dtype=image.dtype, device=image.device)
-        for start in range(
-            0, image.shape[0] - self.args.val_batch_size + 1, self.args.val_batch_size
-        ):
-            end = start + self.args.val_batch_size
-            pred = self.net(image[start:end])
-            preds[start:end] = pred.data
-        if batch_modulo != 0:
-            preds = preds[batch_pad:]
-        return torch.transpose(preds, 0, 1).unsqueeze(0)
-
-    def inference2d_test(self, image):
-        preds_shape = (image.shape[0], self.num_classes + 1, *image.shape[2:])
-        preds = torch.zeros(preds_shape, dtype=image.dtype, device=image.device)
-        for depth in range(image.shape[2]):
-            preds[:, :, depth] = self.sliding_window_inference(image[:, :, depth])
-        return preds
-
     def sliding_window_inference(self, image):
         return sliding_window_inference(
             inputs=image,
@@ -361,13 +362,16 @@ if __name__ == "__main__":
     root = pyrootutils.setup_root(__file__, pythonpath=True)
     cfg = omegaconf.OmegaConf.load(root / "configs" / "model" / "camus.yaml")
     cfg.scheduler.max_decay_steps = 1000
+    cfg.net.patch_size = [128, 128]
+    cfg.net.kernels = [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
+    cfg.net.strides = [[1, 1], [2, 2], [2, 2], [2, 2], [2, 2]]
     nnunet: LightningModule = hydra.utils.instantiate(cfg)
 
     cfg = omegaconf.OmegaConf.load(root / "configs" / "datamodule" / "camus.yaml")
     cfg.data_dir = str(root / "data")
     cfg.patch_size = [128, 128]
     # cfg.patch_size = [128, 128, 12]
-    cfg.batch_size = 1
+    cfg.batch_size = 2
     cfg.fold = 0
     camus_datamodule: LightningDataModule = hydra.utils.instantiate(cfg)
 
@@ -377,10 +381,11 @@ if __name__ == "__main__":
     # cfg = omegaconf.OmegaConf.load(root / "configs" / "trainer" / "nnunet.yaml")
     # trainer: Trainer = hydra.utils.instantiate(cfg, callbacks=callbacks)
     trainer = Trainer(
-        max_epochs=1000,
+        max_epochs=2,
         deterministic=False,
-        limit_train_batches=250,
-        limit_val_batches=50,
+        limit_train_batches=20,
+        limit_val_batches=10,
+        limit_test_batches=2,
         gradient_clip_val=12,
         callbacks=callbacks,
         accelerator="gpu",
@@ -388,4 +393,6 @@ if __name__ == "__main__":
     )
 
     # trainer.fit(model=nnunet, datamodule=camus_datamodule)
-    trainer.test(model=nnunet, datamodule=camus_datamodule)
+    print("Starting testing!")
+    ckpt_path = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/covid/models/lightning_logs/version_0/checkpoints/epoch=1-step=500.ckpt"
+    trainer.test(model=nnunet, datamodule=camus_datamodule, ckpt_path=ckpt_path)

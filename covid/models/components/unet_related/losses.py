@@ -1,3 +1,4 @@
+import monai
 import torch
 from torch import Tensor, nn
 
@@ -46,6 +47,10 @@ class SoftDiceLoss(nn.Module):
         denominator = 2 * tp + fp + fn + self.smooth
 
         dc = nominator / (denominator + 1e-8)
+
+        # monai MetaTensor indexing, e.g. [1:] will fail on Jean Zay cluster
+        if type(dc) == monai.data.meta_tensor.MetaTensor:
+            dc = dc.as_tensor()
 
         if not self.do_bg:
             if self.batch_dice:
@@ -103,6 +108,10 @@ class SoftDiceLossSquared(nn.Module):
         denominator = sum_tensor(denominator, axes, False) + self.smooth
 
         dc = 2 * intersect / denominator
+
+        # monai MetaTensor indexing, e.g. [1:] will fail on Jean Zay cluster
+        if type(dc) == monai.data.meta_tensor.MetaTensor:
+            dc = dc.as_tensor()
 
         if not self.do_bg:
             if self.batch_dice:
