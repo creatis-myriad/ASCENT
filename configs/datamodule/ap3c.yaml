@@ -1,0 +1,9 @@
+_target_: covid.datamodules.nnunet_datamodule.nnUNetDataModule
+data_dir: ${paths.data_dir}
+batch_size: 2
+dataset_name: "AP3C"
+patch_size: [416, 368, 12]
+in_channels: 1
+num_classes: 3
+do_dummy_2D_aug: True
+do_test: False

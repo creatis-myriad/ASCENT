@@ -1,0 +1,25 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=example
+
+defaults:
+  - override /datamodule: camus.yaml
+  - override /model: camus.yaml
+  - override /callbacks: nnunet.yaml
+  - override /trainer: nnunet.yaml
+  - override /hydra: nnunet.yaml
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+tags: ["camus", "nnunet_2d"]
+
+task_name: "CAMUS"
+
+nnUNet_variant: "2D"
+
+logger:
+  comet:
+    project_name: "CAMUS"
+    experiment_name: "nnUNet_2D"
