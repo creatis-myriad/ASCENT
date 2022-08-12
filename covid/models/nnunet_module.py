@@ -367,7 +367,7 @@ class nnUNetLitModule(LightningModule):
 
     def save_mask(self, preds, fname, spacing):
         print(f"\nSaving prediction for {fname}...\n")
-        save_dir = os.path.join(self.trainer.logger.log_dir, "testing_raw")
+        save_dir = os.path.join(self.trainer.default_root_dir, "testing_raw")
         os.makedirs(save_dir, exist_ok=True)
         if len(preds.shape) == len(spacing) - 1:
             preds = preds[..., None].astype(np.uint8)
