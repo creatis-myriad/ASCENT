@@ -9,10 +9,17 @@ defaults:
   - paths: default.yaml
   - extras: default.yaml
   - hydra: default.yaml
+  - experiment: null
 
 task_name: "eval"
 
 tags: ["dev"]
 
+# desired fold for training
+fold: 0
+
 # passing checkpoint path is necessary for evaluation
 ckpt_path: ???
+
+# 2D or 3D variant of nnUNet
+nnUNet_variant: null
