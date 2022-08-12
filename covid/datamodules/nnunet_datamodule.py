@@ -341,10 +341,11 @@ if __name__ == "__main__":
     camus_datamodule = hydra.utils.instantiate(cfg)
     camus_datamodule.prepare_data()
     camus_datamodule.setup()
-    train_dl = camus_datamodule.train_dataloader()
-    train_dl = camus_datamodule.test_dataloader()
+    # train_dl = camus_datamodule.train_dataloader()
+    test_dl = camus_datamodule.test_dataloader()
 
-    batch = next(iter(train_dl))
+    # batch = next(iter(train_dl))
+    batch = next(iter(test_dl))
 
     from matplotlib import pyplot as plt
 

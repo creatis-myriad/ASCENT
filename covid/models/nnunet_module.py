@@ -1,6 +1,7 @@
 import os
 
 import numpy as np
+import SimpleITK as sitk
 import torch
 import torch.nn as nn
 from pytorch_lightning import LightningModule
@@ -11,20 +12,40 @@ from covid.models.components.unet_related.utils import softmax_helper, sum_tenso
 
 
 class nnUNetLitModule(LightningModule):
+    """nnUNet training, evaluation and test strategy converted to PyTorch Lightning.
+
+    nnUNetLitModule includes all nnUNet key features, including the test time augmentation, sliding
+    window inference etc. Currently only 2D and 3D_fullres nnUNet are supported.
+    """
+
     def __init__(
         self,
         net: torch.nn.Module,
         optimizer: torch.optim.Optimizer,
         loss: torch.nn.Module,
         scheduler: torch.optim.lr_scheduler._LRScheduler,
-        deep_supervision=True,
-        save_predictions=True,
-        tta=True,
-        sliding_window_overlap=0.5,
-        sliding_windows_importance_map="gaussian",
+        deep_supervision: bool = True,
+        tta: bool = True,
+        sliding_window_overlap: float = 0.5,
+        sliding_window_importance_map: bool = "gaussian",
+        save_predictions: bool = True,
     ):
-        super().__init__()
+        """Saves the system's configuration in `hparams`. Initialize variables for training and
+        validation loop.
 
+        Args:
+            net: Network architecture. Defaults to U-Net.
+            optimizer: Optimizer. Defaults to SGD optimizer.
+            loss: Loss function. Defaults to Cross Entropy - Dice
+            scheduler: Scheduler for training. Defaults to Polynomial Decay Scheduler.
+            deep_supervision: Whether to use deep supervision heads. Defaults to true.
+            tta: Whether to use the test time augmentation, i.e. flip. Defaults to true.
+            sliding_window_overlap: Minimum overlap for sliding window inference. Defaults to 0.5.
+            sliding_window_importance_map: Importance map used for sliding window inference. Defaults to 'gaussian'
+            save_prediction: Whether to save the test predictions. Defaults to true.
+        """
+        super().__init__()
+        # ignore net and loss as they are nn.module and will be saved automatically
         self.save_hyperparameters(logger=False, ignore=["net", "loss"])
 
         self.net = net
@@ -33,7 +54,7 @@ class nnUNetLitModule(LightningModule):
 
         self.num_classes = self.net.num_classes
 
-        # parameters related to the data
+        # declare a dummy input for display model summary
         self.example_input_array = torch.rand(
             1, self.net.in_channels, *self.patch_size, device=self.device
         )
@@ -41,12 +62,22 @@ class nnUNetLitModule(LightningModule):
         # loss function (CE - Dice), min = -1
         self.loss = loss
 
-        # metric
-        self.val_eval_criterion_alpha = 0.9  # alpha * old + (1-alpha) * new
+        # parameter alpha for calculating moving average dice -> alpha * old + (1-alpha) * new
+        self.val_eval_criterion_alpha = 0.9
+
+        # current moving average dice
         self.val_eval_criterion_MA = None
+
+        # best moving average dice
         self.best_val_eval_criterion_MA = None
+
+        # list to store all the moving average dice during the training
         self.all_val_eval_metrics = []
+
+        # list to store the metrics computed during evaluation steps
         self.online_eval_foreground_dc = []
+
+        # we consider all the evaluation batches as a single element and only compute the global foreground dice at the end of evaluation epoch
         self.online_eval_tp = []
         self.online_eval_fp = []
         self.online_eval_fn = []
@@ -57,13 +88,12 @@ class nnUNetLitModule(LightningModule):
         self.test_idx = 0
         self.test_imgs = []
 
-        # whether to save the predictions during test and inference
         self.save_predictions = save_predictions
 
-    def forward(self, img):
+    def forward(self, img):  # noqa: D102
         return self.net(img)
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch, batch_idx: int):  # noqa: D102
         img, label = batch["image"], batch["label"]
         # Need to handle carefully the multi-scale outputs from deep supervision heads
         pred = self.forward(img)
@@ -79,11 +109,12 @@ class nnUNetLitModule(LightningModule):
         )
         return {"loss": loss}
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx):  # noqa: D102
         img, label = batch["image"], batch["label"]
         # Only the highest resolution output is returned during the validation
         pred = self.forward(img)
         loss = self.loss(pred, label)
+
         # Compute the stats that will be used to compute the final dice metric during the end of epoch
         num_classes = pred.shape[1]
         pred_softmax = softmax_helper(pred)
@@ -117,7 +148,7 @@ class nnUNetLitModule(LightningModule):
 
         return {"val/loss": loss}
 
-    def validation_epoch_end(self, validation_step_outputs):
+    def validation_epoch_end(self, validation_step_outputs):  # noqa: D102
         loss = self.metric_mean("val/loss", validation_step_outputs)
         self.online_eval_tp = np.sum(self.online_eval_tp, 0)
         self.online_eval_fp = np.sum(self.online_eval_fp, 0)
@@ -170,11 +201,10 @@ class nnUNetLitModule(LightningModule):
                 batch_size=self.trainer.datamodule.hparams.batch_size,
             )
 
-    def test_step(self, batch, batch_idx):
+    def test_step(self, batch, batch_idx):  # noqa: D102
         img, label = batch["image"], batch["label"]
         preds = self.tta_predict(img) if self.tta else self.predict(img)
-        # test_dice = self.test_dice(preds, label)
-        # Compute the stats that will be used to compute the final dice metric during the end of epoch
+
         num_classes = preds.shape[1]
         pred_softmax = softmax_helper(preds)
         pred_seg = pred_softmax.argmax(1)
@@ -199,9 +229,7 @@ class nnUNetLitModule(LightningModule):
         fn_hard = fn_hard.sum(0, keepdim=False).detach().cpu().numpy()
         test_dice = (2 * tp_hard) / (2 * tp_hard + fp_hard + fn_hard + 1e-8)
 
-        test_dice = np.mean(test_dice, 0)
-
-        # test_dice = dice(preds, label, average='samples', num_classes=num_classes)
+        test_dice = torch.tesnsor(np.mean(test_dice, 0))
 
         self.log(
             "test/dice",
@@ -214,32 +242,61 @@ class nnUNetLitModule(LightningModule):
         )
         return {"test/dice": test_dice, "preds": preds, "targets": label}
 
-    # def test_step_end(self, test_step_outputs):
-    #     preds = test_step_outputs["preds"]
-    #     if self.save_predictions:
-    #         # meta = batch["meta"][0].cpu().detach().numpy()
-    #         # original_shape = meta[2]
-    #         # min_d, max_d = meta[0, 0], meta[1, 0]
-    #         # min_h, max_h = meta[0, 1], meta[1, 1]
-    #         # min_w, max_w = meta[0, 2], meta[1, 2]
+    def test_step_end(self, test_step_outputs):
+        preds = test_step_outputs["preds"]
+        if self.save_predictions:
+            # meta = batch["meta"][0].cpu().detach().numpy()
+            # original_shape = meta[2]
+            # min_d, max_d = meta[0, 0], meta[1, 0]
+            # min_h, max_h = meta[0, 1], meta[1, 1]
+            # min_w, max_w = meta[0, 2], meta[1, 2]
 
-    #         # final_pred = torch.zeros((1, pred.shape[1], *original_shape), device=img.device)
-    #         # final_pred[:, :, min_d:max_d, min_h:max_h, min_w:max_w] = pred
-    #         final_pred = nn.functional.softmax(preds, dim=1)
-    #         final_pred = final_pred.squeeze(0).cpu().detach().numpy()
+            # final_pred = torch.zeros((1, pred.shape[1], *original_shape), device=img.device)
+            # final_pred[:, :, min_d:max_d, min_h:max_h, min_w:max_w] = pred
+            fname = preds.meta["filename_or_obj"][0]
+            fname = os.path.basename(fname).rsplit("_", 1)[0]
+            spacing = list(preds.meta["pixdim"][0].cpu().detach().numpy())
+            spacing = [float(i) for i in spacing[1:] if i]
+            final_preds = softmax_helper(preds).argmax(1)
+            final_preds = final_preds.squeeze(0).cpu().detach().numpy()
+            # batch["image_meta_dict"]["filename_or_obj"]
+            # if not all(original_shape == final_pred.shape[1:]):
+            #     class_ = final_pred.shape[0]
+            #     resized_pred = np.zeros((class_, *original_shape))
+            #     for i in range(class_):
+            #         resized_pred[i] = resize(
+            #             final_pred[i], original_shape, order=3, mode="edge", cval=0, clip=True, anti_aliasing=False
+            #         )
+            #     final_pred = resized_pred
 
-    #         # if not all(original_shape == final_pred.shape[1:]):
-    #         #     class_ = final_pred.shape[0]
-    #         #     resized_pred = np.zeros((class_, *original_shape))
-    #         #     for i in range(class_):
-    #         #         resized_pred[i] = resize(
-    #         #             final_pred[i], original_shape, order=3, mode="edge", cval=0, clip=True, anti_aliasing=False
-    #         #         )
-    #         #     final_pred = resized_pred
+            self.save_mask(final_preds, fname, spacing)
 
-    #         self.save_mask(final_pred)
+    def test_epoch_end(self, test_step_outputs):
+        mean_dice = self.metric_mean("test/dice", test_step_outputs)
+        self.log(
+            "test/mean_dice",
+            mean_dice,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=False,
+            logger=True,
+            batch_size=self.trainer.datamodule.hparams.batch_size,
+        )
+
+    def configure_optimizers(self):
+        optimizer = self.hparams.optimizer(params=self.parameters())
+        scheduler = self.hparams.scheduler(optimizer)
+
+        return [optimizer], [scheduler]
+
+    def on_save_checkpoint(self, checkpoint):
+        checkpoint["all_val_eval_metrics"] = self.all_val_eval_metrics
+
+    def on_load_checkpoint(self, checkpoint):
+        self.all_val_eval_metrics = checkpoint["all_val_eval_metrics"]
 
     def compute_loss(self, preds, label):
+        """Compute the multi-scale loss if deep supervision is set to True."""
         if self.hparams.deep_supervision:
             loss = self.loss(preds[0], label)
             for i, pred in enumerate(preds[1:]):
@@ -301,32 +358,22 @@ class nnUNetLitModule(LightningModule):
             sw_batch_size=self.trainer.datamodule.hparams.batch_size,
             predictor=self.net,
             overlap=self.hparams.sliding_window_overlap,
-            mode=self.hparams.sliding_windows_importance_map,
+            mode=self.hparams.sliding_window_importance_map,
         )
 
     @staticmethod
     def metric_mean(name, outputs):
         return torch.stack([out[name] for out in outputs]).mean(dim=0)
 
-    def configure_optimizers(self):
-        optimizer = self.hparams.optimizer(params=self.parameters())
-        scheduler = self.hparams.scheduler(optimizer)
-
-        return [optimizer], [scheduler]
-
-    def on_save_checkpoint(self, checkpoint):
-        checkpoint["all_val_eval_metrics"] = self.all_val_eval_metrics
-
-    def on_load_checkpoint(self, checkpoint):
-        self.all_val_eval_metrics = checkpoint["all_val_eval_metrics"]
-
-    # def save_mask(self, pred):
-    #     if self.test_idx == 0:
-    #         data_path = get_path(self.args)
-    #         self.test_imgs, _ = get_test_fnames(self.args, data_path)
-    #     fname = os.path.basename(self.test_imgs[self.test_idx]).replace("_x", "")
-    #     np.save(os.path.join(self.save_dir, fname), pred, allow_pickle=False)
-    #     self.test_idx += 1
+    def save_mask(self, preds, fname, spacing):
+        print(f"\nSaving prediction for {fname}...\n")
+        save_dir = os.path.join(self.trainer.logger.log_dir, "testing_raw")
+        os.makedirs(save_dir, exist_ok=True)
+        if len(preds.shape) == len(spacing) - 1:
+            preds = preds[..., None].astype(np.uint8)
+        itk_image = sitk.GetImageFromArray(np.transpose(preds, list(range(0, len(spacing)))[::-1]))
+        itk_image.SetSpacing(spacing)
+        sitk.WriteImage(itk_image, os.path.join(save_dir, fname + ".nii.gz"))
 
     def update_eval_criterion_MA(self):
         if self.val_eval_criterion_MA is None:
@@ -394,5 +441,5 @@ if __name__ == "__main__":
 
     # trainer.fit(model=nnunet, datamodule=camus_datamodule)
     print("Starting testing!")
-    ckpt_path = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/covid/models/lightning_logs/version_0/checkpoints/epoch=1-step=500.ckpt"
+    ckpt_path = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/logs/lightning_logs/version_0/checkpoints/epoch=1-step=500.ckpt"
     trainer.test(model=nnunet, datamodule=camus_datamodule, ckpt_path=ckpt_path)

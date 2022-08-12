@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from torchmetrics import Metric
-from torchmetrics.functional import stat_scores
+from torchmetrics.functional import dice, stat_scores
 from torchmetrics.utilities import check_forward_full_state_property
 
 from covid.models.components.unet_related.utils import softmax_helper, sum_tensor
@@ -66,11 +66,18 @@ class Dice(Metric):
 
 
 if __name__ == "__main__":
-    check_forward_full_state_property(
-        Dice,
-        init_args={"num_classes": 3},
-        input_args={
-            "preds": torch.rand((2, 3, 128, 128), device="cuda"),
-            "target": torch.randint(0, 3, (2, 1, 128, 128), device="cuda"),
-        },
+    dc = dice(
+        torch.rand((2, 3, 128, 128)),
+        torch.randint(0, 3, (2, 1, 128, 128)),
+        average="macro",
+        mdmc_average="global",
+        num_classes=3,
     )
+    # check_forward_full_state_property(
+    #     Dice,
+    #     init_args={"num_classes": 3},
+    #     input_args={
+    #         "preds": torch.rand((2, 3, 128, 128), device="cuda"),
+    #         "target": torch.rand((2, 3, 128, 128), device="cuda"),
+    #     },
+    # )
