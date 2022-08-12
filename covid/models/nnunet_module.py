@@ -229,7 +229,7 @@ class nnUNetLitModule(LightningModule):
         fn_hard = fn_hard.sum(0, keepdim=False).detach().cpu().numpy()
         test_dice = (2 * tp_hard) / (2 * tp_hard + fp_hard + fn_hard + 1e-8)
 
-        test_dice = torch.tesnsor(np.mean(test_dice, 0))
+        test_dice = torch.tensor(np.mean(test_dice, 0))
 
         self.log(
             "test/dice",
