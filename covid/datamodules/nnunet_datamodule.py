@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import numpy as np
 import torch
+from joblib import Parallel, delayed
 from monai.data import CacheDataset, DataLoader, IterableDataset
 from monai.transforms import (
     Compose,
@@ -27,39 +28,13 @@ from covid.datamodules.components.nnunet_iterator import nnUNet_Iterator
 from covid.datamodules.components.transforms import (
     Convert2Dto3D,
     Convert3Dto2D,
+    LoadNpy,
     MayBeSqueezed,
 )
-from covid.utils.file_and_folder_operations import load_pickle
+from covid.utils.file_and_folder_operations import load_pickle, subfiles
 
 
 class nnUNetDataModule(LightningDataModule):
-    """Lightning DataModule for nnUNet pipeline.
-
-    A DataModule implements 5 key methods:
-
-        def prepare_data(self):
-            # things to do on 1 GPU/TPU (not on every GPU/TPU in DDP)
-            # download data, pre-process, split, save to disk, etc...
-        def setup(self, stage):
-            # things to do on every process in DDP
-            # load data, set variables, etc...
-        def train_dataloader(self):
-            # return train dataloader
-        def val_dataloader(self):
-            # return validation dataloader
-        def test_dataloader(self):
-            # return test dataloader
-        def teardown(self):
-            # called on every process in DDP
-            # clean up after fit or test
-
-    This allows you to share a full dataset without explaining how to download,
-    split, transform and process the data.
-
-    Read the docs:
-        https://pytorch-lightning.readthedocs.io/en/latest/extensions/datamodules.html
-    """
-
     def __init__(
         self,
         data_dir: str = "data/",
@@ -79,7 +54,10 @@ class nnUNetDataModule(LightningDataModule):
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
         self.save_hyperparameters(logger=False)
-        self.full_data_dir = os.path.join(data_dir, dataset_name, "raw")
+        self.preprocessed_folder = os.path.join(data_dir, dataset_name, "preprocessed")
+        self.full_data_dir = os.path.join(
+            data_dir, dataset_name, "preprocessed", "data_and_properties"
+        )
 
         assert len(patch_size) in [2, 3], "Only 2D and 3D patches are supported right now!"
 
@@ -102,7 +80,10 @@ class nnUNetDataModule(LightningDataModule):
         return self.hparams.num_classes
 
     def prepare_data(self):
-        splits_file = os.path.join(self.full_data_dir, "splits_final.pkl")
+        print("\n", "Unpacking dataset...")
+        self.unpack_dataset()
+        print("Done")
+        splits_file = os.path.join(self.preprocessed_folder, "splits_final.pkl")
         print("Using splits from existing split file:", splits_file)
         splits = load_pickle(splits_file)
         if self.hparams.fold < len(splits):
@@ -124,25 +105,23 @@ class nnUNetDataModule(LightningDataModule):
 
             self.train_files = [
                 {
-                    "image": os.path.join(self.full_data_dir, "imagesTr", key + "_0000.nii.gz"),
-                    "label": os.path.join(self.full_data_dir, "labelsTr", key + ".nii.gz"),
+                    "data": os.path.join(self.full_data_dir, "%s.npy" % key),
+                    "properties": os.path.join(self.full_data_dir, "%s.pkl" % key),
                 }
                 for key in train_keys
             ]
             self.val_files = [
                 {
-                    "image": os.path.join(self.full_data_dir, "imagesTr", key + "_0000.nii.gz"),
-                    "label": os.path.join(self.full_data_dir, "labelsTr", key + ".nii.gz"),
+                    "data": os.path.join(self.full_data_dir, "%s.npy" % key),
+                    "properties": os.path.join(self.full_data_dir, "%s.pkl" % key),
                 }
                 for key in val_keys
             ]
             if self.hparams.do_test:
                 self.test_files = [
                     {
-                        "image": os.path.join(
-                            self.full_data_dir, "imagesTr", key + "_0000.nii.gz"
-                        ),
-                        "label": os.path.join(self.full_data_dir, "labelsTr", key + ".nii.gz"),
+                        "data": os.path.join(self.full_data_dir, "%s.npy" % key),
+                        "properties": os.path.join(self.full_data_dir, "%s.pkl" % key),
                     }
                     for key in test_keys
                 ]
@@ -198,18 +177,6 @@ class nnUNetDataModule(LightningDataModule):
                 shuffle=False,
             )
 
-    def teardown(self, stage: Optional[str] = None):
-        """Clean up after fit or test."""
-        pass
-
-    def state_dict(self):
-        """Extra things to save to checkpoint."""
-        return {}
-
-    def load_state_dict(self, state_dict: Dict[str, Any]):
-        """Things to do when loading checkpoint."""
-        pass
-
     def setup_transforms(self):
         """Define the data augmentations used by nnUNet including the data reading using
         monai.transforms libraries.
@@ -233,9 +200,7 @@ class nnUNetDataModule(LightningDataModule):
                 range_x = [-15 / 180 * np.pi, 15 / 180 * np.pi]
 
         shared_train_val_transforms = [
-            LoadImaged(keys=["image", "label"]),
-            EnsureChannelFirstd(keys=["image", "label"]),
-            NormalizeIntensityd(keys="image", nonzero=False, channel_wise=True),
+            LoadNpy(),
             SpatialPadd(
                 keys=["image", "label"],
                 spatial_size=self.crop_patch_size,
@@ -313,9 +278,7 @@ class nnUNetDataModule(LightningDataModule):
             val_transforms.append(MayBeSqueezed(keys=["image", "label"], dim=-1))
 
         test_transforms = [
-            LoadImaged(keys=["image", "label"]),
-            EnsureChannelFirstd(keys=["image", "label"]),
-            NormalizeIntensityd(keys="image", nonzero=False, channel_wise=True),
+            LoadNpy(),
         ]
 
         if not self.threeD:
@@ -324,6 +287,18 @@ class nnUNetDataModule(LightningDataModule):
         self.train_transforms = Compose(shared_train_val_transforms + other_transforms)
         self.val_transforms = Compose(val_transforms)
         self.test_transforms = Compose(test_transforms)
+
+    def unpack_dataset(self):
+        npz_files = subfiles(self.full_data_dir, True, None, ".npz", True)
+        Parallel(n_jobs=self.hparams.num_workers)(
+            delayed(self.convert_to_npy)(npz_file) for npz_file in npz_files
+        )
+
+    @staticmethod
+    def convert_to_npy(npz_file, key="data"):
+        if not os.path.isfile(npz_file[:-3] + "npy"):
+            a = np.load(npz_file)[key]
+            np.save(npz_file[:-3] + "npy", a)
 
 
 if __name__ == "__main__":
@@ -341,11 +316,11 @@ if __name__ == "__main__":
     camus_datamodule = hydra.utils.instantiate(cfg)
     camus_datamodule.prepare_data()
     camus_datamodule.setup()
-    # train_dl = camus_datamodule.train_dataloader()
-    test_dl = camus_datamodule.test_dataloader()
+    train_dl = camus_datamodule.train_dataloader()
+    # test_dl = camus_datamodule.test_dataloader()
 
-    # batch = next(iter(train_dl))
-    batch = next(iter(test_dl))
+    batch = next(iter(train_dl))
+    # batch = next(iter(test_dl))
 
     from matplotlib import pyplot as plt
 

@@ -202,7 +202,7 @@ class nnUNetLitModule(LightningModule):
             )
 
     def test_step(self, batch, batch_idx):  # noqa: D102
-        img, label = batch["image"], batch["label"]
+        img, label, image_meta_dict = batch["image"], batch["label"], batch["image_meta_dict"]
         preds = self.tta_predict(img) if self.tta else self.predict(img)
 
         num_classes = preds.shape[1]
@@ -224,12 +224,19 @@ class nnUNetLitModule(LightningModule):
                 (pred_seg != c).float() * (label == c).float(), axes=axes
             )
 
-        tp_hard = tp_hard.sum(0, keepdim=False).detach().cpu().numpy()
-        fp_hard = fp_hard.sum(0, keepdim=False).detach().cpu().numpy()
-        fn_hard = fn_hard.sum(0, keepdim=False).detach().cpu().numpy()
+        # tp_hard = tp_hard.sum(0, keepdim=False).detach().cpu().numpy()
+        # fp_hard = fp_hard.sum(0, keepdim=False).detach().cpu().numpy()
+        # fn_hard = fn_hard.sum(0, keepdim=False).detach().cpu().numpy()
+        # test_dice = (2 * tp_hard) / (2 * tp_hard + fp_hard + fn_hard + 1e-8)
+
+        # test_dice = torch.tensor(np.mean(test_dice, 0))
+
+        tp_hard = tp_hard.sum(0, keepdim=False)
+        fp_hard = fp_hard.sum(0, keepdim=False)
+        fn_hard = fn_hard.sum(0, keepdim=False)
         test_dice = (2 * tp_hard) / (2 * tp_hard + fp_hard + fn_hard + 1e-8)
 
-        test_dice = torch.tensor(np.mean(test_dice, 0))
+        test_dice = torch.mean(test_dice, 0)
 
         self.log(
             "test/dice",
@@ -240,34 +247,35 @@ class nnUNetLitModule(LightningModule):
             logger=True,
             batch_size=self.trainer.datamodule.hparams.batch_size,
         )
-        return {"test/dice": test_dice, "preds": preds, "targets": label}
+        return {
+            "test/dice": test_dice,
+            "preds": preds,
+            "targets": label,
+            "image_meta_dict": image_meta_dict,
+        }
 
     def test_step_end(self, test_step_outputs):
         preds = test_step_outputs["preds"]
+        image_meta_dict = test_step_outputs["image_meta_dict"]
         if self.save_predictions:
-            # meta = batch["meta"][0].cpu().detach().numpy()
-            # original_shape = meta[2]
-            # min_d, max_d = meta[0, 0], meta[1, 0]
-            # min_h, max_h = meta[0, 1], meta[1, 1]
-            # min_w, max_w = meta[0, 2], meta[1, 2]
+            preds = softmax_helper(preds).argmax(1)
+            preds = preds.squeeze(0).cpu().detach().numpy()
+            original_shape = image_meta_dict["original_shape"][0].tolist()
+            if len(preds.shape) == len(original_shape) - 1:
+                preds = preds[..., None]
+            shape_after_cropping = image_meta_dict["shape_after_cropping"][0].tolist()
+            preds = self.recovery_prediction(
+                preds, shape_after_cropping, image_meta_dict["anisotrophy_flag"].item()
+            )
 
-            # final_pred = torch.zeros((1, pred.shape[1], *original_shape), device=img.device)
-            # final_pred[:, :, min_d:max_d, min_h:max_h, min_w:max_w] = pred
-            fname = preds.meta["filename_or_obj"][0]
-            fname = os.path.basename(fname).rsplit("_", 1)[0]
-            spacing = list(preds.meta["pixdim"][0].cpu().detach().numpy())
-            spacing = [float(i) for i in spacing[1:] if i]
-            final_preds = softmax_helper(preds).argmax(1)
-            final_preds = final_preds.squeeze(0).cpu().detach().numpy()
-            # batch["image_meta_dict"]["filename_or_obj"]
-            # if not all(original_shape == final_pred.shape[1:]):
-            #     class_ = final_pred.shape[0]
-            #     resized_pred = np.zeros((class_, *original_shape))
-            #     for i in range(class_):
-            #         resized_pred[i] = resize(
-            #             final_pred[i], original_shape, order=3, mode="edge", cval=0, clip=True, anti_aliasing=False
-            #         )
-            #     final_pred = resized_pred
+            box_start, box_end = image_meta_dict["crop_bbox"][0].tolist()
+            min_w, min_h, min_d = box_start
+            max_w, max_h, max_d = box_end
+
+            final_preds = np.zeros(original_shape)
+            final_preds[min_w:max_w, min_h:max_h, min_d:max_d] = preds
+            fname = image_meta_dict["case_identifier"][0]
+            spacing = image_meta_dict["original_spacing"][0].tolist()
 
             self.save_mask(final_preds, fname, spacing)
 
@@ -345,6 +353,60 @@ class nnUNetLitModule(LightningModule):
             preds[:, :, depth] = self.predict_2D_2Dconv_tiled(image[:, :, depth])
         return preds
 
+    @staticmethod
+    def recovery_prediction(prediction, new_shape, anisotrophy_flag):
+        shape = np.array(prediction.shape)
+        if np.any(shape != np.array(new_shape)):
+            reshaped = np.zeros(new_shape, dtype=np.uint8)
+            n_class = np.max(prediction)
+            if anisotrophy_flag:
+                shape_2d = new_shape[:-1]
+                depth = prediction.shape[-1]
+                reshaped_2d = np.zeros((*shape_2d, depth), dtype=np.uint8)
+
+                for class_ in range(1, int(n_class) + 1):
+                    for depth_ in range(depth):
+                        mask = prediction[:, :, depth_] == class_
+                        resized_2d = resize(
+                            mask.astype(float),
+                            shape_2d,
+                            order=1,
+                            mode="edge",
+                            cval=0,
+                            clip=True,
+                            anti_aliasing=False,
+                        )
+                        reshaped_2d[:, :, depth_][resized_2d >= 0.5] = class_
+                for class_ in range(1, int(n_class) + 1):
+                    mask = reshaped_2d == class_
+                    resized = resize(
+                        mask.astype(float),
+                        new_shape,
+                        order=0,
+                        mode="constant",
+                        cval=0,
+                        clip=True,
+                        anti_aliasing=False,
+                    )
+                    reshaped[resized >= 0.5] = class_
+            else:
+                for class_ in range(1, int(n_class) + 1):
+                    mask = prediction == class_
+                    resized = resize(
+                        mask.astype(float),
+                        new_shape,
+                        order=1,
+                        mode="edge",
+                        cval=0,
+                        clip=True,
+                        anti_aliasing=False,
+                    )
+                    reshaped[resized >= 0.5] = class_
+
+            return reshaped
+        else:
+            return prediction
+
     def get_tta_flips(self):
         if self.threeD:
             return [[2], [3], [4], [2, 3], [2, 4], [3, 4], [2, 3, 4]]
@@ -369,8 +431,8 @@ class nnUNetLitModule(LightningModule):
         print(f"\nSaving prediction for {fname}...\n")
         save_dir = os.path.join(self.trainer.default_root_dir, "testing_raw")
         os.makedirs(save_dir, exist_ok=True)
-        if len(preds.shape) == len(spacing) - 1:
-            preds = preds[..., None].astype(np.uint8)
+
+        preds = preds.astype(np.uint8)
         itk_image = sitk.GetImageFromArray(np.transpose(preds, list(range(0, len(spacing)))[::-1]))
         itk_image.SetSpacing(spacing)
         sitk.WriteImage(itk_image, os.path.join(save_dir, fname + ".nii.gz"))
