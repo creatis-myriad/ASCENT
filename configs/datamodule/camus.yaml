@@ -8,4 +8,4 @@ num_classes: 3
 do_dummy_2D_aug: False
 do_test: True
 fold: ${fold}
-num_workers: 10
+num_workers: 12
