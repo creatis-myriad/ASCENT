@@ -263,10 +263,11 @@ class nnUNetLitModule(LightningModule):
             original_shape = image_meta_dict["original_shape"][0].tolist()
             if len(preds.shape) == len(original_shape) - 1:
                 preds = preds[..., None]
-            shape_after_cropping = image_meta_dict["shape_after_cropping"][0].tolist()
-            preds = self.recovery_prediction(
-                preds, shape_after_cropping, image_meta_dict["anisotrophy_flag"].item()
-            )
+            if image_meta_dict["resampling_flag"].item():
+                shape_after_cropping = image_meta_dict["shape_after_cropping"][0].tolist()
+                preds = self.recovery_prediction(
+                    preds, shape_after_cropping, image_meta_dict["anisotrophy_flag"].item()
+                )
 
             box_start, box_end = image_meta_dict["crop_bbox"][0].tolist()
             min_w, min_h, min_d = box_start
@@ -481,7 +482,7 @@ if __name__ == "__main__":
     cfg.patch_size = [128, 128]
     # cfg.patch_size = [128, 128, 12]
     cfg.batch_size = 2
-    cfg.fold = 0
+    cfg.fold = 4
     camus_datamodule: LightningDataModule = hydra.utils.instantiate(cfg)
 
     cfg = omegaconf.OmegaConf.load(root / "configs" / "callbacks" / "nnunet.yaml")
@@ -501,7 +502,7 @@ if __name__ == "__main__":
         devices=1,
     )
 
-    # trainer.fit(model=nnunet, datamodule=camus_datamodule)
-    print("Starting testing!")
-    ckpt_path = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/logs/lightning_logs/version_0/checkpoints/epoch=1-step=500.ckpt"
-    trainer.test(model=nnunet, datamodule=camus_datamodule, ckpt_path=ckpt_path)
+    trainer.fit(model=nnunet, datamodule=camus_datamodule)
+    # print("Starting testing!")
+    # ckpt_path = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/logs/lightning_logs/version_0/checkpoints/epoch=1-step=500.ckpt"
+    # trainer.test(model=nnunet, datamodule=camus_datamodule, ckpt_path=ckpt_path)

@@ -6,13 +6,17 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Union
 
+import nibabel as nib
 import numpy as np
+import SimpleITK as sitk
 from joblib import Parallel, delayed
 from monai.transforms import (
     Compose,
     ConcatItemsd,
     EnsureChannelFirstd,
+    LoadImage,
     LoadImaged,
+    SaveImage,
     SpatialCropd,
 )
 from monai.transforms.utils import generate_spatial_bounding_box
@@ -118,14 +122,24 @@ class Preprocessor:
 
     def crop_from_list_of_files(self, datalist: list[dict], transforms: list) -> None:
         os.makedirs(self.cropped_folder, exist_ok=True)
+        os.makedirs(os.path.join(self.cropped_folder, "imagesTr"), exist_ok=True)
+        os.makedirs(os.path.join(self.cropped_folder, "labelsTr"), exist_ok=True)
+        os.makedirs(os.path.join(self.cropped_folder, "properties"), exist_ok=True)
         self.run_parallel_from_raw(self.crop, datalist, transforms)
 
     def crop(self, data: dict, transforms: list, **kwargs) -> None:
         list_of_data_files = list(data.values())[:-1]
         case_identifier = os.path.basename(list_of_data_files[0]).split(".nii.gz")[0][:-5]
         if self.overwrite_existing or (
-            not os.path.isfile(os.path.join(self.cropped_folder, "%s.npz" % case_identifier))
-            or not os.path.isfile(os.path.join(self.cropped_folder, "%s.pkl" % case_identifier))
+            not os.path.isfile(
+                os.path.join(self.cropped_folder, "imagesTr", "%s.nii.gz" % case_identifier)
+            )
+            or not os.path.isfile(
+                os.path.join(self.cropped_folder, "lablesTr", "%s.nii.gz" % case_identifier)
+            )
+            or not os.path.isfile(
+                os.path.join(self.cropped_folder, "properties", "%s.pkl" % case_identifier)
+            )
         ):
             properties = OrderedDict()
             data = transforms(data)
@@ -156,15 +170,80 @@ class Preprocessor:
                 "\n",
             )
 
-            cropped_filename = os.path.join(
-                self.cropped_folder, "%s.npz" % properties["case_identifier"]
+            cropped_imagename = os.path.join(
+                self.cropped_folder, "imagesTr", "%s.nii.gz" % properties["case_identifier"]
+            )
+            cropped_labelname = os.path.join(
+                self.cropped_folder, "labelsTr", "%s.nii.gz" % properties["case_identifier"]
             )
             properties_name = os.path.join(
-                self.cropped_folder, "%s.pkl" % properties["case_identifier"]
+                self.cropped_folder, "properties", "%s.pkl" % properties["case_identifier"]
             )
-            all_data = np.vstack([data["image"].array, data["label"].array])
-            print("\nSaving to", cropped_filename)
-            np.savez_compressed(cropped_filename, data=all_data)
+            # spacing = [1, *properties["original_spacing"].tolist()]
+
+            # itk_image = sitk.GetImageFromArray(np.transpose(data["image"].array.astype(np.float32), list(range(0, len(spacing)))[::-1]))
+            # itk_image.SetSpacing(spacing)
+            # sitk.WriteImage(itk_image, cropped_imagename)
+
+            # itk_label = sitk.GetImageFromArray(np.transpose(data["label"].array.astype(np.uint8), list(range(0, len(spacing)))[::-1]))
+            # itk_label.SetSpacing(spacing)
+            # sitk.WriteImage(itk_label, cropped_labelname)
+            nib_image = nib.Nifti1Image(
+                data["image"].array.astype(np.float32),
+                np.eye(4)
+                * np.array(
+                    [
+                        -properties["original_spacing"][0],
+                        -properties["original_spacing"][1],
+                        properties["original_spacing"][2],
+                        1,
+                    ]
+                ),
+            )
+            nib_image.header["pixdim"][2:5] = properties["original_spacing"].tolist()
+            nib.save(nib_image, cropped_imagename)
+
+            nib_label = nib.Nifti1Image(
+                data["label"].array.astype(np.uint8),
+                np.eye(4)
+                * np.array(
+                    [
+                        -properties["original_spacing"][0],
+                        -properties["original_spacing"][1],
+                        properties["original_spacing"][2],
+                        1,
+                    ]
+                ),
+            )
+            nib_label.header["pixdim"][2:5] = properties["original_spacing"].tolist()
+            nib.save(nib_label, cropped_labelname)
+            # image_meta={
+            #     "filename_or_obj": properties["case_identifier"],
+            #     "spatial_shape": properties["shape_after_cropping"].tolist(),
+            #     "pixdim": properties["original_spacing"].tolist(),
+            #     }
+            # SaveImage(
+            #     output_dir=os.path.join(self.cropped_folder, "imagesTr"),
+            #     output_postfix = "",
+            #     output_ext=".nii.gz",
+            #     output_dtype=np.float32,
+            #     resample=False,
+            #     squeeze_end_dims=False,
+            #     separate_folder=False,
+            #     channel_dim = 0,
+            # )(data["image"].array, meta_data=image_meta)
+            # SaveImage(
+            #     output_dir=os.path.join(self.cropped_folder, "labelsTr"),
+            #     output_postfix = "",
+            #     output_ext=".nii.gz",
+            #     output_dtype=np.uint8,
+            #     resample=False,
+            #     squeeze_end_dims=False,
+            #     separate_folder=False,
+            #     channel_dim = 0,
+            # )(data["label"].array, meta_data=image_meta)
+            print("\nSaving to", cropped_imagename)
+            # np.savez_compressed(cropped_filename, data=all_data)
             with open(properties_name, "wb") as f:
                 pickle.dump(properties, f)  # nosec B301
 
@@ -174,7 +253,7 @@ class Preprocessor:
 
     @staticmethod
     def get_case_identifier_from_npz(case):
-        case_identifier = os.path.basename(case)[:-4]
+        case_identifier = os.path.basename(case).split(".nii.gz")[0][:-5]
         return case_identifier
 
     def check_anisotrophy(self, spacing):
@@ -199,14 +278,17 @@ class Preprocessor:
         return properties["cropping_size_reduction"]
 
     def load_cropped(self, case_identifier):
-        all_data = np.load(os.path.join(self.cropped_folder, "%s.npz" % case_identifier))["data"]
-        data = all_data[:-1].astype(np.float32)
-        seg = all_data[-1:]
+        data_path = os.path.join(self.cropped_folder, "imagesTr", "%s.nii.gz" % case_identifier)
+        seg_path = os.path.join(self.cropped_folder, "labelsTr", "%s.nii.gz" % case_identifier)
+        data = LoadImage(image_only=True)(data_path).array
+        seg = LoadImage(image_only=True)(seg_path).array
         properties = self.load_properties_of_cropped(case_identifier)
         return data, seg, properties
 
     def load_properties_of_cropped(self, case_identifier):
-        with open(os.path.join(self.cropped_folder, "%s.pkl" % case_identifier), "rb") as f:
+        with open(
+            os.path.join(self.cropped_folder, "properties", "%s.pkl" % case_identifier), "rb"
+        ) as f:
             properties = pickle.load(f)  # nosec B301
         return properties
 
@@ -250,7 +332,7 @@ class Preprocessor:
 
             before = {"spacing": properties["original_spacing"], "data.shape": data.shape}
 
-            anisotrophy_flag = bool(self.check_anisotrophy(properties["original_spacing"]))
+            anisotrophy_flag = self.check_anisotrophy(properties["original_spacing"])
             new_shape = self.calculate_new_shape(
                 properties["original_spacing"], properties["shape_after_cropping"]
             )
@@ -276,25 +358,62 @@ class Preprocessor:
             data, seg, properties = self.normalize(data, seg, properties)
 
         all_data = np.vstack((data, seg)).astype(np.float32)
-        print(
-            "Saving: ",
-            os.path.join(
-                self.preprocessed_folder, "data_and_properties", "%s.npz" % case_identifier
-            ),
-            "\n",
+        preprocessed_imagename = os.path.join(
+            self.preprocessed_folder, "imagesTr", "%s.nii.gz" % properties["case_identifier"]
         )
-        np.savez_compressed(
-            os.path.join(
-                self.preprocessed_folder, "data_and_properties", "%s.npz" % case_identifier
-            ),
-            data=all_data.astype(np.float32),
+        preprocessed_labelname = os.path.join(
+            self.preprocessed_folder, "labelsTr", "%s.nii.gz" % properties["case_identifier"]
         )
-        with open(
-            os.path.join(
-                self.preprocessed_folder, "data_and_properties", "%s.pkl" % case_identifier
+        properties_name = os.path.join(
+            self.preprocessed_folder, "properties", "%s.pkl" % properties["case_identifier"]
+        )
+        # spacing = [1, *properties["original_spacing"].tolist()]
+
+        # itk_image = sitk.GetImageFromArray(np.transpose(data["image"].array.astype(np.float32), list(range(0, len(spacing)))[::-1]))
+        # itk_image.SetSpacing(spacing)
+        # sitk.WriteImage(itk_image, cropped_imagename)
+
+        # itk_label = sitk.GetImageFromArray(np.transpose(data["label"].array.astype(np.uint8), list(range(0, len(spacing)))[::-1]))
+        # itk_label.SetSpacing(spacing)
+        # sitk.WriteImage(itk_label, cropped_labelname)
+
+        print("Saving: ", preprocessed_imagename, "\n")
+        # np.savez_compressed(
+        #     os.path.join(
+        #         self.preprocessed_folder, "data_and_properties", "%s.npz" % case_identifier
+        #     ),
+        #     data=all_data.astype(np.float32),
+        # )
+        nib_image = nib.Nifti1Image(
+            data.array.astype(np.float32),
+            np.eye(4)
+            * np.array(
+                [
+                    -properties["original_spacing"][0],
+                    -properties["original_spacing"][1],
+                    properties["original_spacing"][2],
+                    1,
+                ]
             ),
-            "wb",
-        ) as f:
+        )
+        nib_image.header["pixdim"][2:5] = properties["spacing_after_resampling"].tolist()
+        nib.save(nib_image, preprocessed_imagename)
+
+        nib_label = nib.Nifti1Image(
+            seg.astype(np.uint8),
+            np.eye(4)
+            * np.array(
+                [
+                    -properties["original_spacing"][0],
+                    -properties["original_spacing"][1],
+                    properties["original_spacing"][2],
+                    1,
+                ]
+            ),
+        )
+        nib_label.header["pixdim"][2:5] = properties["spacing_after_resampling"].tolist()
+        nib.save(nib_label, preprocessed_labelname)
+        with open(properties_name, "wb") as f:
             pickle.dump(properties, f)  # nosec B301
 
     @staticmethod
@@ -479,7 +598,9 @@ class Preprocessor:
 
         # crop to non zero
         self.crop_from_list_of_files(datalist, transforms)
-        list_of_cropped_npz_files = subfiles(self.cropped_folder, True, None, ".npz", True)
+        list_of_cropped_npz_files = subfiles(
+            os.path.join(self.cropped_folder, "imagesTr"), True, None, ".npz", True
+        )
 
         # get all size reductions
         if not len(self.all_size_reductions):

@@ -1,7 +1,8 @@
 import numpy as np
 from einops.einops import rearrange
 from monai.config import KeysCollection
-from monai.transforms import SqueezeDim, ToTensor
+from monai.data import MetaTensor
+from monai.transforms import LoadImage, SqueezeDim, ToTensor
 from monai.transforms.transform import MapTransform, Transform
 
 from covid.utils.file_and_folder_operations import load_pickle
@@ -61,25 +62,57 @@ class MayBeSqueezed(MapTransform):
         return d
 
 
-class LoadNpy(Transform):
+class LoadNpyd(MapTransform):
+    def __init__(
+        self,
+        keys: KeysCollection,
+        test: bool = False,
+        allow_missing_keys: bool = False,
+    ) -> None:
+
+        super().__init__(keys, allow_missing_keys)
+        self.test = test
+
     def __call__(self, data):
         d = dict(data)
-        assert "data" in d.keys(), "Data (.npy) must be present."
-        assert "properties" in d.keys(), "Data's properties (.pkl) must be present."
-        case_all_data = np.load(d["data"][:-4] + ".npy", "r")
-        properties = load_pickle(d["properties"])
-        image_npy = case_all_data[:-1].astype(np.float32)
-        assert len(image_npy.shape) == 4, "Image should be (c, w, h, d)"
-        label_npy = case_all_data[-1:].astype(np.uint8)
-        assert len(label_npy.shape) == 4, "Label should be (c, w, h, d)"
-        return {
-            "image": ToTensor()(image_npy),
-            "label": ToTensor()(label_npy),
-            "image_meta_dict": properties,
-        }
+        for key in self.keys:
+            if key == "data":
+                # case_all_data = np.load(d[key], "r")
+                case_all_data = LoadImage(image_only=True, channel_dim=0)(d[key])
+                meta = case_all_data._meta
+                d.pop(key, None)
+                d["image"] = MetaTensor(case_all_data.array[:-1].astype(np.float32), meta=meta)
+                d["label"] = MetaTensor(case_all_data.array[-1:].astype(np.uint8), meta=meta)
+                del case_all_data
+                assert len(d["image"].shape) == 4, "Image should be (c, w, h, d)"
+                assert len(d["label"].shape) == 4, "Label should be (c, w, h, d)"
+            elif key == "image_meta_dict":
+                if self.test:
+                    image_meta_dict = load_pickle(d["image_meta_dict"])
+                    d["image_meta_dict"] = {}
+                    d["image_meta_dict"]["original_shape"] = image_meta_dict["original_shape"]
+                    d["image_meta_dict"]["original_spacing"] = image_meta_dict["original_spacing"]
+                    d["image_meta_dict"]["shape_after_cropping"] = image_meta_dict[
+                        "shape_after_cropping"
+                    ]
+                    d["image_meta_dict"]["crop_bbox"] = image_meta_dict["crop_bbox"]
+                    d["image_meta_dict"]["resampling_flag"] = image_meta_dict["resampling_flag"]
+                    if d["image_meta_dict"]["resampling_flag"]:
+                        d["image_meta_dict"]["shape_after_resampling"] = image_meta_dict[
+                            "shape_after_resampling"
+                        ]
+                        d["image_meta_dict"]["anisotrophy_flag"] = image_meta_dict[
+                            "anisotrophy_flag"
+                        ]
+            else:
+                raise NotImplementedError
+        return d
 
 
 if __name__ == "__main__":
     data_path = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/CAMUS/preprocessed/data_and_properties/NewCamus_0001.npy"
+    # data_path = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/CAMUS/cropped/NewCamus_0001.npz"
     prop = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/CAMUS/preprocessed/data_and_properties/NewCamus_0001.pkl"
-    data = LoadNpy()({"data": data_path, "properties": prop})
+    data = LoadNpyd(["data", "image_meta_dict"], test=True)(
+        {"data": data_path, "image_meta_dict": prop}
+    )

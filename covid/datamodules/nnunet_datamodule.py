@@ -28,7 +28,7 @@ from covid.datamodules.components.nnunet_iterator import nnUNet_Iterator
 from covid.datamodules.components.transforms import (
     Convert2Dto3D,
     Convert3Dto2D,
-    LoadNpy,
+    LoadNpyd,
     MayBeSqueezed,
 )
 from covid.utils.file_and_folder_operations import load_pickle, subfiles
@@ -106,14 +106,16 @@ class nnUNetDataModule(LightningDataModule):
             self.train_files = [
                 {
                     "data": os.path.join(self.full_data_dir, "%s.npy" % key),
-                    "properties": os.path.join(self.full_data_dir, "%s.pkl" % key),
+                    # "label": os.path.join(self.full_data_dir, "%s.npy" % key),
+                    # "image_meta_dict": os.path.join(self.full_data_dir, "%s.pkl" % key),
                 }
                 for key in train_keys
             ]
             self.val_files = [
                 {
                     "data": os.path.join(self.full_data_dir, "%s.npy" % key),
-                    "properties": os.path.join(self.full_data_dir, "%s.pkl" % key),
+                    # "label": os.path.join(self.full_data_dir, "%s.npy" % key),
+                    # "image_meta_dict": os.path.join(self.full_data_dir, "%s.pkl" % key),
                 }
                 for key in val_keys
             ]
@@ -121,7 +123,8 @@ class nnUNetDataModule(LightningDataModule):
                 self.test_files = [
                     {
                         "data": os.path.join(self.full_data_dir, "%s.npy" % key),
-                        "properties": os.path.join(self.full_data_dir, "%s.pkl" % key),
+                        # "label": os.path.join(self.full_data_dir, "%s.npy" % key),
+                        "image_meta_dict": os.path.join(self.full_data_dir, "%s.pkl" % key),
                     }
                     for key in test_keys
                 ]
@@ -184,23 +187,25 @@ class nnUNetDataModule(LightningDataModule):
         The only difference with nnUNet framework is the patch creation.
         """
         if self.threeD:
-            inter_mode = "trilinear"
+            rot_inter_mode = "bilinear"
+            zoom_inter_mode = "trilinear"
             range_x = range_y = range_z = [-30.0 / 180 * np.pi, 30.0 / 180 * np.pi]
 
             if self.hparams.do_dummy_2D_aug:
-                inter_mode = "bicubic"
+                zoom_inter_mode = rot_inter_mode = "bicubic"
                 range_x = [-180.0 / 180 * np.pi, 180.0 / 180 * np.pi]
-                range_y = range_z = 0
+                range_y = range_z = 0.0
 
         else:
-            inter_mode = "bicubic"
+            zoom_inter_mode = rot_inter_mode = "bicubic"
             range_x = [-180.0 / 180 * np.pi, 180.0 / 180 * np.pi]
-            range_y = range_z = 0
+            range_y = range_z = 0.0
             if max(self.hparams.patch_size) / min(self.hparams.patch_size) > 1.5:
-                range_x = [-15 / 180 * np.pi, 15 / 180 * np.pi]
+                range_x = [-15.0 / 180 * np.pi, 15.0 / 180 * np.pi]
 
         shared_train_val_transforms = [
-            LoadNpy(),
+            LoadNpyd(keys=["data"]),
+            EnsureChannelFirstd(keys=["image", "label"]),
             SpatialPadd(
                 keys=["image", "label"],
                 spatial_size=self.crop_patch_size,
@@ -227,20 +232,20 @@ class nnUNetDataModule(LightningDataModule):
 
         other_transforms.extend(
             [
-                RandRotated(
-                    keys=["image", "label"],
-                    range_x=range_x,
-                    range_y=range_y,
-                    range_z=range_z,
-                    mode=(inter_mode, "nearest"),
-                    padding_mode="zeros",
-                    prob=0.2,
-                ),
+                # RandRotated(
+                #     keys=["image", "label"],
+                #     range_x=range_x,
+                #     range_y=range_y,
+                #     range_z=range_z,
+                #     mode=[rot_inter_mode, "nearest"],
+                #     padding_mode="zeros",
+                #     prob=0.2,
+                # ),
                 RandZoomd(
                     keys=["image", "label"],
                     min_zoom=0.7,
                     max_zoom=1.4,
-                    mode=(inter_mode, "nearest"),
+                    mode=[zoom_inter_mode, "nearest"],
                     padding_mode="constant",
                     align_corners=(True, None),
                     prob=0.2,
@@ -278,7 +283,11 @@ class nnUNetDataModule(LightningDataModule):
             val_transforms.append(MayBeSqueezed(keys=["image", "label"], dim=-1))
 
         test_transforms = [
-            LoadNpy(),
+            LoadNpyd(
+                keys=["data", "image_meta_dict"],
+                test=True,
+            ),
+            EnsureChannelFirstd(keys=["image", "label"]),
         ]
 
         if not self.threeD:
@@ -309,9 +318,9 @@ if __name__ == "__main__":
     root = pyrootutils.setup_root(__file__, pythonpath=True)
     cfg = omegaconf.OmegaConf.load(root / "configs" / "datamodule" / "camus.yaml")
     cfg.data_dir = str(root / "data")
-    cfg.patch_size = [640, 512]
+    cfg.patch_size = [128, 128]
     # cfg.patch_size = [128, 128, 12]
-    cfg.batch_size = 1
+    cfg.batch_size = 2
     cfg.fold = 0
     camus_datamodule = hydra.utils.instantiate(cfg)
     camus_datamodule.prepare_data()
