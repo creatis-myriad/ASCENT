@@ -250,7 +250,6 @@ class nnUNetLitModule(LightningModule):
         return {
             "test/dice": test_dice,
             "preds": preds,
-            "targets": label,
             "image_meta_dict": image_meta_dict,
         }
 
@@ -502,7 +501,7 @@ if __name__ == "__main__":
         devices=1,
     )
 
-    trainer.fit(model=nnunet, datamodule=camus_datamodule)
-    # print("Starting testing!")
-    # ckpt_path = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/logs/lightning_logs/version_0/checkpoints/epoch=1-step=500.ckpt"
-    # trainer.test(model=nnunet, datamodule=camus_datamodule, ckpt_path=ckpt_path)
+    # trainer.fit(model=nnunet, datamodule=camus_datamodule)
+    print("Starting testing!")
+    ckpt_path = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/logs/lightning_logs/version_0/checkpoints/epoch=1-step=500.ckpt"
+    trainer.test(model=nnunet, datamodule=camus_datamodule, ckpt_path=ckpt_path)
