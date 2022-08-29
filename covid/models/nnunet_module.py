@@ -95,9 +95,11 @@ class nnUNetLitModule(LightningModule):
 
     def training_step(self, batch, batch_idx: int):  # noqa: D102
         img, label = batch["image"], batch["label"]
+
         # Need to handle carefully the multi-scale outputs from deep supervision heads
         pred = self.forward(img)
         loss = self.compute_loss(pred, label)
+
         self.log(
             "train/loss",
             loss,
@@ -111,6 +113,7 @@ class nnUNetLitModule(LightningModule):
 
     def validation_step(self, batch, batch_idx):  # noqa: D102
         img, label = batch["image"], batch["label"]
+
         # Only the highest resolution output is returned during the validation
         pred = self.forward(img)
         loss = self.loss(pred, label)
@@ -124,6 +127,7 @@ class nnUNetLitModule(LightningModule):
         tp_hard = torch.zeros((label.shape[0], num_classes - 1)).to(pred_seg.device.index)
         fp_hard = torch.zeros((label.shape[0], num_classes - 1)).to(pred_seg.device.index)
         fn_hard = torch.zeros((label.shape[0], num_classes - 1)).to(pred_seg.device.index)
+
         for c in range(1, num_classes):
             tp_hard[:, c - 1] = sum_tensor(
                 (pred_seg == c).float() * (label == c).float(), axes=axes
@@ -224,13 +228,6 @@ class nnUNetLitModule(LightningModule):
                 (pred_seg != c).float() * (label == c).float(), axes=axes
             )
 
-        # tp_hard = tp_hard.sum(0, keepdim=False).detach().cpu().numpy()
-        # fp_hard = fp_hard.sum(0, keepdim=False).detach().cpu().numpy()
-        # fn_hard = fn_hard.sum(0, keepdim=False).detach().cpu().numpy()
-        # test_dice = (2 * tp_hard) / (2 * tp_hard + fp_hard + fn_hard + 1e-8)
-
-        # test_dice = torch.tensor(np.mean(test_dice, 0))
-
         tp_hard = tp_hard.sum(0, keepdim=False)
         fp_hard = fp_hard.sum(0, keepdim=False)
         fn_hard = fn_hard.sum(0, keepdim=False)
@@ -265,7 +262,7 @@ class nnUNetLitModule(LightningModule):
             if image_meta_dict["resampling_flag"].item():
                 shape_after_cropping = image_meta_dict["shape_after_cropping"][0].tolist()
                 preds = self.recovery_prediction(
-                    preds, shape_after_cropping, image_meta_dict["anisotrophy_flag"].item()
+                    preds, shape_after_cropping, image_meta_dict["anisotropy_flag"].item()
                 )
 
             box_start, box_end = image_meta_dict["crop_bbox"][0].tolist()
@@ -354,12 +351,12 @@ class nnUNetLitModule(LightningModule):
         return preds
 
     @staticmethod
-    def recovery_prediction(prediction, new_shape, anisotrophy_flag):
+    def recovery_prediction(prediction, new_shape, anisotropy_flag):
         shape = np.array(prediction.shape)
         if np.any(shape != np.array(new_shape)):
             reshaped = np.zeros(new_shape, dtype=np.uint8)
             n_class = np.max(prediction)
-            if anisotrophy_flag:
+            if anisotropy_flag:
                 shape_2d = new_shape[:-1]
                 depth = prediction.shape[-1]
                 reshaped_2d = np.zeros((*shape_2d, depth), dtype=np.uint8)

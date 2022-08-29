@@ -1,5 +1,5 @@
 import os
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -8,9 +8,6 @@ from monai.data import CacheDataset, DataLoader, IterableDataset
 from monai.transforms import (
     Compose,
     EnsureChannelFirstd,
-    LoadImaged,
-    NormalizeIntensity,
-    NormalizeIntensityd,
     RandAdjustContrastd,
     RandCropByPosNegLabeld,
     RandFlipd,
@@ -20,14 +17,13 @@ from monai.transforms import (
     RandScaleIntensityd,
     RandZoomd,
     SpatialPadd,
-    ToTensord,
 )
 from pytorch_lightning import LightningDataModule
 
 from covid.datamodules.components.nnunet_iterator import nnUNet_Iterator
 from covid.datamodules.components.transforms import (
-    Convert2Dto3D,
-    Convert3Dto2D,
+    Convert2Dto3Dd,
+    Convert3Dto2Dd,
     LoadNpyd,
     MayBeSqueezed,
 )
@@ -228,7 +224,7 @@ class nnUNetDataModule(LightningDataModule):
             other_transforms.append(MayBeSqueezed(keys=["image", "label"], dim=-1))
 
         if self.hparams.do_dummy_2D_aug and self.threeD:
-            other_transforms.append(Convert3Dto2D(keys=["image", "label"]))
+            other_transforms.append(Convert3Dto2Dd(keys=["image", "label"]))
 
         other_transforms.extend(
             [
@@ -255,7 +251,7 @@ class nnUNetDataModule(LightningDataModule):
 
         if self.hparams.do_dummy_2D_aug and self.threeD:
             other_transforms.append(
-                Convert2Dto3D(keys=["image", "label"], in_channels=self.hparams.in_channels)
+                Convert2Dto3Dd(keys=["image", "label"], in_channels=self.hparams.in_channels)
             )
 
         other_transforms.extend(
