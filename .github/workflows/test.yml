@@ -39,37 +39,39 @@ jobs:
       - name: Run pytest
         run: |
           pytest -v
-  # run_tests_windows:
-  #   runs-on: ${{ matrix.os }}
 
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       os: ["windows-latest"]
-  #       python-version: ["3.7", "3.8", "3.9", "3.10"]
+  run_tests_windows:
+    runs-on: ${{ matrix.os }}
 
-  #   timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ["windows-latest"]
+        python-version: ["3.9", "3.10"]
 
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v3
+    timeout-minutes: 10
 
-  #     - name: Set up Python ${{ matrix.python-version }}
-  #       uses: actions/setup-python@v3
-  #       with:
-  #         python-version: ${{ matrix.python-version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
 
-  #     - name: Install dependencies
-  #       run: |
-  #         python -m pip install --upgrade pip
-  #         pip install -r requirements.txt
-  #         pip install pytest
-  #     - name: List dependencies
-  #       run: |
-  #         python -m pip list
-  #     - name: Run pytest
-  #       run: |
-  #         pytest -v
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v3
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+      - name: List dependencies
+        run: |
+          python -m pip list
+      - name: Run pytest
+        run: |
+          pytest -v
+
   # upload code coverage report
   code-coverage:
     runs-on: ubuntu-latest
@@ -91,7 +93,7 @@ jobs:
           pip install pytest-cov[toml]
           pip install sh
       - name: Run tests and collect coverage
-        run: pytest --cov src # NEEDS TO BE UPDATED WHEN CHANGING THE NAME OF "src" FOLDER
+        run: pytest --cov covid # NEEDS TO BE UPDATED WHEN CHANGING THE NAME OF "src" FOLDER
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
