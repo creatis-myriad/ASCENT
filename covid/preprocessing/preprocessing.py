@@ -4,10 +4,11 @@ import os
 import pickle  # nosec B403
 from collections import OrderedDict
 from pathlib import Path
-from typing import Union
+from typing import Callable, Union
 
 import numpy as np
 from joblib import Parallel, delayed
+from monai.data import MetaTensor
 from monai.transforms import (
     Compose,
     ConcatItemsd,
@@ -17,6 +18,7 @@ from monai.transforms import (
 )
 from monai.transforms.utils import generate_spatial_bounding_box
 from skimage.transform import resize
+from torch import Tensor
 
 from covid.utils.file_and_folder_operations import subfiles
 
@@ -25,8 +27,9 @@ class Preprocessor:
     """Preprocessor class that takes nnUNet's preprocessing method (https://github.com/MIC-
     DKFZ/nnUNet/blob/master/nnunet/preprocessing/preprocessing.py) for reference.
 
-    Crop, resample and normalize data stored in ~/data/DATASET_NAME/raw. Cropped data is stored in ~/data/DATASET_NAME/cropped
-    while preprocessed (normalized and resampled) data is stored in ~/data/DATASET_NAME/preprocessed/data_and_properties. Raw dataset should follow strictly the nnUNet raw data format.
+    Crop, resample and normalize data that is stored in ~/data/DATASET_NAME/raw. Cropped data is stored in ~/data/DATASET_NAME/cropped
+    while preprocessed (normalized and resampled) data is stored in ~/data/DATASET_NAME/preprocessed/data_and_properties.
+    Raw dataset should follow strictly the nnUNet raw data format. Refer to https://github.com/MIC-DKFZ/nnUNet/blob/master/documentation/dataset_conversion.md for more information.
     """
 
     def __init__(
@@ -65,8 +68,8 @@ class Preprocessor:
 
         Returns:
             - List of dictionaries containing the paths to the image and its label.
-            - Image keys in datalist
-            - Dictionary containing the modalities indicated in dataset.json
+            - Image keys in datalist.
+            - Dictionary containing the modalities indicated in dataset.json.
         """
 
         datalist = []
@@ -96,7 +99,11 @@ class Preprocessor:
 
         return datalist, image_keys, modalities
 
-    def _get_target_spacing(self, datalist: list[dict], transforms: Compose) -> list[float]:
+    def _get_target_spacing(
+        self,
+        datalist: list[dict[str, Union[Path, str]]],
+        transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
+    ) -> list[float]:
         """Calculate the target spacing.
 
         The calculation of the target spacing involves:
@@ -105,7 +112,7 @@ class Preprocessor:
             - Handling of the case where the median image spacing is anisotropic.
 
         Args:
-            datalist: Paths to all the images and labels
+            datalist: List of paths to all the images and labels.
             transforms: Compose of sequences of monai's transformations to read the path provided in datalist and transform the data.
 
         Returns:
@@ -120,11 +127,16 @@ class Preprocessor:
             target_spacing[lowres_axis] = np.percentile(spacings[:, lowres_axis], 10)
         return list(target_spacing)
 
-    def _get_spacing(self, data: dict, transforms: Compose, **kwargs) -> list[float]:
+    def _get_spacing(
+        self,
+        data: dict[str, Union[Path, str]],
+        transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
+        **kwargs
+    ) -> list[float]:
         """Get the image spacing from image in the data dictionary.
 
         Args:
-            datalist: Paths to all the images and labels
+            data: Paths to a pair of image and label.
             transforms: Compose of sequences of monai's transformations to read the path provided in datalist and transform the data.
 
         Returns:
@@ -135,17 +147,22 @@ class Preprocessor:
         return data["image"].meta["pixdim"][1:4].tolist()
 
     def _collect_intensities(
-        self, datalist: list[dict], transforms: Compose
-    ) -> dict[dict,]:
-        """Get the image spacing from image in the data dictionary.
+        self,
+        datalist: list[dict[str, Union[Path, str]]],
+        transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
+    ) -> dict[dict[str, float],]:
+        """Collect the intensity properties of the whole dataset.
+
+        Compute the min, max, mean, std, 0.5th percentile, and 99.5th percentile after gathering all the intensities of all data. Useful for CT images.
 
         Args:
-            datalist: Paths to all the images and labels
+            datalist: List of paths to all the images and labels.
             transforms: Compose of sequences of monai's transformations to read the path provided in datalist and transform the data.
 
         Returns:
-            Image spacing.
+            Intensity properties dictionary.
         """
+
         intensity_properties = OrderedDict()
         for i in range(len(self.modalities)):
             mod = {"modality": i}
@@ -166,7 +183,25 @@ class Preprocessor:
             ), np.std(intensities)
         return intensity_properties
 
-    def _get_intensities(self, data: dict, transforms: Compose, **kwargs) -> list:
+    def _get_intensities(
+        self,
+        data: dict[str, Union[Path, str]],
+        transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
+        **kwargs
+    ) -> list:
+        """Collect the intensities of a data.
+
+        Gather the intensities of all the foreground pixels in an image.
+
+        Args:
+            data: Paths to a pair of image and label.
+            transforms: Compose of sequences of monai's transformations to read the path provided in datalist and transform the data.
+            kwargs: Indication of the desired modality for intensity collection.
+
+        Returns:
+            Image intensities of foreground pixels.
+        """
+
         data = transforms(data)
         image = data["image"].astype(np.float32)
         label = data["label"].astype(np.uint8)
@@ -174,11 +209,36 @@ class Preprocessor:
         intensities = image[kwargs["modality"]][foreground_idx].tolist()
         return intensities
 
-    def _crop_from_list_of_files(self, datalist: list[dict], transforms: Compose) -> None:
+    def _crop_from_list_of_files(
+        self,
+        datalist: list[dict[str, Union[Path, str]]],
+        transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
+    ) -> None:
+        """Crop the dataset to non-zero region and save the cropped data.
+
+        Some datasets like BraTS contains images that are surrounded by a lot of background pixels. Those images can have significant size reduction after being cropped to non-zero region.
+
+        Args:
+            datalist: List of paths to all the images and labels.
+            transforms: Compose of sequences of monai's transformations to read the path provided in datalist and transform the data.
+        """
+
         os.makedirs(self.cropped_folder, exist_ok=True)
         self._run_parallel_from_raw(self._crop, datalist, transforms)
 
-    def _crop(self, data: dict, transforms: Compose, **kwargs) -> None:
+    def _crop(
+        self,
+        data: dict[str, Union[Path, str]],
+        transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
+        **kwargs
+    ) -> None:
+        """Crop an image-label pair to non-zero region and save it.
+
+        Args:
+            data: Paths to a pair of image and label.
+            transforms: Compose of sequences of monai's transformations to read the path provided in datalist and transform the data.
+        """
+
         list_of_data_files = list(data.values())[:-1]
         case_identifier = os.path.basename(list_of_data_files[0]).split(".nii.gz")[0][:-5]
         if self.overwrite_existing or (
@@ -206,9 +266,9 @@ class Preprocessor:
             self.all_size_reductions.append(properties["cropping_size_reduction"])
             print(
                 "before crop:",
-                properties["original_shape"],
+                tuple([data["image"].shape[0], *properties["original_shape"].tolist()]),
                 "after crop:",
-                properties["shape_after_cropping"],
+                tuple([data["image"].shape[0], *properties["shape_after_cropping"].tolist()]),
                 "spacing:",
                 properties["original_spacing"],
                 "\n",
@@ -227,43 +287,142 @@ class Preprocessor:
                 pickle.dump(properties, f)  # nosec B301
 
     @staticmethod
-    def get_case_identifier_from_raw_data(data: dict):
+    def get_case_identifier_from_raw_data(data: dict[str, Union[Path, str]]) -> str:
+        """Extract the case identifier for files in raw dataset.
+
+        Example:
+            ~/abc/def/ghi/BraTS_0001_0000.nii.gz -> BraTS_0001
+
+        Args:
+            data: Paths to a pair of image and label.
+
+        Returns:
+            Case identifier.
+        """
+
         return os.path.basename(data["image"].meta["filename_or_obj"]).split(".nii.gz")[0][:-5]
 
     @staticmethod
-    def get_case_identifier_from_npz(case):
+    def get_case_identifier_from_npz(case: Union[Path, str]) -> str:
+        """Extract the case identifier for files in cropped dataset.
+
+        Example:
+            ~/abc/def/ghi/BraTS_0001_0000.npz -> BraTS_0001
+
+        Args:
+            data: Paths to a pair of image and label.
+
+        Returns:
+            Case identifier.
+        """
+
         case_identifier = os.path.basename(case)[:-4]
         return case_identifier
 
-    def _check_anisotropy(self, spacing):
+    def _check_anisotropy(
+        self,
+        spacing: list[
+            float,
+        ],
+    ) -> bool:
+        """Check whether the spacing is anisotropic.
+
+        The anisotropy threshold of 3 is used as indicated in nnUNet.
+
+        Args:
+            spacing: New calculated spacing for data resampling.
+
+        Returns:
+            Anisotropy flag.
+        """
+
         def check(spacing):
             return np.max(spacing) / np.min(spacing) >= 3
 
         return check(spacing) or check(self.target_spacing)
 
-    def _calculate_new_shape(self, spacing, shape):
+    def _calculate_new_shape(
+        self,
+        spacing: list[
+            float,
+        ],
+        shape: Union[list, tuple],
+    ) -> list:
+        """Calculate the new shape after resampling.
+
+        Args:
+            spacing: New calculated spacing for data resampling.
+            shape: Original image shape.
+
+        Returns:
+            New shape after resampling.
+        """
+
         spacing_ratio = np.array(spacing) / np.array(self.target_spacing)
         new_shape = (spacing_ratio * np.array(shape)).astype(int).tolist()
         return new_shape
 
-    def _get_all_size_reductions(self, list_of_cropped_npz_files: list) -> None:
+    def _get_all_size_reductions(
+        self,
+        list_of_cropped_npz_files: list[
+            Union[str, Path],
+        ],
+    ) -> list[float,]:
+        """Gather all the size reductions after cropping the dataset.
+
+        Args:
+            list_of_cropped_npz_files: Cropped npz files.
+
+        Returns:
+            List containing all the size reductions after cropping.
+        """
+
         properties = self._run_parallel_from_cropped(
             self._get_size_reduction, list_of_cropped_npz_files
         )
         return properties
 
-    def _get_size_reduction(self, case_identifier) -> float:
+    def _get_size_reduction(self, case_identifier: str) -> float:
+        """Extract the size reduction from the property .pkl file.
+
+        Args:
+            case_identifier: Case identifier of a data.
+
+        Returns:
+            Size reduction after cropping.
+        """
+
         properties = self._load_properties_of_cropped(case_identifier)
         return properties["cropping_size_reduction"]
 
-    def _load_cropped(self, case_identifier):
+    def _load_cropped(self, case_identifier) -> tuple[np.array, np.array, dict]:
+        """Load image, label and properties of a cropped data.
+
+        Args:
+            case_identifier: Case identifier of a data.
+
+        Returns:
+            - Image numpy array
+            - Label numpy array
+            - Data properties
+        """
+
         all_data = np.load(os.path.join(self.cropped_folder, "%s.npz" % case_identifier))["data"]
         data = all_data[:-1].astype(np.float32)
         seg = all_data[-1:]
         properties = self._load_properties_of_cropped(case_identifier)
         return data, seg, properties
 
-    def _load_properties_of_cropped(self, case_identifier):
+    def _load_properties_of_cropped(self, case_identifier: str) -> dict:
+        """Load the properties of a cropped data.
+
+        Args:
+            case_identifier: Case identifier of a data.
+
+        Returns:
+            Data properties.
+        """
+
         with open(os.path.join(self.cropped_folder, "%s.pkl" % case_identifier), "rb") as f:
             properties = pickle.load(f)  # nosec B301
         return properties
@@ -271,6 +430,14 @@ class Preprocessor:
     def _determine_whether_to_use_mask_for_norm(
         self,
     ) -> dict[bool,]:
+        """Determine whether to use non-zero mask for data normalization.
+
+        Use non-zero mask for normalization when the image is not a CT and when the cropping to non-zero reduces the median image size to more than 25%.
+
+        Returns:
+            Boolean flags to indicate the use of non-zero mask for each modality.
+        """
+
         # only use the nonzero mask for normalization of the cropping based on it resulted in a decrease in
         # image size (this is an indication that the data is something like brats/isles and then we want to
         # normalize in the brain region only)
@@ -292,11 +459,25 @@ class Preprocessor:
         use_nonzero_mask_for_normalization = use_nonzero_mask_for_norm
         return use_nonzero_mask_for_normalization
 
-    def _preprocess(self, list_of_cropped_npz_files: list):
+    def _preprocess(self, list_of_cropped_npz_files: list[Union[Path, str]]) -> None:
+        """Preprocess (resample and normalize) the dataset.
+
+        Args:
+            list_of_cropped_npz_files: Cropped npz files.
+        """
+
         os.makedirs(self.preprocessed_npz_folder, exist_ok=True)
         self._run_parallel_from_cropped(self._resample_and_normalize, list_of_cropped_npz_files)
 
-    def _resample_and_normalize(self, case_identifier: str):
+    def _resample_and_normalize(self, case_identifier: str) -> None:
+        """Resample and normalize a data.
+
+        Resample, normalize and save the data to the preprocessed folder (~/data/DATASET_NAME/preprocessed/data_and_properties).
+
+        Args:
+            case_identifier: Case identifier of a data.
+        """
+
         data, seg, properties = self._load_cropped(case_identifier)
         if not self.do_resample:
             print("\n", "Skip resampling...")
@@ -331,7 +512,7 @@ class Preprocessor:
         else:
             properties["normalization_flag"] = True
             properties["use_nonzero_mask_for_norm"] = self.use_nonzero_mask
-            data, seg, properties = self._normalize(data, seg, properties)
+            data, seg = self._normalize(data, seg)
 
         all_data = np.vstack((data, seg)).astype(np.float32)
         print(
@@ -356,7 +537,20 @@ class Preprocessor:
             pickle.dump(properties, f)  # nosec B301
 
     @staticmethod
-    def resample_image(image, new_shape, anisotropy_flag):
+    def resample_image(
+        image: np.array, new_shape: Union[list, tuple], anisotropy_flag: bool
+    ) -> np.array:
+        """Resample an image.
+
+        Args:
+            image: Image numpy array to be resampled.
+            new_shape: Shape after resampling.
+            anisotropy_flag: Whether the image is anisotropic.
+
+        Returns:
+            Resampled image.
+        """
+
         shape = np.array(image[0].shape)
         if np.any(shape != np.array(new_shape)):
             resized_channels = []
@@ -407,7 +601,20 @@ class Preprocessor:
             return image
 
     @staticmethod
-    def resample_label(label, new_shape, anisotropy_flag):
+    def resample_label(
+        label: np.array, new_shape: Union[list, tuple], anisotropy_flag: bool
+    ) -> np.array:
+        """Resample a label.
+
+        Args:
+            label: Label numpy array to be resampled.
+            new_shape: Shape after resampling.
+            anisotropy_flag: Whether the label is anisotropic.
+
+        Returns:
+            Resampled image.
+        """
+
         shape = np.array(label[0].shape)
         if np.any(shape != np.array(new_shape)):
             reshaped = np.zeros(new_shape, dtype=np.uint8)
@@ -464,7 +671,18 @@ class Preprocessor:
             print("No resampling necessary")
             return label
 
-    def _normalize(self, data, seg, properties):
+    def _normalize(self, data: np.array, seg: np.array) -> tuple[np.array, np.array]:
+        """Resample a label.
+
+        Args:
+            data: Image numpy array to be normalized.
+            seg: Label numpy array.
+
+        Returns:
+            - Normalized image.
+            - Label.
+        """
+
         assert len(self.use_nonzero_mask) == len(data)
         print("Normalization...")
         for c in range(len(data)):
@@ -492,20 +710,46 @@ class Preprocessor:
                 )
                 data[c][mask == 0] = 0
         print("Normalization done")
-        return data, seg, properties
+        return data, seg
 
-    def _run_parallel_from_raw(self, func, datalist, transforms, **kwargs):
+    def _run_parallel_from_raw(
+        self,
+        func: Callable,
+        datalist: list[dict[str, Union[Path, str]]],
+        transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
+        **kwargs
+    ):
+        """Parallel runs to perform operations on raw data.
+
+        Args:
+            func: Function to be called.
+            datalist: List of paths to all the images and labels.
+            transforms: Compose of sequences of monai's transformations to read the path provided in datalist and transform the data.
+            kwargs: Indication of the desired modality for intensity collection. To be passed to _get_intensities().
+        """
+
         return Parallel(n_jobs=self.num_workers)(
             delayed(func)(data, transforms, **kwargs) for data in datalist
         )
 
-    def _run_parallel_from_cropped(self, func, list_of_cropped_npz_files):
+    def _run_parallel_from_cropped(
+        self, func: Callable, list_of_cropped_npz_files: list[Union[Path, str]]
+    ):
+        """Parallel runs to perform operations on raw data.
+
+        Args:
+            func: Function to be called.
+            list_of_cropped_npz_files: Cropped .npz files.
+        """
+
         return Parallel(n_jobs=self.num_workers)(
             delayed(func)(self.get_case_identifier_from_npz(npz_file))
             for npz_file in list_of_cropped_npz_files
         )
 
-    def run(self):
+    def run(self) -> None:
+        """Perform the cropping, resampling, normalization and saving of the dataset."""
+
         # get all training data
         datalist, image_keys, self.modalities = self._create_datalist()
 
@@ -525,7 +769,7 @@ class Preprocessor:
         print("Preprocessed folder: ", self.preprocessed_folder)
         # get target spacing
         self.target_spacing = self._get_target_spacing(datalist, transforms)
-        print("\nTarget spacing:", self.target_spacing)
+        print("\nTarget spacing:", np.array(self.target_spacing))
 
         # get intensity properties if input contains CT data
         if "CT" in self.modalities.values():
@@ -535,7 +779,7 @@ class Preprocessor:
             self.intensity_properties = None
             print("\nNon CT input, skipping the calculation of intensity properties...")
 
-        # _crop to non zero
+        # crop to non zero
         self._crop_from_list_of_files(datalist, transforms)
         list_of_cropped_npz_files = subfiles(self.cropped_folder, True, None, ".npz", True)
 
