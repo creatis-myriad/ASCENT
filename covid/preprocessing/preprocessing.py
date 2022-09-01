@@ -27,9 +27,12 @@ class Preprocessor:
     """Preprocessor class that takes nnUNet's preprocessing method (https://github.com/MIC-
     DKFZ/nnUNet/blob/master/nnunet/preprocessing/preprocessing.py) for reference.
 
-    Crop, resample and normalize data that is stored in ~/data/DATASET_NAME/raw. Cropped data is stored in ~/data/DATASET_NAME/cropped
-    while preprocessed (normalized and resampled) data is stored in ~/data/DATASET_NAME/preprocessed/data_and_properties.
-    Raw dataset should follow strictly the nnUNet raw data format. Refer to https://github.com/MIC-DKFZ/nnUNet/blob/master/documentation/dataset_conversion.md for more information.
+    Crop, resample and normalize data that is stored in ~/data/DATASET_NAME/raw.
+    Cropped data is stored in ~/data/DATASET_NAME/cropped while preprocessed
+    (normalized and resampled) data is stored in
+    ~/data/DATASET_NAME/preprocessed/data_and_properties. Raw dataset
+    should follow strictly the nnUNet raw data format. Refer to https://github.com/MIC-
+    DKFZ/nnUNet/blob/master/documentation/dataset_conversion.md for more information.
     """
 
     def __init__(
@@ -153,7 +156,8 @@ class Preprocessor:
     ) -> dict[dict[str, float],]:
         """Collect the intensity properties of the whole dataset.
 
-        Compute the min, max, mean, std, 0.5th percentile, and 99.5th percentile after gathering all the intensities of all data. Useful for CT images.
+        Compute the min, max, mean, std, 0.5th percentile, and 99.5th percentile after gathering
+        all the intensities of all data. Useful for CT images.
 
         Args:
             datalist: List of paths to all the images and labels.
