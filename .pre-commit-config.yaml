@@ -51,7 +51,14 @@ repos:
     hooks:
       - id: flake8
         args:
-          ["--ignore", "E402,E501,F401,F841,W504", "--exclude", "logs/*,data/*"]
+          [
+            "--extend-ignore",
+            "E203,E402,E501,F401,F841,W504",
+            "--exclude",
+            "logs/*,data/*",
+            "--config",
+            "./setup.cfg",
+          ]
 
   # python security linter
   - repo: https://github.com/PyCQA/bandit
@@ -67,11 +74,11 @@ repos:
       - id: prettier
         types: [yaml]
 
-  # jupyter notebook cell output clearing
-  - repo: https://github.com/kynan/nbstripout
-    rev: 0.5.0
+  # shell scripts linter
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.8.0.4
     hooks:
-      - id: nbstripout
+      - id: shellcheck
 
   # md formatting
   - repo: https://github.com/executablebooks/mdformat
@@ -92,5 +99,26 @@ repos:
     hooks:
       - id: codespell
         args:
-          - --skip=logs/**,data/**
+          - --skip=logs/**,data/**,*.ipynb
           # - --ignore-words-list=abc,def
+
+  # jupyter notebook cell output clearing
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.5.0
+    hooks:
+      - id: nbstripout
+
+  # jupyter notebook linting
+  - repo: https://github.com/nbQA-dev/nbQA
+    rev: 1.4.0
+    hooks:
+      - id: nbqa-black
+        args: ["--line-length=99"]
+      - id: nbqa-isort
+        args: ["--profile=black"]
+      - id: nbqa-flake8
+        args:
+          [
+            "--extend-ignore=E203,E402,E501,F401,F841",
+            "--exclude=logs/*,data/*",
+          ]
