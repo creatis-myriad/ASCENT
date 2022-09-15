@@ -1,5 +1,7 @@
 import os
-from typing import Optional, Tuple
+from collections import OrderedDict
+from pathlib import Path
+from typing import Optional, Union
 
 import numpy as np
 import torch
@@ -7,7 +9,9 @@ from joblib import Parallel, delayed
 from monai.data import CacheDataset, DataLoader, IterableDataset
 from monai.transforms import (
     Compose,
+    ConcatItemsd,
     EnsureChannelFirstd,
+    LoadImaged,
     RandAdjustContrastd,
     RandCropByPosNegLabeld,
     RandFlipd,
@@ -16,10 +20,17 @@ from monai.transforms import (
     RandRotated,
     RandScaleIntensityd,
     RandZoomd,
+    SelectItemsd,
     SpatialPadd,
+    ToTensord,
 )
 from pytorch_lightning import LightningDataModule
+from pytorch_lightning.trainer.states import TrainerFn
+from sklearn.model_selection import KFold, train_test_split
 
+from covid.datamodules.components.data_loading import (
+    get_case_identifiers_from_npz_folders,
+)
 from covid.datamodules.components.nnunet_iterator import nnUNet_Iterator
 from covid.datamodules.components.transforms import (
     Convert2Dto3Dd,
@@ -27,25 +38,43 @@ from covid.datamodules.components.transforms import (
     LoadNpyd,
     MayBeSqueezed,
 )
-from covid.utils.file_and_folder_operations import load_pickle, subfiles
+from covid.utils.file_and_folder_operations import load_pickle, save_pickle, subfiles
 
 
 class nnUNetDataModule(LightningDataModule):
+    """Data module for nnUnet pipeline."""
+
     def __init__(
         self,
         data_dir: str = "data/",
         dataset_name: str = "CAMUS",
-        train_val_test_split: Tuple[float, float, float] = (0.8, 0.1, 0.1),
         fold: int = 0,
         batch_size: int = 2,
-        patch_size: Tuple[int, ...] = (128, 128, 128),
+        patch_size: tuple[int, ...] = (128, 128, 128),
         num_classes: int = None,
         in_channels: int = 1,
         do_dummy_2D_aug: bool = True,
         do_test: bool = False,
-        num_workers: int = os.cpu_count(),
+        num_workers: int = os.cpu_count() - 1,
         pin_memory: bool = True,
     ):
+        """Initializes class instance.
+
+        Args:
+            data_dir: Path to the data directory.
+            dataset_name: Name of dataset to be used.
+            train_split_ratio: Data split ratio for training.
+            fold: Fold to be used for training, validation or test.
+            batch_size: Batch size to be used for training and validation.
+            patch_size: Patch size to crop the data.
+            num_classes: Number of classes present in the dataset.
+            in_channels: Number of input channels.
+            do_dummy_2D_aug: Whether to apply 2D transformation on 3D dataset.
+            do_test: Whether to run inference on test dataset and compute test scores.
+            num_workers: Number of subprocesses to use for data loading.
+            pin_memory: Whether to pin memory to GPU.
+        """
+
         super().__init__()
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
@@ -70,83 +99,141 @@ class nnUNetDataModule(LightningDataModule):
         self.data_val: Optional[torch.utils.Dataset] = None
         if do_test:
             self.data_test: Optional[torch.utils.Dataset] = None
+        self.data_predict: Optional[torch.utils.Dataset] = None
 
     @property
-    def num_classeses(self):
+    def num_classeses(self) -> int:
+        """Get the number of classes.
+
+        Returns:
+            Number of classes in the dataset
+        """
         return self.hparams.num_classes
 
-    def prepare_data(self):
-        print("\n", "Unpacking dataset...")
+    def prepare_data(self) -> None:
+        """Data preparation.
+
+        Unpacking .npz data to .npy for faster data loading during training.
+        """
+
+        print("\nUnpacking dataset...")
         self.unpack_dataset()
         print("Done")
-        splits_file = os.path.join(self.preprocessed_folder, "splits_final.pkl")
-        print("Using splits from existing split file:", splits_file)
-        splits = load_pickle(splits_file)
-        if self.hparams.fold < len(splits):
-            print("Desired fold for training: %d" % self.hparams.fold)
-            train_keys = splits[self.hparams.fold]["train"]
-            val_keys = splits[self.hparams.fold]["val"]
-            if self.hparams.do_test:
+
+    @staticmethod
+    def do_splits(splits_file: Union[Path, str], preprocessed_path: Union[Path, str]):
+        """Create 5-fold train/validation/test splits."""
+
+        if not os.path.isfile(splits_file):
+            print("Creating new split...")
+            splits = []
+            all_keys_sorted = np.sort(
+                list(get_case_identifiers_from_npz_folders(preprocessed_path))
+            )
+            kfold = KFold(n_splits=5, shuffle=True, random_state=12345)
+            for i, (train_idx, val_and_test_idx) in enumerate(kfold.split(all_keys_sorted)):
+                train_keys = np.array(all_keys_sorted)[train_idx]
+                val_and_test_keys = np.array(all_keys_sorted)[val_and_test_idx]
+                val_and_test_keys_sorted = np.sort(val_and_test_keys)
+                kfold_2 = KFold(n_splits=2, shuffle=True, random_state=12345)
+                _, (val_idx, test_idx) = kfold_2.split(val_and_test_keys_sorted)
+                val_keys = np.array(val_and_test_keys_sorted)[val_idx]
+                test_keys = np.array(val_and_test_keys_sorted)[test_idx]
+                splits.append(OrderedDict())
+                splits[-1]["train"] = train_keys
+                splits[-1]["val"] = val_keys
+                splits[-1]["test"] = test_keys
+            save_pickle(splits, splits_file)
+        else:
+            print("Using splits from existing split file:", splits_file)
+
+    def setup(self, stage: Optional[str] = None):
+        """Load data.
+
+        More detailed steps:
+        1. Split the dataset into 5 train, validation and test folds (80:10:10) if it was not done.
+        2. Use the specified fold for training. Create random 80:10:10 split if requested fold is
+           larger than the length of saved splits.
+        3. Set variables: `self.data_train`, `self.data_val`, `self.data_test`, `self.data_predict`.
+
+        This method is called by lightning with both `trainer.fit()` and `trainer.test()`, so be
+        careful not to execute things like random split twice!
+        """
+
+        if stage == TrainerFn.FITTING or stage == TrainerFn.TESTING:
+            splits_file = os.path.join(self.preprocessed_folder, "splits_final.pkl")
+            self.do_splits(splits_file, self.full_data_dir)
+            splits = load_pickle(splits_file)
+            if self.hparams.fold < len(splits):
+                print("Desired fold for training: %d" % self.hparams.fold)
+                train_keys = splits[self.hparams.fold]["train"]
+                val_keys = splits[self.hparams.fold]["val"]
+
                 test_keys = splits[self.hparams.fold]["test"]
-            if self.hparams.do_test:
+
                 print(
                     "This split has %d training, %d validation, and %d testing cases."
                     % (len(train_keys), len(val_keys), len(test_keys))
                 )
             else:
                 print(
-                    "This split has %d training and %d validation cases."
-                    % (len(train_keys), len(val_keys))
+                    "INFO: You requested fold %d for training but splits "
+                    "contain only %d folds. I am now creating a "
+                    "random (but seeded) 80:10:10 split!" % (self.hparams.fold, len(splits))
+                )
+                # if we request a fold that is not in the split file, create a random 80:10:10 split
+                keys = np.sort(list(get_case_identifiers_from_npz_folders(self.full_data_dir)))
+                train_keys, val_and_test_keys = train_test_split(
+                    keys, train_size=0.8, random_state=(12345 + self.hparams.fold)
+                )
+                val_keys, test_keys = train_test_split(
+                    val_and_test_keys, test_size=0.5, random_state=(12345 + self.hparams.fold)
+                )
+
+                print(
+                    "This random 80:10:10 split has %d training, %d validation, and %d testing cases."
+                    % (len(train_keys), len(val_keys), len(test_keys))
                 )
 
             self.train_files = [
                 {
                     "data": os.path.join(self.full_data_dir, "%s.npy" % key),
-                    # "label": os.path.join(self.full_data_dir, "%s.npy" % key),
-                    # "image_meta_dict": os.path.join(self.full_data_dir, "%s.pkl" % key),
                 }
                 for key in train_keys
             ]
             self.val_files = [
                 {
                     "data": os.path.join(self.full_data_dir, "%s.npy" % key),
-                    # "label": os.path.join(self.full_data_dir, "%s.npy" % key),
-                    # "image_meta_dict": os.path.join(self.full_data_dir, "%s.pkl" % key),
                 }
                 for key in val_keys
             ]
-            if self.hparams.do_test:
+            if stage == TrainerFn.TESTING:
                 self.test_files = [
                     {
                         "data": os.path.join(self.full_data_dir, "%s.npy" % key),
-                        # "label": os.path.join(self.full_data_dir, "%s.npy" % key),
                         "image_meta_dict": os.path.join(self.full_data_dir, "%s.pkl" % key),
                     }
                     for key in test_keys
                 ]
 
-    def setup(self, stage: Optional[str] = None):
-        """Load data. Set variables: `self.data_train`, `self.data_val`, `self.data_test`.
-
-        This method is called by lightning with both `trainer.fit()` and `trainer.test()`, so be
-        careful not to execute things like random split twice!
-        """
-        # load and split datasets only if not loaded already
-
-        self.data_train = IterableDataset(
-            data=nnUNet_Iterator(self.train_files), transform=self.train_transforms
-        )
-
-        self.data_val = IterableDataset(
-            data=nnUNet_Iterator(self.val_files), transform=self.val_transforms
-        )
-
-        if self.hparams.do_test:
+        if stage == TrainerFn.FITTING:
+            self.data_train = IterableDataset(
+                data=nnUNet_Iterator(self.train_files), transform=self.train_transforms
+            )
+        if stage == TrainerFn.FITTING:
+            self.data_val = IterableDataset(
+                data=nnUNet_Iterator(self.val_files), transform=self.val_transforms
+            )
+        if stage == TrainerFn.TESTING:
             self.data_test = CacheDataset(
                 data=self.test_files, transform=self.test_transforms, cache_rate=1.0
             )
+        if stage == TrainerFn.PREDICTING:
+            self.data_predict = CacheDataset(
+                data=self.predict_files, transform=self.predict_transforms, cache_rate=1.0
+            )
 
-    def train_dataloader(self):
+    def train_dataloader(self) -> DataLoader:  # noqa: D102
         return DataLoader(
             dataset=self.data_train,
             batch_size=self.hparams.batch_size,
@@ -156,7 +243,7 @@ class nnUNetDataModule(LightningDataModule):
             persistent_workers=True,
         )
 
-    def val_dataloader(self):
+    def val_dataloader(self) -> DataLoader:  # noqa: D102
         return DataLoader(
             dataset=self.data_val,
             batch_size=self.hparams.batch_size,
@@ -166,17 +253,60 @@ class nnUNetDataModule(LightningDataModule):
             persistent_workers=True,
         )
 
-    def test_dataloader(self):
-        if self.hparams.do_test:
-            return DataLoader(
-                dataset=self.data_test,
-                batch_size=1,
-                num_workers=self.hparams.num_workers,
-                pin_memory=self.hparams.pin_memory,
-                shuffle=False,
-            )
+    def test_dataloader(self) -> DataLoader:  # noqa: D102
+        # We use a batch size of 1 for testing as the images have different shapes and we can't
+        # stack them
 
-    def setup_transforms(self):
+        return DataLoader(
+            dataset=self.data_test,
+            batch_size=1,
+            num_workers=self.hparams.num_workers,
+            pin_memory=self.hparams.pin_memory,
+            shuffle=False,
+        )
+
+    def predict_dataloader(self) -> DataLoader:  # noqa: D102
+        # We use a batch size of 1 for prediction as the images have different shapes and we can't
+        # stack them
+
+        return DataLoader(
+            dataset=self.data_predict,
+            batch_size=1,
+            num_workers=self.hparams.num_workers,
+            pin_memory=self.hparams.pin_memory,
+            shuffle=False,
+        )
+
+    def prepare_for_prediction(self, predict_files: list[dict[str, str]]) -> None:
+        """Setup the prediction transforms for `self.data_predict`.
+
+        Don't forget to run this method before predicting.
+
+        TODO
+        preprocess transform
+        aliasing transform
+        """
+
+        self.predict_files = predict_files
+
+        image_keys = list(predict_files[0].keys())
+
+        load_transforms = [
+            LoadImaged(keys=image_keys),
+            EnsureChannelFirstd(keys=image_keys),
+        ]
+
+        if len(image_keys) > 1:
+            concat_transform = [
+                ConcatItemsd(keys=image_keys, name="image"),
+                SelectItemsd(keys="image"),
+            ]
+        else:
+            concat_transform = []
+
+        self.predict_transforms = Compose(load_transforms + concat_transform)
+
+    def setup_transforms(self) -> None:
         """Define the data augmentations used by nnUNet including the data reading using
         monai.transforms libraries.
 
@@ -226,6 +356,7 @@ class nnUNetDataModule(LightningDataModule):
         if self.hparams.do_dummy_2D_aug and self.threeD:
             other_transforms.append(Convert3Dto2Dd(keys=["image", "label"]))
 
+        # Temporally disable RandRotate augmentation while waiting for the bug fix from Monai
         other_transforms.extend(
             [
                 # RandRotated(
@@ -294,6 +425,10 @@ class nnUNetDataModule(LightningDataModule):
         self.test_transforms = Compose(test_transforms)
 
     def unpack_dataset(self):
+        """Unpack dataset from .npz to .npy.
+
+        Use Parallel to speed up the unpacking process.
+        """
         npz_files = subfiles(self.full_data_dir, True, None, ".npz", True)
         Parallel(n_jobs=self.hparams.num_workers)(
             delayed(self.convert_to_npy)(npz_file) for npz_file in npz_files
@@ -301,6 +436,7 @@ class nnUNetDataModule(LightningDataModule):
 
     @staticmethod
     def convert_to_npy(npz_file, key="data"):
+        """Convert .npz file to .npy."""
         if not os.path.isfile(npz_file[:-3] + "npy"):
             a = np.load(npz_file)[key]
             np.save(npz_file[:-3] + "npy", a)
@@ -315,17 +451,31 @@ if __name__ == "__main__":
     cfg = omegaconf.OmegaConf.load(root / "configs" / "datamodule" / "camus.yaml")
     cfg.data_dir = str(root / "data")
     cfg.patch_size = [128, 128]
+    # cfg.patch_size = [640, 512]
     # cfg.patch_size = [128, 128, 12]
     cfg.batch_size = 2
     cfg.fold = 0
     camus_datamodule = hydra.utils.instantiate(cfg)
     camus_datamodule.prepare_data()
-    camus_datamodule.setup()
+    camus_datamodule.setup(stage=TrainerFn.FITTING)
     train_dl = camus_datamodule.train_dataloader()
+    # camus_datamodule.setup(stage=TrainerFn.TESTING)
     # test_dl = camus_datamodule.test_dataloader()
+
+    # predict_files = [
+    #     {
+    #         "image_0": "C:/Users/ling/Desktop/nnUNet/nnUNet_raw/nnUNet_raw_data/Task129_DealiasingConcat/imagesTr/Dealias_0001_0000.nii.gz",
+    #         "image_1": "C:/Users/ling/Desktop/nnUNet/nnUNet_raw/nnUNet_raw_data/Task129_DealiasingConcat/imagesTr/Dealias_0001_0001.nii.gz",
+    #     }
+    # ]
+
+    # camus_datamodule.prepare_for_prediction(predict_files)
+    # camus_datamodule.setup(stage=TrainerFn.PREDICTING)
+    # predict_dl = camus_datamodule.predict_dataloader()
 
     batch = next(iter(train_dl))
     # batch = next(iter(test_dl))
+    # batch = next(iter(predict_dl))
 
     from matplotlib import pyplot as plt
 

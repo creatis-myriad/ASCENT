@@ -1,9 +1,11 @@
 import os
+from typing import Union
 
 import numpy as np
 import SimpleITK as sitk
 import torch
 import torch.nn as nn
+from monai.data import MetaTensor
 from pytorch_lightning import LightningModule
 from skimage.transform import resize
 
@@ -38,11 +40,11 @@ class nnUNetLitModule(LightningModule):
             optimizer: Optimizer. Defaults to SGD optimizer.
             loss: Loss function. Defaults to Cross Entropy - Dice
             scheduler: Scheduler for training. Defaults to Polynomial Decay Scheduler.
-            deep_supervision: Whether to use deep supervision heads. Defaults to true.
-            tta: Whether to use the test time augmentation, i.e. flip. Defaults to true.
-            sliding_window_overlap: Minimum overlap for sliding window inference. Defaults to 0.5.
-            sliding_window_importance_map: Importance map used for sliding window inference. Defaults to 'gaussian'
-            save_prediction: Whether to save the test predictions. Defaults to true.
+            deep_supervision: Whether to use deep supervision heads.
+            tta: Whether to use the test time augmentation, i.e. flip.
+            sliding_window_overlap: Minimum overlap for sliding window inference.
+            sliding_window_importance_map: Importance map used for sliding window inference.
+            save_prediction: Whether to save the test predictions.
         """
         super().__init__()
         # ignore net and loss as they are nn.module and will be saved automatically
@@ -77,7 +79,8 @@ class nnUNetLitModule(LightningModule):
         # list to store the metrics computed during evaluation steps
         self.online_eval_foreground_dc = []
 
-        # we consider all the evaluation batches as a single element and only compute the global foreground dice at the end of evaluation epoch
+        # we consider all the evaluation batches as a single element and only compute the global
+        # foreground dice at the end of evaluation epoch
         self.online_eval_tp = []
         self.online_eval_fp = []
         self.online_eval_fn = []
@@ -118,7 +121,8 @@ class nnUNetLitModule(LightningModule):
         pred = self.forward(img)
         loss = self.loss(pred, label)
 
-        # Compute the stats that will be used to compute the final dice metric during the end of epoch
+        # Compute the stats that will be used to compute the final dice metric during the end of
+        # epoch
         num_classes = pred.shape[1]
         pred_softmax = softmax_helper(pred)
         pred_seg = pred_softmax.argmax(1)
@@ -250,7 +254,7 @@ class nnUNetLitModule(LightningModule):
             "image_meta_dict": image_meta_dict,
         }
 
-    def test_step_end(self, test_step_outputs):
+    def test_step_end(self, test_step_outputs):  # noqa: D102
         preds = test_step_outputs["preds"]
         image_meta_dict = test_step_outputs["image_meta_dict"]
         if self.save_predictions:
@@ -276,7 +280,7 @@ class nnUNetLitModule(LightningModule):
 
             self.save_mask(final_preds, fname, spacing)
 
-    def test_epoch_end(self, test_step_outputs):
+    def test_epoch_end(self, test_step_outputs):  # noqa: D102
         mean_dice = self.metric_mean("test/dice", test_step_outputs)
         self.log(
             "test/mean_dice",
@@ -288,20 +292,21 @@ class nnUNetLitModule(LightningModule):
             batch_size=self.trainer.datamodule.hparams.batch_size,
         )
 
-    def configure_optimizers(self):
+    def configure_optimizers(self):  # noqa: D102
         optimizer = self.hparams.optimizer(params=self.parameters())
         scheduler = self.hparams.scheduler(optimizer)
 
         return [optimizer], [scheduler]
 
-    def on_save_checkpoint(self, checkpoint):
+    def on_save_checkpoint(self, checkpoint):  # noqa: D102
         checkpoint["all_val_eval_metrics"] = self.all_val_eval_metrics
 
-    def on_load_checkpoint(self, checkpoint):
+    def on_load_checkpoint(self, checkpoint):  # noqa: D102
         self.all_val_eval_metrics = checkpoint["all_val_eval_metrics"]
 
     def compute_loss(self, preds, label):
         """Compute the multi-scale loss if deep supervision is set to True."""
+
         if self.hparams.deep_supervision:
             loss = self.loss(preds[0], label)
             for i, pred in enumerate(preds[1:]):
@@ -311,7 +316,13 @@ class nnUNetLitModule(LightningModule):
             return c_norm * loss
         return self.loss(preds, label)
 
-    def predict(self, image):
+    def predict(self, image) -> Union[torch.Tensor, MetaTensor]:
+        """Predict 2D/3D images with sliding window inference.
+
+        Returns:
+            Logits of prediction.
+        """
+
         if len(image.shape) == 5:
             if len(self.patch_size) == 3:
                 return self.predict_3D_3Dconv_tiled(image)
@@ -327,31 +338,55 @@ class nnUNetLitModule(LightningModule):
             else:
                 raise NotImplementedError
 
-    def tta_predict(self, img):
+    def tta_predict(self, img) -> Union[torch.Tensor, MetaTensor]:
+        """Predict with test time augmentation.
+
+        Returns:
+            Logits averaged over the number of flips.
+        """
+
         preds = self.predict(img)
         for flip_idx in self.tta_flips:
             preds += torch.flip(self.predict(torch.flip(img, flip_idx)), flip_idx)
         preds /= len(self.tta_flips) + 1
         return preds
 
-    def predict_2D_2Dconv_tiled(self, image):
+    def predict_2D_2Dconv_tiled(self, image) -> Union[torch.Tensor, MetaTensor]:
+        """Predict 2D image with 2D model.
+
+        Returns:
+            Logits of prediction.
+        """
+
         assert len(image.shape) == 4, "data must be b, c, w, h"
         return self.sliding_window_inference(image)
 
-    def predict_3D_3Dconv_tiled(self, image):
+    def predict_3D_3Dconv_tiled(self, image) -> Union[torch.Tensor, MetaTensor]:
+        """Predict 3D image with 3D model.
+
+        Returns:
+            Logits of prediction.
+        """
+
         assert len(image.shape) == 5, "data must be b, c, w, h, d"
         return self.sliding_window_inference(image)
 
-    def predict_3D_2Dconv_tiled(self, image):
+    def predict_3D_2Dconv_tiled(self, image) -> Union[torch.Tensor, MetaTensor]:
+        """Predict 3D image with 2D model.
+
+        Returns:
+            Logits of prediction.
+        """
+
         assert len(image.shape) == 5, "data must be b, c, w, h, d"
         preds_shape = (image.shape[0], self.num_classes, *image.shape[2:])
         preds = torch.zeros(preds_shape, dtype=image.dtype, device=image.device)
-        for depth in range(image.shape[2]):
-            preds[:, :, depth] = self.predict_2D_2Dconv_tiled(image[:, :, depth])
+        for depth in range(image.shape[-1]):
+            preds[..., depth] = self.predict_2D_2Dconv_tiled(image[..., depth])
         return preds
 
     @staticmethod
-    def recovery_prediction(prediction, new_shape, anisotropy_flag):
+    def recovery_prediction(prediction, new_shape, anisotropy_flag) -> np.array:
         shape = np.array(prediction.shape)
         if np.any(shape != np.array(new_shape)):
             reshaped = np.zeros(new_shape, dtype=np.uint8)

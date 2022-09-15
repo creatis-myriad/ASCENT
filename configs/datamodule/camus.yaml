@@ -6,6 +6,5 @@ patch_size: ${model.net.patch_size}
 in_channels: 1
 num_classes: 3
 do_dummy_2D_aug: False
-do_test: True
 fold: ${fold}
 num_workers: 12

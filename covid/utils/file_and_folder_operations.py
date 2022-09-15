@@ -10,7 +10,7 @@ def load_pickle(file: str, mode: str = "rb"):  # nosec B301
     return a
 
 
-def write_pickle(obj, file: str, mode: str = "wb") -> None:  # nosec B301
+def save_pickle(obj, file: str, mode: str = "wb") -> None:  # nosec B301
     with open(file, mode) as f:
         pickle.dump(obj, f)
 

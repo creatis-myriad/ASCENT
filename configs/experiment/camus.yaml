@@ -22,6 +22,10 @@ nnUNet_variant: "2D"
 
 fold: 4
 
+train: True
+
+test: True
+
 logger:
   comet:
     project_name: "CAMUS"

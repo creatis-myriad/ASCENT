@@ -124,16 +124,18 @@ class LoadNpyd(MapTransform):
             data: Dict to transform.
 
         Returns:
-            d: Dict containing either two {"image":, "label"} or three {"image":, "label", "image_meta_dict":} keys
+            d: Dict containing either two {"image":, "label"} or three {"image":, "label",
+                "image_meta_dict":} keys
 
         Raises:
             ValueError: Error when image or label is not 4D (c, w, h, d)
-            NotImplementedError: Error when data contains a path that is not a numpy file or a pkl file.
+            NotImplementedError: Error when data contains a path that is not a numpy file or a pkl
+                file.
         """
 
         d = dict(data)
         for key in self.keys:
-            if d[key].endswith(".npz") or d[key].endswith(".npy"):
+            if d[key].endswith(".npy"):
                 case_all_data = LoadImage(image_only=True, channel_dim=0)(d[key])
                 meta = case_all_data._meta
                 d.pop(key, None)
@@ -172,6 +174,4 @@ if __name__ == "__main__":
     data_path = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/CAMUS/preprocessed/data_and_properties/NewCamus_0001.npy"
     # data_path = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/CAMUS/cropped/NewCamus_0001.npz"
     prop = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/CAMUS/preprocessed/data_and_properties/NewCamus_0001.pkl"
-    data = LoadNpyd(["data", "image_meta_dict"], test=True)(
-        {"data": data_path, "image_meta_dict": prop}
-    )
+    data = LoadNpyd(["data", "image_meta_dict"], test=True)({"data": data_path})

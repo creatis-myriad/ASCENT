@@ -14,24 +14,159 @@ from monai.transforms import (
     ConcatItemsd,
     EnsureChannelFirstd,
     LoadImaged,
+    SelectItemsd,
     SpatialCropd,
 )
 from monai.transforms.utils import generate_spatial_bounding_box
 from skimage.transform import resize
 from torch import Tensor
 
-from covid.utils.file_and_folder_operations import subfiles
+from covid.utils.file_and_folder_operations import load_pickle, subfiles
+
+
+def resample_image(
+    image: np.array, new_shape: Union[list, tuple], anisotropy_flag: bool
+) -> np.array:
+    """Resample an image.
+
+    Args:
+        image: Image numpy array to be resampled.
+        new_shape: Shape after resampling.
+        anisotropy_flag: Whether the image is anisotropic.
+
+    Returns:
+        Resampled image.
+    """
+
+    shape = np.array(image[0].shape)
+    if np.any(shape != np.array(new_shape)):
+        resized_channels = []
+        if anisotropy_flag:
+            print("Anisotropic image, using separate z resampling")
+            for image_c in image:
+                resized_slices = []
+                for i in range(image_c.shape[-1]):
+                    image_c_2d_slice = image_c[:, :, i]
+                    image_c_2d_slice = resize(
+                        image_c_2d_slice,
+                        new_shape[:-1],
+                        order=3,
+                        mode="edge",
+                        cval=0,
+                        clip=True,
+                        anti_aliasing=False,
+                    )
+                    resized_slices.append(image_c_2d_slice)
+                resized = np.stack(resized_slices, axis=-1)
+                resized = resize(
+                    resized,
+                    new_shape,
+                    order=0,
+                    mode="constant",
+                    cval=0,
+                    clip=True,
+                    anti_aliasing=False,
+                )
+                resized_channels.append(resized)
+        else:
+            print("Not using separate z resampling")
+            for image_c in image:
+                resized = resize(
+                    image_c,
+                    new_shape,
+                    order=3,
+                    mode="edge",
+                    cval=0,
+                    clip=True,
+                    anti_aliasing=False,
+                )
+                resized_channels.append(resized)
+        reshaped = np.stack(resized_channels, axis=0)
+        return reshaped
+    else:
+        print("No resampling necessary")
+        return image
+
+
+def resample_label(
+    label: np.array, new_shape: Union[list, tuple], anisotropy_flag: bool
+) -> np.array:
+    """Resample a label.
+
+    Args:
+        label: Label numpy array to be resampled.
+        new_shape: Shape after resampling.
+        anisotropy_flag: Whether the label is anisotropic.
+
+    Returns:
+        Resampled label.
+    """
+
+    shape = np.array(label[0].shape)
+    if np.any(shape != np.array(new_shape)):
+        reshaped = np.zeros(new_shape, dtype=np.uint8)
+        n_class = np.max(label)
+        if anisotropy_flag:
+            print("Anisotropic label, using separate z resampling")
+            shape_2d = new_shape[:-1]
+            depth = label.shape[-1]
+            reshaped_2d = np.zeros((*shape_2d, depth), dtype=np.uint8)
+
+            for class_ in range(1, int(n_class) + 1):
+                for depth_ in range(depth):
+                    mask = label[0, :, :, depth_] == class_
+                    resized_2d = resize(
+                        mask.astype(float),
+                        shape_2d,
+                        order=1,
+                        mode="edge",
+                        cval=0,
+                        clip=True,
+                        anti_aliasing=False,
+                    )
+                    reshaped_2d[:, :, depth_][resized_2d >= 0.5] = class_
+            for class_ in range(1, int(n_class) + 1):
+                mask = reshaped_2d == class_
+                resized = resize(
+                    mask.astype(float),
+                    new_shape,
+                    order=0,
+                    mode="constant",
+                    cval=0,
+                    clip=True,
+                    anti_aliasing=False,
+                )
+                reshaped[resized >= 0.5] = class_
+        else:
+            print("Not using separate z resampling")
+            for class_ in range(1, int(n_class) + 1):
+                mask = label[0] == class_
+                resized = resize(
+                    mask.astype(float),
+                    new_shape,
+                    order=1,
+                    mode="edge",
+                    cval=0,
+                    clip=True,
+                    anti_aliasing=False,
+                )
+                reshaped[resized >= 0.5] = class_
+
+        reshaped = np.expand_dims(reshaped, 0)
+        return reshaped
+    else:
+        print("No resampling necessary")
+        return label
 
 
 class Preprocessor:
     """Preprocessor class that takes nnUNet's preprocessing method (https://github.com/MIC-
     DKFZ/nnUNet/blob/master/nnunet/preprocessing/preprocessing.py) for reference.
 
-    Crop, resample and normalize data that is stored in ~/data/DATASET_NAME/raw.
-    Cropped data is stored in ~/data/DATASET_NAME/cropped while preprocessed
-    (normalized and resampled) data is stored in
-    ~/data/DATASET_NAME/preprocessed/data_and_properties. Raw dataset
-    should follow strictly the nnUNet raw data format. Refer to https://github.com/MIC-
+    Crop, resample and normalize data that is stored in ~/data/DATASET_NAME/raw. Cropped data is
+    stored in ~/data/DATASET_NAME/cropped while preprocessed (normalized and resampled) data is
+    stored in ~/data/DATASET_NAME/preprocessed/data_and_properties. Raw dataset should follow
+    strictly the nnUNet raw data format. Refer to https://github.com/MIC-
     DKFZ/nnUNet/blob/master/documentation/dataset_conversion.md for more information.
     """
 
@@ -116,7 +251,8 @@ class Preprocessor:
 
         Args:
             datalist: List of paths to all the images and labels.
-            transforms: Compose of sequences of monai's transformations to read the path provided in datalist and transform the data.
+            transforms: Compose of sequences of monai's transformations to read the path provided
+                in datalist and transform the data.
 
         Returns:
             Target spacing.
@@ -140,7 +276,8 @@ class Preprocessor:
 
         Args:
             data: Paths to a pair of image and label.
-            transforms: Compose of sequences of monai's transformations to read the path provided in datalist and transform the data.
+            transforms: Compose of sequences of monai's transformations to read the path provided
+                in datalist and transform the data.
 
         Returns:
             Image spacing.
@@ -153,7 +290,7 @@ class Preprocessor:
         self,
         datalist: list[dict[str, Union[Path, str]]],
         transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
-    ) -> dict[dict[str, float],]:
+    ) -> dict[dict[str, float]]:
         """Collect the intensity properties of the whole dataset.
 
         Compute the min, max, mean, std, 0.5th percentile, and 99.5th percentile after gathering
@@ -161,7 +298,8 @@ class Preprocessor:
 
         Args:
             datalist: List of paths to all the images and labels.
-            transforms: Compose of sequences of monai's transformations to read the path provided in datalist and transform the data.
+            transforms: Compose of sequences of monai's transformations to read the path provided
+                in datalist and transform the data.
 
         Returns:
             Intensity properties dictionary.
@@ -199,7 +337,8 @@ class Preprocessor:
 
         Args:
             data: Paths to a pair of image and label.
-            transforms: Compose of sequences of monai's transformations to read the path provided in datalist and transform the data.
+            transforms: Compose of sequences of monai's transformations to read the path provided
+                in datalist and transform the data.
             kwargs: Indication of the desired modality for intensity collection.
 
         Returns:
@@ -220,11 +359,13 @@ class Preprocessor:
     ) -> None:
         """Crop the dataset to non-zero region and save the cropped data.
 
-        Some datasets like BraTS contains images that are surrounded by a lot of background pixels. Those images can have significant size reduction after being cropped to non-zero region.
+        Some datasets like BraTS contains images that are surrounded by a lot of background pixels.
+        Those images can have significant size reduction after being cropped to non-zero region.
 
         Args:
             datalist: List of paths to all the images and labels.
-            transforms: Compose of sequences of monai's transformations to read the path provided in datalist and transform the data.
+            transforms: Compose of sequences of monai's transformations to read the path provided
+                in datalist and transform the data.
         """
 
         os.makedirs(self.cropped_folder, exist_ok=True)
@@ -240,7 +381,8 @@ class Preprocessor:
 
         Args:
             data: Paths to a pair of image and label.
-            transforms: Compose of sequences of monai's transformations to read the path provided in datalist and transform the data.
+            transforms: Compose of sequences of monai's transformations to read the path provided
+                in datalist and transform the data.
         """
 
         list_of_data_files = list(data.values())[:-1]
@@ -371,7 +513,7 @@ class Preprocessor:
         list_of_cropped_npz_files: list[
             Union[str, Path],
         ],
-    ) -> list[float,]:
+    ) -> list[float]:
         """Gather all the size reductions after cropping the dataset.
 
         Args:
@@ -433,18 +575,19 @@ class Preprocessor:
 
     def _determine_whether_to_use_mask_for_norm(
         self,
-    ) -> dict[bool,]:
+    ) -> dict[bool]:
         """Determine whether to use non-zero mask for data normalization.
 
-        Use non-zero mask for normalization when the image is not a CT and when the cropping to non-zero reduces the median image size to more than 25%.
+        Use non-zero mask for normalization when the image is not a CT and when the cropping to
+        non-zero reduces the median image size to more than 25%.
 
         Returns:
             Boolean flags to indicate the use of non-zero mask for each modality.
         """
 
-        # only use the nonzero mask for normalization of the cropping based on it resulted in a decrease in
-        # image size (this is an indication that the data is something like brats/isles and then we want to
-        # normalize in the brain region only)
+        # only use the nonzero mask for normalization of the cropping based on it resulted in a
+        # decrease in image size (this is an indication that the data is something like brats/isles
+        # and then we want to normalize in the brain region only)
         num_modalities = len(list(self.modalities.keys()))
         use_nonzero_mask_for_norm = OrderedDict()
 
@@ -476,7 +619,8 @@ class Preprocessor:
     def _resample_and_normalize(self, case_identifier: str) -> None:
         """Resample and normalize a data.
 
-        Resample, normalize and save the data to the preprocessed folder (~/data/DATASET_NAME/preprocessed/data_and_properties).
+        Resample, normalize and save the data to the preprocessed folder
+        (~/data/DATASET_NAME/preprocessed/data_and_properties).
 
         Args:
             case_identifier: Case identifier of a data.
@@ -497,8 +641,8 @@ class Preprocessor:
             new_shape = self._calculate_new_shape(
                 properties["original_spacing"], properties["shape_after_cropping"]
             )
-            data = self.resample_image(data, new_shape, anisotropy_flag)
-            seg = self.resample_image(seg, new_shape, anisotropy_flag)
+            data = resample_image(data, new_shape, anisotropy_flag)
+            seg = resample_label(seg, new_shape, anisotropy_flag)
             properties["anisotropy_flag"] = anisotropy_flag
             properties["shape_after_resampling"] = np.array(data[0].shape)
             properties["spacing_after_resampling"] = np.array(self.target_spacing)
@@ -540,147 +684,12 @@ class Preprocessor:
         ) as f:
             pickle.dump(properties, f)  # nosec B301
 
-    @staticmethod
-    def resample_image(
-        image: np.array, new_shape: Union[list, tuple], anisotropy_flag: bool
-    ) -> np.array:
-        """Resample an image.
-
-        Args:
-            image: Image numpy array to be resampled.
-            new_shape: Shape after resampling.
-            anisotropy_flag: Whether the image is anisotropic.
-
-        Returns:
-            Resampled image.
-        """
-
-        shape = np.array(image[0].shape)
-        if np.any(shape != np.array(new_shape)):
-            resized_channels = []
-            if anisotropy_flag:
-                print("Anisotropic image, using separate z resampling")
-                for image_c in image:
-                    resized_slices = []
-                    for i in range(image_c.shape[-1]):
-                        image_c_2d_slice = image_c[:, :, i]
-                        image_c_2d_slice = resize(
-                            image_c_2d_slice,
-                            new_shape[:-1],
-                            order=3,
-                            mode="edge",
-                            cval=0,
-                            clip=True,
-                            anti_aliasing=False,
-                        )
-                        resized_slices.append(image_c_2d_slice)
-                    resized = np.stack(resized_slices, axis=-1)
-                    resized = resize(
-                        resized,
-                        new_shape,
-                        order=0,
-                        mode="constant",
-                        cval=0,
-                        clip=True,
-                        anti_aliasing=False,
-                    )
-                    resized_channels.append(resized)
-            else:
-                print("Not using separate z resampling")
-                for image_c in image:
-                    resized = resize(
-                        image_c,
-                        new_shape,
-                        order=3,
-                        mode="edge",
-                        cval=0,
-                        clip=True,
-                        anti_aliasing=False,
-                    )
-                    resized_channels.append(resized)
-            reshaped = np.stack(resized_channels, axis=0)
-            return reshaped
-        else:
-            print("No resampling necessary")
-            return image
-
-    @staticmethod
-    def resample_label(
-        label: np.array, new_shape: Union[list, tuple], anisotropy_flag: bool
-    ) -> np.array:
-        """Resample a label.
-
-        Args:
-            label: Label numpy array to be resampled.
-            new_shape: Shape after resampling.
-            anisotropy_flag: Whether the label is anisotropic.
-
-        Returns:
-            Resampled image.
-        """
-
-        shape = np.array(label[0].shape)
-        if np.any(shape != np.array(new_shape)):
-            reshaped = np.zeros(new_shape, dtype=np.uint8)
-            n_class = np.max(label)
-            if anisotropy_flag:
-                print("Anisotropic image, using separate z resampling")
-                shape_2d = new_shape[:-1]
-                depth = label.shape[-1]
-                reshaped_2d = np.zeros((*shape_2d, depth), dtype=np.uint8)
-
-                for class_ in range(1, int(n_class) + 1):
-                    for depth_ in range(depth):
-                        mask = label[0, :, :, depth_] == class_
-                        resized_2d = resize(
-                            mask.astype(float),
-                            shape_2d,
-                            order=1,
-                            mode="edge",
-                            cval=0,
-                            clip=True,
-                            anti_aliasing=False,
-                        )
-                        reshaped_2d[:, :, depth_][resized_2d >= 0.5] = class_
-                for class_ in range(1, int(n_class) + 1):
-                    mask = reshaped_2d == class_
-                    resized = resize(
-                        mask.astype(float),
-                        new_shape,
-                        order=0,
-                        mode="constant",
-                        cval=0,
-                        clip=True,
-                        anti_aliasing=False,
-                    )
-                    reshaped[resized >= 0.5] = class_
-            else:
-                print("Not using separate z resampling")
-                for class_ in range(1, int(n_class) + 1):
-                    mask = label[0] == class_
-                    resized = resize(
-                        mask.astype(float),
-                        new_shape,
-                        order=1,
-                        mode="edge",
-                        cval=0,
-                        clip=True,
-                        anti_aliasing=False,
-                    )
-                    reshaped[resized >= 0.5] = class_
-
-            reshaped = np.expand_dims(reshaped, 0)
-            return reshaped
-        else:
-            print("No resampling necessary")
-            return label
-
     def _normalize(self, data: np.array, seg: np.array) -> tuple[np.array, np.array]:
-        """Resample a label.
+        """Normalize data.
 
         Args:
             data: Image numpy array to be normalized.
-            seg: Label numpy array.
+            seg: Label numpy array. Serves for non-zero mask normalization.
 
         Returns:
             - Normalized image.
@@ -692,7 +701,8 @@ class Preprocessor:
         for c in range(len(data)):
             scheme = self.modalities[c]
             if scheme == "CT":
-                # clip to lb and ub from train data foreground and use foreground mn and sd from training data
+                # clip to lb and ub from train data foreground and use foreground mn and sd from
+                # training data
                 assert (
                     self.intensity_properties is not None
                 ), "ERROR: if there is a CT then we need intensity properties"
@@ -716,6 +726,22 @@ class Preprocessor:
         print("Normalization done")
         return data, seg
 
+    def _save_preprocessing_properties(self) -> None:
+        """Save useful properties that will be used during inference."""
+
+        prop = OrderedDict()
+        prop["do_resample"] = self.do_resample
+        prop["target_spacing"] = self.target_spacing
+        prop["do_normalize"] = self.do_normalize
+        prop["normalization_scheme"] = self.modalities
+        prop["use_nonzero_mask"] = self.use_nonzero_mask
+        prop["intensiity_properties"] = self.intensity_properties
+
+        with open(
+            os.path.join(self.preprocessed_folder, "preprocessing_properties.pkl"), "wb"
+        ) as f:
+            pickle.dump(prop, f)  # nosec B301
+
     def _run_parallel_from_raw(
         self,
         func: Callable,
@@ -728,8 +754,10 @@ class Preprocessor:
         Args:
             func: Function to be called.
             datalist: List of paths to all the images and labels.
-            transforms: Compose of sequences of monai's transformations to read the path provided in datalist and transform the data.
-            kwargs: Indication of the desired modality for intensity collection. To be passed to _get_intensities().
+            transforms: Compose of sequences of monai's transformations to read the path provided
+                in datalist and transform the data.
+            kwargs: Indication of the desired modality for intensity collection. To be passed to
+                _get_intensities().
         """
 
         return Parallel(n_jobs=self.num_workers)(
@@ -763,7 +791,10 @@ class Preprocessor:
         ]
 
         if len(image_keys) > 1:
-            concat_transform = [ConcatItemsd(keys=image_keys, name="image")]
+            concat_transform = [
+                ConcatItemsd(keys=image_keys, name="image"),
+                SelectItemsd(keys="image"),
+            ]
         else:
             concat_transform = []
         transforms = Compose(load_transforms + concat_transform)
@@ -794,8 +825,14 @@ class Preprocessor:
         # determine whether to use non zero mask for normalization
         self.use_nonzero_mask = self._determine_whether_to_use_mask_for_norm()
 
+        # save preprocessing properties
+        self._save_preprocessing_properties()
+
         # resample and normalize
         self._preprocess(list_of_cropped_npz_files)
+
+    def preprocess_inference_case(self):
+        dataset_properties = load_pickle
 
 
 if __name__ == "__main__":
