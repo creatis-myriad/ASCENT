@@ -304,8 +304,15 @@ class nnUNetLitModule(LightningModule):
     def on_load_checkpoint(self, checkpoint):  # noqa: D102
         self.all_val_eval_metrics = checkpoint["all_val_eval_metrics"]
 
-    def compute_loss(self, preds, label):
-        """Compute the multi-scale loss if deep supervision is set to True."""
+    def compute_loss(
+        self, preds: Union[torch.Tensor, MetaTensor], label: Union[torch.Tensor, MetaTensor]
+    ):
+        """Compute the multi-scale loss if deep supervision is set to True.
+
+        Args:
+            preds: Logits predicted
+            label: Ground truth label
+        """
 
         if self.hparams.deep_supervision:
             loss = self.loss(preds[0], label)
@@ -318,6 +325,9 @@ class nnUNetLitModule(LightningModule):
 
     def predict(self, image) -> Union[torch.Tensor, MetaTensor]:
         """Predict 2D/3D images with sliding window inference.
+
+        Args:
+            image: Image to predict.
 
         Returns:
             Logits of prediction.
@@ -338,21 +348,31 @@ class nnUNetLitModule(LightningModule):
             else:
                 raise NotImplementedError
 
-    def tta_predict(self, img) -> Union[torch.Tensor, MetaTensor]:
+    def tta_predict(
+        self, image: Union[torch.Tensor, MetaTensor]
+    ) -> Union[torch.Tensor, MetaTensor]:
         """Predict with test time augmentation.
+
+        Args:
+            image: Image to predict.
 
         Returns:
             Logits averaged over the number of flips.
         """
 
-        preds = self.predict(img)
+        preds = self.predict(image)
         for flip_idx in self.tta_flips:
-            preds += torch.flip(self.predict(torch.flip(img, flip_idx)), flip_idx)
+            preds += torch.flip(self.predict(torch.flip(image, flip_idx)), flip_idx)
         preds /= len(self.tta_flips) + 1
         return preds
 
-    def predict_2D_2Dconv_tiled(self, image) -> Union[torch.Tensor, MetaTensor]:
+    def predict_2D_2Dconv_tiled(
+        self, image: Union[torch.Tensor, MetaTensor]
+    ) -> Union[torch.Tensor, MetaTensor]:
         """Predict 2D image with 2D model.
+
+        Args:
+            image: Image to predict.
 
         Returns:
             Logits of prediction.
@@ -361,8 +381,13 @@ class nnUNetLitModule(LightningModule):
         assert len(image.shape) == 4, "data must be b, c, w, h"
         return self.sliding_window_inference(image)
 
-    def predict_3D_3Dconv_tiled(self, image) -> Union[torch.Tensor, MetaTensor]:
+    def predict_3D_3Dconv_tiled(
+        self, image: Union[torch.Tensor, MetaTensor]
+    ) -> Union[torch.Tensor, MetaTensor]:
         """Predict 3D image with 3D model.
+
+        Args:
+            image: Image to predict.
 
         Returns:
             Logits of prediction.
@@ -371,8 +396,13 @@ class nnUNetLitModule(LightningModule):
         assert len(image.shape) == 5, "data must be b, c, w, h, d"
         return self.sliding_window_inference(image)
 
-    def predict_3D_2Dconv_tiled(self, image) -> Union[torch.Tensor, MetaTensor]:
+    def predict_3D_2Dconv_tiled(
+        self, image: Union[torch.Tensor, MetaTensor]
+    ) -> Union[torch.Tensor, MetaTensor]:
         """Predict 3D image with 2D model.
+
+        Args:
+            image: Image to predict.
 
         Returns:
             Logits of prediction.
@@ -386,7 +416,21 @@ class nnUNetLitModule(LightningModule):
         return preds
 
     @staticmethod
-    def recovery_prediction(prediction, new_shape, anisotropy_flag) -> np.array:
+    def recovery_prediction(
+        prediction: Union[torch.Tensor, MetaTensor],
+        new_shape: Union[tuple, list],
+        anisotropy_flag: bool,
+    ) -> np.array:
+        """Recover prediction to its original shape in case of resampling.
+
+        Args:
+            prediciton: Logits predicted.
+            new_shape: Shape for resampling.
+            anisotropy_flag: Whether to use anisotropic resampling.
+
+        Returns:
+            Resampled prediction to the original spacing.
+        """
         shape = np.array(prediction.shape)
         if np.any(shape != np.array(new_shape)):
             reshaped = np.zeros(new_shape, dtype=np.uint8)
@@ -439,13 +483,20 @@ class nnUNetLitModule(LightningModule):
         else:
             return prediction
 
-    def get_tta_flips(self):
+    def get_tta_flips(self) -> list[list[int]]:
+        """Get the all possible flips for test time augmentation.
+
+        Returns:
+            List of axes to flip an 2D or 3D image.
+        """
+
         if self.threeD:
             return [[2], [3], [4], [2, 3], [2, 4], [3, 4], [2, 3, 4]]
         else:
             return [[2], [3], [2, 3]]
 
     def sliding_window_inference(self, image):
+        """"""
         return sliding_window_inference(
             inputs=image,
             roi_size=self.patch_size,
