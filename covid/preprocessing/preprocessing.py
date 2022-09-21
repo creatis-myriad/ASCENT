@@ -21,7 +21,7 @@ from monai.transforms.utils import generate_spatial_bounding_box
 from skimage.transform import resize
 from torch import Tensor
 
-from covid.utils.file_and_folder_operations import load_pickle, subfiles
+from covid.utils.file_and_folder_operations import load_json, subfiles
 
 
 def resample_image(
@@ -213,9 +213,9 @@ class Preprocessor:
         datalist = []
 
         json_file = os.path.join(self.dataset_path, "dataset.json")
-        with open(json_file) as jsn:
-            d = json.load(jsn)
-            training_files = d["training"]
+
+        d = load_json(json_file)
+        training_files = d["training"]
         num_modalities = len(d["modality"].keys())
         if num_modalities > 1:
             image_keys = ["image_%d" % mod for mod in range(num_modalities)]
@@ -409,7 +409,6 @@ class Preprocessor:
             properties["cropping_size_reduction"] = np.prod(
                 properties["shape_after_cropping"]
             ) / np.prod(properties["original_shape"])
-            self.all_size_reductions.append(properties["cropping_size_reduction"])
             print(
                 "before crop:",
                 tuple([data["image"].shape[0], *properties["original_shape"].tolist()]),
@@ -464,6 +463,12 @@ class Preprocessor:
 
         case_identifier = os.path.basename(case)[:-4]
         return case_identifier
+
+    def _get_all_classes(self):
+        dataset_json = load_json(os.path.join(self.dataset_path, "dataset.json"))
+        classes = dataset_json["labels"]
+        all_classes = [int(i) for i in classes.keys() if int(i) > 0]
+        return all_classes
 
     def _check_anisotropy(
         self,
@@ -614,6 +619,7 @@ class Preprocessor:
         """
 
         os.makedirs(self.preprocessed_npz_folder, exist_ok=True)
+
         self._run_parallel_from_cropped(self._resample_and_normalize, list_of_cropped_npz_files)
 
     def _resample_and_normalize(self, case_identifier: str) -> None:
@@ -714,7 +720,7 @@ class Preprocessor:
                 data[c] = (data[c] - mean_intensity) / std_intensity
                 if self.use_nonzero_mask[c]:
                     data[c][seg[-1] < 0] = 0
-            else:
+            elif not scheme == "noNorm":
                 if self.use_nonzero_mask[c]:
                     mask = seg[-1] >= 0
                 else:
@@ -726,20 +732,59 @@ class Preprocessor:
         print("Normalization done")
         return data, seg
 
-    def _save_preprocessing_properties(self) -> None:
-        """Save useful properties that will be used during inference."""
+    def _get_all_shapes_after_resampling(
+        self, list_of_preprocessed_npz_files: list[Union[Path, str]]
+    ) -> list[np.array]:
+        """Get all shapes after resampling.
+
+        Args:
+            list_of_preprocessed_npz_files: List of preprocessed npz data.
+
+        Returns:
+            List of all shapes after resampling.
+        """
+        shapes = self._run_parallel_from_cropped(
+            self._get_shape_after_resampling, list_of_preprocessed_npz_files
+        )
+        return shapes
+
+    def _get_shape_after_resampling(self, case_identifier: str) -> dict:
+        """Get the shape after resampling of a preprocessed data.
+
+        Args:
+            case_identifier: Case identifier of a data.
+
+        Returns:
+            Data properties.
+        """
+
+        with open(
+            os.path.join(self.preprocessed_npz_folder, "%s.pkl" % case_identifier), "rb"
+        ) as f:
+            properties = pickle.load(f)  # nosec B301
+        return properties["shape_after_resampling"]
+
+    def _save_dataset_properties(self, list_of_preprocessed_npz_files) -> None:
+        """Save useful dataset properties that will be used during inference and for experiment
+        planning."""
 
         prop = OrderedDict()
         prop["do_resample"] = self.do_resample
-        prop["target_spacing"] = self.target_spacing
+        prop["spacing_after_resampling"] = self.target_spacing
         prop["do_normalize"] = self.do_normalize
-        prop["normalization_scheme"] = self.modalities
+        prop["modalities"] = self.modalities
         prop["use_nonzero_mask"] = self.use_nonzero_mask
         prop["intensiity_properties"] = self.intensity_properties
+        all_cases = [
+            self.get_case_identifier_from_npz(case) for case in list_of_preprocessed_npz_files
+        ]
+        prop["all_cases"] = all_cases
+        prop["all_shapes_after_resampling"] = self._get_all_shapes_after_resampling(
+            list_of_preprocessed_npz_files
+        )
+        prop["all_classes"] = self._get_all_classes()
 
-        with open(
-            os.path.join(self.preprocessed_folder, "preprocessing_properties.pkl"), "wb"
-        ) as f:
+        with open(os.path.join(self.preprocessed_folder, "dataset_properties.pkl"), "wb") as f:
             pickle.dump(prop, f)  # nosec B301
 
     def _run_parallel_from_raw(
@@ -767,7 +812,7 @@ class Preprocessor:
     def _run_parallel_from_cropped(
         self, func: Callable, list_of_cropped_npz_files: list[Union[Path, str]]
     ):
-        """Parallel runs to perform operations on raw data.
+        """Parallel runs to perform operations on cropped data.
 
         Args:
             func: Function to be called.
@@ -819,20 +864,19 @@ class Preprocessor:
         list_of_cropped_npz_files = subfiles(self.cropped_folder, True, None, ".npz", True)
 
         # get all size reductions
-        if not len(self.all_size_reductions):
-            self.all_size_reductions = self._get_all_size_reductions(list_of_cropped_npz_files)
+        self.all_size_reductions = self._get_all_size_reductions(list_of_cropped_npz_files)
 
         # determine whether to use non zero mask for normalization
         self.use_nonzero_mask = self._determine_whether_to_use_mask_for_norm()
 
-        # save preprocessing properties
-        self._save_preprocessing_properties()
-
         # resample and normalize
         self._preprocess(list_of_cropped_npz_files)
 
-    def preprocess_inference_case(self):
-        dataset_properties = load_pickle
+        # save dataset properties
+        list_of_preprocessed_npz_files = subfiles(
+            self.preprocessed_npz_folder, True, None, ".npz", True
+        )
+        self._save_dataset_properties(list_of_preprocessed_npz_files)
 
 
 if __name__ == "__main__":

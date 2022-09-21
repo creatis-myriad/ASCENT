@@ -1,3 +1,4 @@
+import numpy as np
 import torch.nn as nn
 
 from covid.models.components.unet_related.layers import (
@@ -9,6 +10,22 @@ from covid.models.components.unet_related.layers import (
 
 
 class UNet(nn.Module):
+    DEFAULT_BATCH_SIZE_3D = 2
+    DEFAULT_PATCH_SIZE_3D = (64, 192, 160)
+    SPACING_FACTOR_BETWEEN_STAGES = 2
+    BASE_NUM_FEATURES_3D = 30
+    MAX_NUMPOOL_3D = 999
+    MAX_NUM_FILTERS_3D = 320
+
+    DEFAULT_PATCH_SIZE_2D = (256, 256)
+    BASE_NUM_FEATURES_2D = 32
+    DEFAULT_BATCH_SIZE_2D = 50
+    MAX_NUMPOOL_2D = 999
+    MAX_FILTERS_2D = 480
+
+    use_this_for_batch_size_computation_2D = 19739648
+    use_this_for_batch_size_computation_3D = 520000000
+
     def __init__(
         self,
         in_channels,
@@ -134,17 +151,64 @@ class UNet(nn.Module):
             layers.append(conv_layer)
         return nn.ModuleList(layers)
 
-    # @staticmethod
     def initialize_weights(self, module):
         if isinstance(module, (nn.Conv3d, nn.Conv2d, nn.ConvTranspose3d, nn.ConvTranspose2d)):
             module.weight = nn.init.kaiming_normal_(module.weight, a=self.negative_slope)
             if module.bias is not None:
                 module.bias = nn.init.constant_(module.bias, 0)
 
-    # def initialize_weights(self, module):
-    #     name = module.__class__.__name__.lower()
-    #     if name in ["conv2d", "conv3d"]:
-    #         nn.init.kaiming_normal_(module.weight, a=self.negative_slope)
+    @staticmethod
+    def compute_approx_vram_consumption(
+        patch_size,
+        num_pool_per_axis,
+        base_num_features,
+        max_num_features,
+        num_modalities,
+        num_classes,
+        pool_op_kernel_sizes,
+        deep_supervision=False,
+        conv_per_stage=2,
+    ):
+        """This only applies for num_conv_per_stage and convolutional_upsampling=True not real vram
+        consumption. just a constant term to which the vram consumption will be approx proportional
+        (+ offset for parameter storage)
+
+        :param deep_supervision:
+        :param patch_size:
+        :param num_pool_per_axis:
+        :param base_num_features:
+        :param max_num_features:
+        :param num_modalities:
+        :param num_classes:
+        :param pool_op_kernel_sizes:
+        :return:
+        """
+        if not isinstance(num_pool_per_axis, np.ndarray):
+            num_pool_per_axis = np.array(num_pool_per_axis)
+
+        npool = len(pool_op_kernel_sizes)
+
+        map_size = np.array(patch_size)
+        tmp = np.int64(
+            (conv_per_stage * 2 + 1) * np.prod(map_size, dtype=np.int64) * base_num_features
+            + num_modalities * np.prod(map_size, dtype=np.int64)
+            + num_classes * np.prod(map_size, dtype=np.int64)
+        )
+
+        num_feat = base_num_features
+
+        for p in range(npool):
+            for pi in range(len(num_pool_per_axis)):
+                map_size[pi] /= pool_op_kernel_sizes[p][pi]
+            num_feat = min(num_feat * 2, max_num_features)
+            num_blocks = (
+                (conv_per_stage * 2 + 1) if p < (npool - 1) else conv_per_stage
+            )  # conv_per_stage + conv_per_stage for the convs of encode/decode and 1 for transposed conv
+            tmp += num_blocks * np.prod(map_size, dtype=np.int64) * num_feat
+            if deep_supervision and p < (npool - 2):
+                tmp += np.prod(map_size, dtype=np.int64) * num_classes
+            # print(p, map_size, num_feat, tmp)
+        return tmp
 
 
 if __name__ == "__main__":

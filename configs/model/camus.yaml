@@ -20,7 +20,7 @@ net:
   num_classes: 3
   patch_size: [640, 512]
   kernels: [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
-  strides: [[1, 1], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2]]
+  strides: [[2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2]]
   normalization_layer: "instance"
   negative_slope: 1e-2
   deep_supervision: True
