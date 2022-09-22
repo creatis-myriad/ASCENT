@@ -14,18 +14,18 @@ class SpyritNet(nn.Module):
     def wrap(x, n: int):
         return ((x + n) % (2 * n)) - n
 
-    def F_Orward(self, x, DPower):
+    def Forward(self, x, DPower):
         _, c, h, w = x.shape
         A1, A2 = self.F_O.get_diff_matrix()
         # W =
         # x = A1.transpose().dot(csr_matrix()
-        x = self.F_Orward_tikh(x)
+        x = self.Foward_tikh(x)
         x = self.Denoi(x)  # shape stays the same
         x = rearrange(x, "(b c) () (h w) -> b c h w", c=c, h=h)
 
         return x
 
-    def F_Orward_tikh(self, x, DPower):
+    def Forward_tikh(self, x, DPower):
         # x - of shape [b,c,h,w]
         _, c, h, w = x.shape
         x = rearrange(x, "b c h w ->  (b c) (h w)")
@@ -60,10 +60,10 @@ if __name__ == "__main__":
     import torch
     from monai.data import DataLoader
     from mpl_toolkits.axes_grid1 import make_axes_locatable
-    from torchvision import datasets, transF_Orms
+    from torchvision import datasets, transforms
 
     from covid.models.components.spyrit_related.utils import (
-        F_Orward_operator,
+        Forward_operator,
         Tikhonov_solve,
         Unet,
     )
@@ -92,16 +92,16 @@ if __name__ == "__main__":
     # %% A batch of STL-10 test images
     torch.manual_seed(7)
 
-    transF_Orm = transF_Orms.Compose(
+    transform = transforms.Compose(
         [
-            transF_Orms.functional.to_grayscale,
-            transF_Orms.Resize((n_x, n_y)),
-            transF_Orms.ToTensor(),
-            transF_Orms.Normalize([0.5], [0.5]),
+            transforms.functional.to_grayscale,
+            transforms.Resize((n_x, n_y)),
+            transforms.ToTensor(),
+            transforms.Normalize([0.5], [0.5]),
         ]
     )
 
-    testset = datasets.STL10(root=data_dir, split="test", download=False, transF_Orm=transF_Orm)
+    testset = datasets.STL10(root=data_dir, split="test", download=False, transform=transform)
     testloader = DataLoader(testset, batch_size=bs, shuffle=False)
 
     # %%
@@ -143,7 +143,7 @@ if __name__ == "__main__":
     imagesc(y.reshape((w, h)))
 
     # %%
-    F_O = F_Orward_operator(A)  # F_Orward operator
+    F_O = Forward_operator(A)  # Forward operator
 
     DC_layer = Tikhonov_solve(mu=0.01)
     Denoi = Unet()
@@ -155,5 +155,5 @@ if __name__ == "__main__":
     m = F_O(z)
     imagesc(m[5, :].numpy().reshape((w, h)))
 
-    m_rec = model.F_Orward_tikh(x)
+    m_rec = model.Forward_tikh(x)
     imagesc(m_rec[5, :].numpy().reshape((w, h)))

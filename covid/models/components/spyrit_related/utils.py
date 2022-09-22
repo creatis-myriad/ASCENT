@@ -4,7 +4,7 @@ from scipy.sparse import csr_matrix
 from torch import nn
 
 
-class F_Orward_operator(nn.Module):
+class Forward_operator(nn.Module):
     def __init__(self, Hsub):
         super().__init__()
         r""" Defines different fully connected layers that take weights from Hsub matrix
@@ -12,7 +12,7 @@ class F_Orward_operator(nn.Module):
                 Hsub (np.ndarray): M-by-N matrix.
             Returns:
                 Pytorch Object of the parent-class nn.Module with two main methods:
-                    - F_Orward: F_Orward propagation nn.Linear layer that assigns weights from Hsub matrix
+                    - Forward: Forward propagation nn.Linear layer that assigns weights from Hsub matrix
                     - adjoint: Back-propagation pytorch nn.Linear layer obtained from Hsub.transpose() as it is orthogonal
         """
         # instancier nn.linear
@@ -31,25 +31,25 @@ class F_Orward_operator(nn.Module):
         self.Hsub_adjoint.weight.data = self.Hsub_adjoint.weight.data.float()
         self.Hsub_adjoint.weight.requires_grad = False
 
-    def F_Orward(self, x):
-        r"""F_Orward propagate x through fully connected layer.
+    def Forward(self, x):
+        r"""Forward propagate x through fully connected layer.
         Args:
             x (np.ndarray): M-by-N matrix.
         Returns:
             nn.Linear Pytorch Fully Connecter Layer that has input shape of N and output shape of M
         Example:
             >>> Input_Matrix = np.array(np.random.random([100,32]))
-            >>> F_Orwad_OP = F_Orward_operator(Input_Matrix)
+            >>> Forwad_OP = Forward_operator(Input_Matrix)
             >>> print('Input Matrix shape:', Input_Matrix.shape)
-            >>> print('F_Orward propagation layer:',  F_Orwad_OP.Hsub)
+            >>> print('Forward propagation layer:',  Forwad_OP.Hsub)
             Input Matrix shape: (100, 32)
-            F_Orward propagation layer: Linear(in_features=32, out_features=100, bias=False)
+            Forward propagation layer: Linear(in_features=32, out_features=100, bias=False)
         """
         # x.shape[b*c,N]
         x = self.Hsub(x)
         return x
 
-    def F_Orward_op(self, x):  # todo: Rename to "direct"
+    def Forward_op(self, x):  # todo: Rename to "direct"
         # x.shape[b*c,N]
         x = self.Hsub(x)
         return x
@@ -62,9 +62,9 @@ class F_Orward_operator(nn.Module):
             nn.Linear Pytorch Fully Connecter Layer that has input shape of N and output shape of M
         Example:
             >>> Input_Matrix = np.array(np.random.random([100,32]))
-            >>> F_Orwad_OP = F_Orward_operator(Input_Matrix)
+            >>> Forwad_OP = Forward_operator(Input_Matrix)
             >>> print('Input Matrix shape:', Input_Matrix.shape)
-            >>> print('Backpropagaton layer:', F_Orwad_OP.Hsub_adjoint)
+            >>> print('Backpropagaton layer:', Forwad_OP.Hsub_adjoint)
             Input Matrix shape: (100, 32)
             Backpropagaton layer: Linear(in_features=100, out_features=32, bias=False
         """
@@ -85,7 +85,7 @@ class Doppler_operator(nn.Module):
                 Hsub (np.ndarray): M-by-N matrix.
             Returns:
                 Pytorch Object of the parent-class nn.Module with two main methods:
-                    - F_Orward: F_Orward propagation nn.Linear layer that assigns weights from Hsub matrix
+                    - Forward: Forward propagation nn.Linear layer that assigns weights from Hsub matrix
                     - adjoint: Back-propagation pytorch nn.Linear layer obtained from Hsub.transpose() as it is orthogonal
         """
         # instancier nn.linear
@@ -134,25 +134,25 @@ class Doppler_operator(nn.Module):
     def get_diff_matrix(self):
         return self.A1, self.A2
 
-    def F_Orward(self, x):
-        r"""F_Orward propagate x through fully connected layer.
+    def Forward(self, x):
+        r"""Forward propagate x through fully connected layer.
         Args:
             x (np.ndarray): M-by-N matrix.
         Returns:
             nn.Linear Pytorch Fully Connecter Layer that has input shape of N and output shape of M
         Example:
             >>> Input_Matrix = np.array(np.random.random([100,32]))
-            >>> F_Orwad_OP = F_Orward_operator(Input_Matrix)
+            >>> Forwad_OP = Forward_operator(Input_Matrix)
             >>> print('Input Matrix shape:', Input_Matrix.shape)
-            >>> print('F_Orward propagation layer:',  F_Orwad_OP.Hsub)
+            >>> print('Forward propagation layer:',  Forwad_OP.Hsub)
             Input Matrix shape: (100, 32)
-            F_Orward propagation layer: Linear(in_features=32, out_features=100, bias=False)
+            Forward propagation layer: Linear(in_features=32, out_features=100, bias=False)
         """
         # x.shape[b*c,N]
         x = self.Hsub(x)
         return x
 
-    def F_Orward_op(self, x):  # todo: Rename to "direct"
+    def Forward_op(self, x):  # todo: Rename to "direct"
         # x.shape[b*c,N]
         x = self.Hsub(x)
         return x
@@ -165,9 +165,9 @@ class Doppler_operator(nn.Module):
             nn.Linear Pytorch Fully Connecter Layer that has input shape of N and output shape of M
         Example:
             >>> Input_Matrix = np.array(np.random.random([100,32]))
-            >>> F_Orwad_OP = F_Orward_operator(Input_Matrix)
+            >>> Forwad_OP = Forward_operator(Input_Matrix)
             >>> print('Input Matrix shape:', Input_Matrix.shape)
-            >>> print('Backpropagaton layer:', F_Orwad_OP.Hsub_adjoint)
+            >>> print('Backpropagaton layer:', Forwad_OP.Hsub_adjoint)
             Input Matrix shape: (100, 32)
             Backpropagaton layer: Linear(in_features=100, out_features=32, bias=False
         """
@@ -183,7 +183,7 @@ class Doppler_operator(nn.Module):
 class Tikhonov_solve(nn.Module):
     def __init__(self, mu=0.1):
         super().__init__()
-        # F_O = F_Orward Operator - Needs to be matrix-storing
+        # F_O = Forward Operator - Needs to be matrix-storing
         # -- Pseudo-inverse to determine levels of noise.
         self.mu = nn.Parameter(torch.tensor([float(mu)], requires_grad=True))  # need device maybe?
 
@@ -198,13 +198,13 @@ class Tikhonov_solve(nn.Module):
         x = torch.linalg.solve(A, x)
         return x
 
-    def F_Orward(self, x, x_0, F_O):
+    def Forward(self, x, x_0, F_O):
         # x - input (b*c, M) - measurement vector
         # x_0 - input (b*c, N) - previous estimate
         # z - output (b*c, N)
 
         # uses torch.linalg.solve [As of Pytorch 1.9 autograd supports solve!!]
-        x = x - F_O.F_Orward_op(x_0)
+        x = x - F_O.Forward_op(x_0)
         x = self.solve(x, F_O)
         x = x_0 + F_O.adjoint(x)
         return x
@@ -329,7 +329,7 @@ class Unet(nn.Module):
         )
         return block
 
-    def F_Orward(self, x):
+    def forward(self, x):
 
         # Encode
         encode_block1 = self.conv_encode1(x)
