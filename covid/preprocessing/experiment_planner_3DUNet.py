@@ -1,18 +1,22 @@
-import os
 from copy import deepcopy
 from pathlib import Path
-from typing import Callable, Union
+from typing import Union
 
 import numpy as np
 
 from covid.models.components.unet import UNet
 from covid.preprocessing.experiment_planner_2DUNet import nnUNetPlanner2D
 from covid.preprocessing.utils import get_pool_and_conv_props
-from covid.utils.file_and_folder_operations import load_pickle
 
 
 class nnUNetPlanner3D(nnUNetPlanner2D):
-    """Plan experiment for 3D nnUNet."""
+    """Plan experiment for 3D nnUNet.
+
+    This planner is blatantly copied and slightly modified from nnUNet's ExperimentPlanner3D_v21.
+
+    Ref:
+        https://github.com/MIC-DKFZ/nnUNet/blob/master/nnunet/experiment_planning/experiment_planner_baseline_3DUNet_v21.py
+    """
 
     def __init__(self, preprocessed_folder: Union[str, Path]) -> None:
         super().__init__(preprocessed_folder)
@@ -27,6 +31,30 @@ class nnUNetPlanner3D(nnUNetPlanner2D):
         num_classes: int,
         num_modalities: int,
     ):
+        """Compute training and model parameters based on nnUNet's heuristic rules.
+
+        Computation of 3D input patch shape is different from 2D. Instead of using directly the
+        median image shape, an isotropic patch of 512x512x512 mm is created and then clipped to the
+        median image shape.
+
+        Args:
+            median_shape: Median shape of dataset.
+            current_spacing: Target spacing to resample data.
+            num_cases: Number of cases in the dataset.
+            num_classes: Number of label classes in the dataset.
+            num_modalities: Number of modalities in the dataset.
+
+        Returns:
+            Plan dictionary containing:
+                - Batch size
+                - Number of pooling of axis
+                - Input patch size
+                - Median data shape in voxels
+                - Pooling strides
+                - Convolution kernels size
+                - Dummy 2D augmentation flag.
+        """
+
         dataset_num_voxels = np.prod(median_shape, dtype=np.int64) * num_cases
 
         # compute how many voxels are one mm
@@ -39,7 +67,8 @@ class nnUNetPlanner3D(nnUNetPlanner2D):
         input_patch_size *= 1 / min(input_patch_size) * 512  # to get a starting value
         input_patch_size = np.round(input_patch_size).astype(int)
 
-        # clip it to the median shape of the dataset because patches larger then that make not much sense
+        # clip it to the median shape of the dataset because patches larger then that make not much
+        # sense
         input_patch_size = [min(i, j) for i, j in zip(input_patch_size, median_shape)]
 
         (
@@ -57,7 +86,8 @@ class nnUNetPlanner3D(nnUNetPlanner2D):
 
         # we pretend to use 30 feature maps. The larger memory footpring of 32 vs 30 is more than
         # offset by the fp16 training. We make fp16 training default.
-        # Reason for 32 vs 30 feature maps is that 32 is faster in fp16 training (because multiple of 8)
+        # Reason for 32 vs 30 feature maps is that 32 is faster in fp16 training (because multiple
+        # of 8)
         ref = (
             UNet.use_this_for_batch_size_computation_3D
             * self.unet_base_num_features

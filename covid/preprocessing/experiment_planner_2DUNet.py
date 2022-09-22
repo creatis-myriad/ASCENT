@@ -1,7 +1,8 @@
+import errno
 import os
 from copy import deepcopy
 from pathlib import Path
-from typing import Callable, Union
+from typing import Union
 
 import numpy as np
 
@@ -11,13 +12,31 @@ from covid.utils.file_and_folder_operations import load_pickle
 
 
 class nnUNetPlanner2D:
-    """Plan experiment for 2D nnUNet."""
+    """Plan experiment for 2D nnUNet.
+
+    This planner is blatantly copied and slightly modified from nnUNet's ExperimentPlanner2D_v21.
+
+    Ref:
+        https://github.com/MIC-DKFZ/nnUNet/blob/master/nnunet/experiment_planning/experiment_planner_baseline_2DUNet_v21.py
+    """
 
     def __init__(self, preprocessed_folder: Union[str, Path]) -> None:
+        """
+        Args:
+            preprocessed_folder: Path to 'preprocessed' folder of a dataset.
+
+        Raises:
+            FileNotFoundError: If dataset_properties.pkl is not found in preprocessed_folder.
+        """
+
         self.preprocessed_folder = preprocessed_folder
-        assert os.path.isfile(
-            os.path.join(self.preprocessed_folder, "dataset_properties.pkl")
-        ), "Preprocessed folder must contain dataset_properties.pkl"
+        if not os.path.isfile(os.path.join(self.preprocessed_folder, "dataset_properties.pkl")):
+            raise FileNotFoundError(
+                errno.ENOENT,
+                os.strerror(errno.ENOENT),
+                os.path.join(self.preprocessed_folder, "dataset_properties.pkl"),
+            )
+
         self.dataset_properties = load_pickle(
             os.path.join(self.preprocessed_folder, "dataset_properties.pkl")
         )
@@ -28,8 +47,8 @@ class nnUNetPlanner2D:
         self.conv_per_stage = 2
         self.unet_min_batch_size = 2
         self.how_much_of_a_patient_must_the_network_see_at_stage0 = 4  # 1/4 of a patient
-        self.batch_size_covers_max_percent_of_dataset = 0.05  # all samples in the batch together
-        # cannot cover more than 5% of the entire dataset
+        # all samples in the batch together cannot cover more than 5% of the entire dataset
+        self.batch_size_covers_max_percent_of_dataset = 0.05
 
     def get_properties(
         self,
@@ -38,7 +57,27 @@ class nnUNetPlanner2D:
         num_cases: int,
         num_classes: int,
         num_modalities: int,
-    ):
+    ) -> dict:
+        """Compute training and model parameters based on nnUNet's heuristic rules.
+
+        Args:
+            median_shape: Median shape of dataset.
+            current_spacing: Target spacing to resample data.
+            num_cases: Number of cases in the dataset.
+            num_classes: Number of label classes in the dataset.
+            num_modalities: Number of modalities in the dataset.
+
+        Returns:
+            Plan dictionary containing:
+                - Batch size
+                - Number of pooling of axis
+                - Input patch size
+                - Median data shape in voxels
+                - Pooling strides
+                - Convolution kernels size
+                - Dummy 2D augmentation flag.
+        """
+
         dataset_num_voxels = np.prod(median_shape, dtype=np.int64) * num_cases
         input_patch_size = median_shape[:-1]
 
@@ -57,7 +96,8 @@ class nnUNetPlanner2D:
 
         # we pretend to use 30 feature maps. The larger memory footpring of 32 vs 30 is more than
         # offset by the fp16 training. We make fp16 training default.
-        # Reason for 32 vs 30 feature maps is that 32 is faster in fp16 training (because multiple of 8)
+        # Reason for 32 vs 30 feature maps is that 32 is faster in fp16 training (because multiple
+        # of 8)
         ref = (
             UNet.use_this_for_batch_size_computation_2D * UNet.DEFAULT_BATCH_SIZE_2D / 2
         )  # for batch size 2
@@ -135,9 +175,10 @@ class nnUNetPlanner2D:
             "do_dummy_2D_data_aug": False,
         }
         return plan
-        pass
 
     def plan_experiment(self):
+        """Plan experiment."""
+
         all_shapes_after_resampling = self.dataset_properties["all_shapes_after_resampling"]
         current_spacing = self.dataset_properties["spacing_after_resampling"]
         all_cases = self.dataset_properties["all_cases"]
