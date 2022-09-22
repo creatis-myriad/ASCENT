@@ -51,10 +51,8 @@ class nnUNetDataModule(LightningDataModule):
         fold: int = 0,
         batch_size: int = 2,
         patch_size: tuple[int, ...] = (128, 128, 128),
-        num_classes: int = None,
         in_channels: int = 1,
-        do_dummy_2D_aug: bool = True,
-        do_test: bool = False,
+        do_dummy_2D_data_aug: bool = True,
         num_workers: int = os.cpu_count() - 1,
         pin_memory: bool = True,
     ):
@@ -66,10 +64,9 @@ class nnUNetDataModule(LightningDataModule):
             train_split_ratio: Data split ratio for training.
             fold: Fold to be used for training, validation or test.
             batch_size: Batch size to be used for training and validation.
-            patch_size: Patch size to crop the data.
-            num_classes: Number of classes present in the dataset.
+            patch_size: Patch size to crop the data..
             in_channels: Number of input channels.
-            do_dummy_2D_aug: Whether to apply 2D transformation on 3D dataset.
+            do_dummy_2D_data_aug: Whether to apply 2D transformation on 3D dataset.
             do_test: Whether to run inference on test dataset and compute test scores.
             num_workers: Number of subprocesses to use for data loading.
             pin_memory: Whether to pin memory to GPU.
@@ -97,18 +94,8 @@ class nnUNetDataModule(LightningDataModule):
 
         self.data_train: Optional[torch.utils.Dataset] = None
         self.data_val: Optional[torch.utils.Dataset] = None
-        if do_test:
-            self.data_test: Optional[torch.utils.Dataset] = None
+        self.data_test: Optional[torch.utils.Dataset] = None
         self.data_predict: Optional[torch.utils.Dataset] = None
-
-    @property
-    def num_classeses(self) -> int:
-        """Get the number of classes.
-
-        Returns:
-            Number of classes in the dataset
-        """
-        return self.hparams.num_classes
 
     def prepare_data(self) -> None:
         """Data preparation.
@@ -317,7 +304,7 @@ class nnUNetDataModule(LightningDataModule):
             zoom_inter_mode = "trilinear"
             range_x = range_y = range_z = [-30.0 / 180 * np.pi, 30.0 / 180 * np.pi]
 
-            if self.hparams.do_dummy_2D_aug:
+            if self.hparams.do_dummy_2D_data_aug:
                 zoom_inter_mode = rot_inter_mode = "bicubic"
                 range_x = [-180.0 / 180 * np.pi, 180.0 / 180 * np.pi]
                 range_y = range_z = 0.0
@@ -353,7 +340,7 @@ class nnUNetDataModule(LightningDataModule):
         if not self.threeD:
             other_transforms.append(MayBeSqueezed(keys=["image", "label"], dim=-1))
 
-        if self.hparams.do_dummy_2D_aug and self.threeD:
+        if self.hparams.do_dummy_2D_data_aug and self.threeD:
             other_transforms.append(Convert3Dto2Dd(keys=["image", "label"]))
 
         # Temporally disable RandRotate augmentation while waiting for the bug fix from Monai
@@ -380,7 +367,7 @@ class nnUNetDataModule(LightningDataModule):
             ]
         )
 
-        if self.hparams.do_dummy_2D_aug and self.threeD:
+        if self.hparams.do_dummy_2D_data_aug and self.threeD:
             other_transforms.append(
                 Convert2Dto3Dd(keys=["image", "label"], in_channels=self.hparams.in_channels)
             )

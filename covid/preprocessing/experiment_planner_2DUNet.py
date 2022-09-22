@@ -1,10 +1,13 @@
 import errno
 import os
+from collections import OrderedDict
 from copy import deepcopy
 from pathlib import Path
 from typing import Union
 
 import numpy as np
+import pyrootutils
+import ruamel.yaml
 
 from covid.models.components.unet import UNet
 from covid.preprocessing.utils import get_pool_and_conv_props
@@ -179,6 +182,7 @@ class nnUNetPlanner2D:
     def plan_experiment(self):
         """Plan experiment."""
 
+        print("\nPlanning experiment for 2D U-Net...")
         all_shapes_after_resampling = self.dataset_properties["all_shapes_after_resampling"]
         current_spacing = self.dataset_properties["spacing_after_resampling"]
         all_cases = self.dataset_properties["all_cases"]
@@ -204,12 +208,90 @@ class nnUNetPlanner2D:
             median_shape, current_spacing, len(all_cases), len(all_classes) + 1, num_modalities
         )
 
-        print(plan)
+        print(plan, "\n")
+
+        self.write_plans_to_yaml(plan)
+
+    def write_plans_to_yaml(self, plan):
+        def flist(x):
+            retval = ruamel.yaml.comments.CommentedSeq(x)
+            retval.fa.set_flow_style()  # fa -> format attribute
+            return retval
+
+        DoubleQuote = ruamel.yaml.scalarstring.DoubleQuotedScalarString
+        yaml = ruamel.yaml.YAML()
+        yaml.indent(mapping=2, sequence=4, offset=2)
+        yaml.boolean_representation = ["False", "True"]
+
+        dim = len(plan["patch_size"])
+        dataset_name = os.path.split(os.path.dirname(self.preprocessed_folder))[-1]
+        datamodule_yaml = f"{dataset_name.lower()}_{dim}d.yaml"
+        model_yaml = f"{dataset_name.lower()}_{dim}d.yaml"
+        experiment_yaml = f"{dataset_name.lower()}_{dim}d.yaml"
+
+        root = pyrootutils.setup_root(__file__, pythonpath=True)
+
+        datamodule = {
+            "defaults": ["nnunet"],
+            "batch_size": plan["batch_size"],
+            "dataset_name": dataset_name,
+            "do_dummy_2D_data_aug": plan["do_dummy_2D_data_aug"],
+            "num_workers": 12,
+        }
+
+        datamodule = ruamel.yaml.comments.CommentedMap(datamodule)
+        datamodule.yaml_set_comment_before_after_key("batch_size", before="\n")
+
+        model = {
+            "defaults": ["nnunet"],
+            "net": {
+                "in_channels": len(list(self.dataset_properties["modalities"].keys())),
+                "num_classes": len(self.dataset_properties["all_classes"]) + 1,
+                "patch_size": flist(plan["patch_size"].tolist()),
+                "kernels": flist(plan["conv_kernel_sizes"]),
+                "strides": flist([[1] * len(plan["patch_size"])] + plan["pool_op_kernel_sizes"]),
+            },
+        }
+
+        model = ruamel.yaml.comments.CommentedMap(model)
+        model.yaml_set_comment_before_after_key("net", before="\n")
+
+        experiment = {
+            "defaults": [
+                {"override /datamodule": datamodule_yaml[:-5]},
+                {"override /model": model_yaml[:-5]},
+                {"override /callbacks": "nnunet"},
+                {"override /logger": "comet"},
+                {"override /trainer": "nnunet"},
+                {"override /hydra": "nnunet"},
+            ],
+            "tags": flist([DoubleQuote(dataset_name.lower()), DoubleQuote(f"nnUNet_{dim}D")]),
+            "task_name": DoubleQuote(dataset_name),
+            "fold": 0,
+            "train": True,
+            "test": True,
+            "logger": {
+                "comet": {
+                    "project_name": DoubleQuote(dataset_name),
+                    "experiment_name": DoubleQuote(str(dim) + "D_Fold${fold}"),
+                }
+            },
+        }
+
+        experiment = ruamel.yaml.comments.CommentedMap(experiment)
+        experiment.yaml_set_comment_before_after_key("tags", before="\n")
+
+        with open(root / "configs" / "datamodule" / datamodule_yaml, "w") as f:
+            yaml.dump(datamodule, f)
+
+        with open(root / "configs" / "model" / model_yaml, "w") as f:
+            yaml.dump(model, f)
+
+        with open(root / "configs" / "experiment" / experiment_yaml, "w") as f:
+            yaml.dump(experiment, f)
 
 
 if __name__ == "__main__":
-    import pyrootutils
-
     root = pyrootutils.setup_root(__file__, pythonpath=True)
     preprocessed_folder = root / "data" / "CAMUS" / "preprocessed"
     planner = nnUNetPlanner2D(preprocessed_folder)

@@ -27,3 +27,4 @@ SimpleITK				# read_io for data
 nibabel					# manipulate nifti files
 monai                   # for data reading and transformations
 einops                  # useful tensor operations
+ruamel.yaml             # yaml io

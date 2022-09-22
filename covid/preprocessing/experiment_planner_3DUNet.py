@@ -157,8 +157,8 @@ class nnUNetPlanner3D(nnUNetPlanner2D):
         batch_size = max(1, min(batch_size, max_batch_size))
 
         do_dummy_2D_data_aug = (
-            max(input_patch_size) / input_patch_size[0]
-        ) > self.anisotropy_threshold
+            bool(max(input_patch_size) / input_patch_size[0]) > self.anisotropy_threshold
+        )
 
         plan = {
             "batch_size": batch_size,

@@ -26,7 +26,6 @@ class nnUNetLitModule(LightningModule):
         optimizer: torch.optim.Optimizer,
         loss: torch.nn.Module,
         scheduler: torch.optim.lr_scheduler._LRScheduler,
-        deep_supervision: bool = True,
         tta: bool = True,
         sliding_window_overlap: float = 0.5,
         sliding_window_importance_map: bool = "gaussian",
@@ -40,7 +39,6 @@ class nnUNetLitModule(LightningModule):
             optimizer: Optimizer. Defaults to SGD optimizer.
             loss: Loss function. Defaults to Cross Entropy - Dice
             scheduler: Scheduler for training. Defaults to Polynomial Decay Scheduler.
-            deep_supervision: Whether to use deep supervision heads.
             tta: Whether to use the test time augmentation, i.e. flip.
             sliding_window_overlap: Minimum overlap for sliding window inference.
             sliding_window_importance_map: Importance map used for sliding window inference.
@@ -314,7 +312,7 @@ class nnUNetLitModule(LightningModule):
             label: Ground truth label
         """
 
-        if self.hparams.deep_supervision:
+        if self.net.deep_supervision:
             loss = self.loss(preds[0], label)
             for i, pred in enumerate(preds[1:]):
                 downsampled_label = nn.functional.interpolate(label, pred.shape[2:])

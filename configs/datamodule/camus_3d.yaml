@@ -1,7 +1,7 @@
 defaults:
   - nnunet
 
-batch_size: 10
+batch_size: 12
 dataset_name: CAMUS
 do_dummy_2D_data_aug: False
 num_workers: 12

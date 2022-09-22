@@ -1,5 +1,5 @@
 defaults:
-  - gpu.yaml
+  - gpu
 
 max_epochs: 1000
 

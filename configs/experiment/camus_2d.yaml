@@ -1,0 +1,17 @@
+defaults:
+  - override /datamodule: camus_2d
+  - override /model: camus_2d
+  - override /callbacks: nnunet
+  - override /logger: comet
+  - override /trainer: nnunet
+  - override /hydra: nnunet
+
+tags: ["camus", "nnUNet_2D"]
+task_name: "CAMUS"
+fold: 0
+train: True
+test: True
+logger:
+  comet:
+    project_name: "CAMUS"
+    experiment_name: "2D_Fold${fold}"
