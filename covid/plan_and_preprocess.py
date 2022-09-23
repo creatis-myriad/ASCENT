@@ -37,9 +37,7 @@ def plan_and_preprocess(cfg: DictConfig):
         planner3d.plan_experiment()
 
 
-@hydra.main(
-    version_base="1.2", config_path=root / "configs", config_name="plan_and_preprocess.yaml"
-)
+@hydra.main(version_base="1.2", config_path="../configs", config_name="plan_and_preprocess")
 def main(cfg: DictConfig) -> None:
     plan_and_preprocess(cfg)
 

@@ -25,6 +25,6 @@ torchinfo 				# for model summary printing
 matplotlib				# for plotting
 SimpleITK				# read_io for data
 nibabel					# manipulate nifti files
-monai                   # for data reading and transformations
+monai==1.0.0            # for data reading and transformations
 einops                  # useful tensor operations
 ruamel.yaml             # yaml io
