@@ -55,3 +55,5 @@ transfer_training: False
 
 # seed for random number generators in pytorch, numpy and python.random
 seed: null
+
+nnUNet_variant: null

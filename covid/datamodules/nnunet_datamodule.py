@@ -1,3 +1,7 @@
+import warnings
+
+warnings.filterwarnings(action="ignore", category=UserWarning, module="torchaudio")
+
 import os
 from collections import OrderedDict
 from pathlib import Path
@@ -22,7 +26,6 @@ from monai.transforms import (
     RandZoomd,
     SelectItemsd,
     SpatialPadd,
-    ToTensord,
 )
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.trainer.states import TrainerFn
@@ -346,15 +349,15 @@ class nnUNetDataModule(LightningDataModule):
         # Temporally disable RandRotate augmentation while waiting for the bug fix from Monai
         other_transforms.extend(
             [
-                # RandRotated(
-                #     keys=["image", "label"],
-                #     range_x=range_x,
-                #     range_y=range_y,
-                #     range_z=range_z,
-                #     mode=[rot_inter_mode, "nearest"],
-                #     padding_mode="zeros",
-                #     prob=0.2,
-                # ),
+                RandRotated(
+                    keys=["image", "label"],
+                    range_x=range_x,
+                    range_y=range_y,
+                    range_z=range_z,
+                    mode=[rot_inter_mode, "nearest"],
+                    padding_mode="zeros",
+                    prob=0.2,
+                ),
                 RandZoomd(
                     keys=["image", "label"],
                     min_zoom=0.7,
@@ -431,16 +434,22 @@ class nnUNetDataModule(LightningDataModule):
 
 if __name__ == "__main__":
     import hydra
-    import omegaconf
     import pyrootutils
+    from hydra import compose, initialize_config_dir
+    from omegaconf import OmegaConf
 
     root = pyrootutils.setup_root(__file__, pythonpath=True)
-    cfg = omegaconf.OmegaConf.load(root / "configs" / "datamodule" / "camus.yaml")
+
+    initialize_config_dir(config_dir=str(root / "configs" / "datamodule"), job_name="test")
+    cfg = compose(config_name="camus_2d.yaml")
+    print(OmegaConf.to_yaml(cfg))
+
     cfg.data_dir = str(root / "data")
-    cfg.patch_size = [128, 128]
-    # cfg.patch_size = [640, 512]
+    # cfg.patch_size = [128, 128]
+    cfg.in_channels = 1
+    cfg.patch_size = [640, 512]
     # cfg.patch_size = [128, 128, 12]
-    cfg.batch_size = 2
+    cfg.batch_size = 1
     cfg.fold = 0
     camus_datamodule = hydra.utils.instantiate(cfg)
     camus_datamodule.prepare_data()

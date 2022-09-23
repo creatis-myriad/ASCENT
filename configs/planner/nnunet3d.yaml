@@ -1,0 +1,3 @@
+planner3d:
+  _target_: covid.preprocessing.experiment_planner_3DUNet.nnUNetPlanner3D
+  preprocessed_folder: ${paths.data_dir}/${dataset}/preprocessed

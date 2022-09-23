@@ -170,7 +170,46 @@ class nnUNetPlanner3D(nnUNetPlanner2D):
             "pool_op_kernel_sizes": pool_op_kernel_sizes,
             "conv_kernel_sizes": conv_kernel_sizes,
         }
+
         return plan
+
+    def plan_experiment(self):
+        """Plan experiment."""
+
+        print("\nPlanning experiment for 3D U-Net...")
+        all_shapes_after_resampling = self.dataset_properties["all_shapes_after_resampling"]
+        current_spacing = self.dataset_properties["spacing_after_resampling"]
+        all_cases = self.dataset_properties["all_cases"]
+        all_classes = self.dataset_properties["all_classes"]
+        modalities = self.dataset_properties["modalities"]
+        num_modalities = len(list(modalities.keys()))
+
+        median_shape = np.median(np.vstack(all_shapes_after_resampling), 0).astype(int)
+        print("The median shape of the dataset is ", median_shape)
+
+        max_shape = np.max(np.vstack(all_shapes_after_resampling), 0)
+        print("The max shape in the dataset is ", max_shape)
+        min_shape = np.min(np.vstack(all_shapes_after_resampling), 0)
+        print("The min shape in the dataset is ", min_shape)
+
+        print(
+            "We don't want feature maps smaller than ",
+            self.unet_featuremap_min_edge_length,
+            " in the bottleneck",
+        )
+
+        plan = self.get_properties(
+            median_shape, current_spacing, len(all_cases), len(all_classes) + 1, num_modalities
+        )
+
+        if not plan["patch_size"].tolist()[-1] == 1:
+            print(plan, "\n")
+            self.write_plans_to_yaml(plan)
+        else:
+            print(
+                "The 3D input patch size has a singleton depth dimension. 2D U-Net is more than "
+                "enough. Not generating 3D plans...."
+            )
 
 
 if __name__ == "__main__":

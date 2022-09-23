@@ -159,7 +159,7 @@ def resample_label(
         return label
 
 
-class Preprocessor:
+class SegPreprocessor:
     """Preprocessor class that takes nnUNet's preprocessing method (https://github.com/MIC-
     DKFZ/nnUNet/blob/master/nnunet/preprocessing/preprocessing.py) for reference.
 
@@ -884,5 +884,5 @@ if __name__ == "__main__":
 
     root = pyrootutils.setup_root(__file__, pythonpath=True)
     dataset_dir = os.path.join(root, "data", "CAMUS")
-    preprocessor = Preprocessor(dataset_dir)
+    preprocessor = SegPreprocessor(dataset_dir)
     preprocessor.run()

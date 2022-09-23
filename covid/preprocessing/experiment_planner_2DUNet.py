@@ -32,13 +32,14 @@ class nnUNetPlanner2D:
             FileNotFoundError: If dataset_properties.pkl is not found in preprocessed_folder.
         """
 
-        self.preprocessed_folder = preprocessed_folder
-        if not os.path.isfile(os.path.join(self.preprocessed_folder, "dataset_properties.pkl")):
+        if not os.path.isfile(os.path.join(preprocessed_folder, "dataset_properties.pkl")):
             raise FileNotFoundError(
                 errno.ENOENT,
                 os.strerror(errno.ENOENT),
-                os.path.join(self.preprocessed_folder, "dataset_properties.pkl"),
+                os.path.join(preprocessed_folder, "dataset_properties.pkl"),
             )
+
+        self.preprocessed_folder = preprocessed_folder
 
         self.dataset_properties = load_pickle(
             os.path.join(self.preprocessed_folder, "dataset_properties.pkl")
@@ -270,6 +271,7 @@ class nnUNetPlanner2D:
             "fold": 0,
             "train": True,
             "test": True,
+            "nnUNet_variant": f"{dim}D",
             "logger": {
                 "comet": {
                     "project_name": DoubleQuote(dataset_name),
@@ -288,6 +290,7 @@ class nnUNetPlanner2D:
             yaml.dump(model, f)
 
         with open(root / "configs" / "experiment" / experiment_yaml, "w") as f:
+            f.write("# @package _global_\n\n")
             yaml.dump(experiment, f)
 
 

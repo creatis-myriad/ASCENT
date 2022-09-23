@@ -550,7 +550,7 @@ if __name__ == "__main__":
     from covid import utils
 
     root = pyrootutils.setup_root(__file__, pythonpath=True)
-    cfg = omegaconf.OmegaConf.load(root / "configs" / "model" / "camus.yaml")
+    cfg = omegaconf.OmegaConf.load(root / "configs" / "model" / "camus_2d.yaml")
     cfg.scheduler.max_decay_steps = 1000
     cfg.net.patch_size = [128, 128]
     cfg.net.kernels = [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
