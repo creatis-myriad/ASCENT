@@ -229,6 +229,9 @@ class UNet(nn.Module):
                 of each double convolutions block.
             conv_block: Convolution block to use.
             drop_block: Whether to use drop out layers.
+
+        Returns:
+            ModuleList of chained convolution blocks.
         """
 
         layers = []
@@ -242,7 +245,9 @@ class UNet(nn.Module):
             layers.append(conv_layer)
         return nn.ModuleList(layers)
 
-    def initialize_weights(self, module):
+    def initialize_weights(self, module: nn.Module) -> None:
+        """Initialize the weights of all nn Modules using Kaimimg normal initialization."""
+
         if isinstance(module, (nn.Conv3d, nn.Conv2d, nn.ConvTranspose3d, nn.ConvTranspose2d)):
             module.weight = nn.init.kaiming_normal_(module.weight, a=self.negative_slope)
             if module.bias is not None:
@@ -273,8 +278,8 @@ class UNet(nn.Module):
             max_num_features: Maximum features allowed in U-Net.
             num_modalities: Number of modalities/ Number of input channels.
             num_classes: Total number of classes.
-            pool_op_kernel_sizes: List of list containing convolution strides of the first convolution layer
-                of each double convolutions block.
+            pool_op_kernel_sizes: List of list containing convolution strides of the first convolution
+                layer of each double convolutions block.
             deep_supervision: Whether to use deep supervision.
             conv_per_stage: Number of convolution layers per level.
 
