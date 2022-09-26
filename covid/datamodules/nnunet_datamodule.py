@@ -58,6 +58,7 @@ class nnUNetDataModule(LightningDataModule):
         do_dummy_2D_data_aug: bool = True,
         num_workers: int = os.cpu_count() - 1,
         pin_memory: bool = True,
+        test_splits: bool = True,
     ):
         """Initializes class instance.
 
@@ -73,6 +74,7 @@ class nnUNetDataModule(LightningDataModule):
             do_test: Whether to run inference on test dataset and compute test scores.
             num_workers: Number of subprocesses to use for data loading.
             pin_memory: Whether to pin memory to GPU.
+            test_splits: Whether to split data into train/val/test (0.8/0.1/0.1).
         """
 
         super().__init__()
@@ -111,7 +113,7 @@ class nnUNetDataModule(LightningDataModule):
         print("Done")
 
     @staticmethod
-    def do_splits(splits_file: Union[Path, str], preprocessed_path: Union[Path, str]):
+    def do_splits(splits_file: Union[Path, str], preprocessed_path: Union[Path, str], test_splits):
         """Create 5-fold train/validation/test splits."""
 
         if not os.path.isfile(splits_file):
@@ -125,14 +127,18 @@ class nnUNetDataModule(LightningDataModule):
                 train_keys = np.array(all_keys_sorted)[train_idx]
                 val_and_test_keys = np.array(all_keys_sorted)[val_and_test_idx]
                 val_and_test_keys_sorted = np.sort(val_and_test_keys)
-                kfold_2 = KFold(n_splits=2, shuffle=True, random_state=12345)
-                _, (val_idx, test_idx) = kfold_2.split(val_and_test_keys_sorted)
-                val_keys = np.array(val_and_test_keys_sorted)[val_idx]
-                test_keys = np.array(val_and_test_keys_sorted)[test_idx]
+                if test_splits:
+                    kfold_2 = KFold(n_splits=2, shuffle=True, random_state=12345)
+                    _, (val_idx, test_idx) = kfold_2.split(val_and_test_keys_sorted)
+                    val_keys = np.array(val_and_test_keys_sorted)[val_idx]
+                    test_keys = np.array(val_and_test_keys_sorted)[test_idx]
+                else:
+                    val_keys = val_and_test_keys_sorted
                 splits.append(OrderedDict())
                 splits[-1]["train"] = train_keys
                 splits[-1]["val"] = val_keys
-                splits[-1]["test"] = test_keys
+                if test_splits:
+                    splits[-1]["test"] = test_keys
             save_pickle(splits, splits_file)
         else:
             print("Using splits from existing split file:", splits_file)
@@ -152,19 +158,24 @@ class nnUNetDataModule(LightningDataModule):
 
         if stage == TrainerFn.FITTING or stage == TrainerFn.TESTING:
             splits_file = os.path.join(self.preprocessed_folder, "splits_final.pkl")
-            self.do_splits(splits_file, self.full_data_dir)
+            self.do_splits(splits_file, self.full_data_dir, self.hparams.test_splits)
             splits = load_pickle(splits_file)
             if self.hparams.fold < len(splits):
                 print("Desired fold for training: %d" % self.hparams.fold)
                 train_keys = splits[self.hparams.fold]["train"]
                 val_keys = splits[self.hparams.fold]["val"]
 
-                test_keys = splits[self.hparams.fold]["test"]
-
-                print(
-                    "This split has %d training, %d validation, and %d testing cases."
-                    % (len(train_keys), len(val_keys), len(test_keys))
-                )
+                if self.hparams.test_splits:
+                    test_keys = splits[self.hparams.fold]["test"]
+                    print(
+                        "This split has %d training, %d validation, and %d testing cases."
+                        % (len(train_keys), len(val_keys), len(test_keys))
+                    )
+                else:
+                    print(
+                        "This split has %d training and %d validation cases."
+                        % (len(train_keys), len(val_keys))
+                    )
             else:
                 print(
                     "INFO: You requested fold %d for training but splits "
@@ -176,14 +187,20 @@ class nnUNetDataModule(LightningDataModule):
                 train_keys, val_and_test_keys = train_test_split(
                     keys, train_size=0.8, random_state=(12345 + self.hparams.fold)
                 )
-                val_keys, test_keys = train_test_split(
-                    val_and_test_keys, test_size=0.5, random_state=(12345 + self.hparams.fold)
-                )
-
-                print(
-                    "This random 80:10:10 split has %d training, %d validation, and %d testing cases."
-                    % (len(train_keys), len(val_keys), len(test_keys))
-                )
+                if self.hparams.test_splits:
+                    val_keys, test_keys = train_test_split(
+                        val_and_test_keys, test_size=0.5, random_state=(12345 + self.hparams.fold)
+                    )
+                    print(
+                        "This random 80:10:10 split has %d training, %d validation, and %d testing cases."
+                        % (len(train_keys), len(val_keys), len(test_keys))
+                    )
+                else:
+                    val_keys = val_and_test_keys
+                    print(
+                        "This random 80:20 split has %d training and %d validation cases."
+                        % (len(train_keys), len(val_keys))
+                    )
 
             self.train_files = [
                 {
@@ -198,13 +215,16 @@ class nnUNetDataModule(LightningDataModule):
                 for key in val_keys
             ]
             if stage == TrainerFn.TESTING:
-                self.test_files = [
-                    {
-                        "data": os.path.join(self.full_data_dir, "%s.npy" % key),
-                        "image_meta_dict": os.path.join(self.full_data_dir, "%s.pkl" % key),
-                    }
-                    for key in test_keys
-                ]
+                if self.hparams.test_splits:
+                    self.test_files = [
+                        {
+                            "data": os.path.join(self.full_data_dir, "%s.npy" % key),
+                            "image_meta_dict": os.path.join(self.full_data_dir, "%s.pkl" % key),
+                        }
+                        for key in test_keys
+                    ]
+                else:
+                    self.test_files = self.val_files
 
         if stage == TrainerFn.FITTING:
             self.data_train = IterableDataset(
@@ -218,6 +238,7 @@ class nnUNetDataModule(LightningDataModule):
             self.data_test = CacheDataset(
                 data=self.test_files, transform=self.test_transforms, cache_rate=1.0
             )
+
         if stage == TrainerFn.PREDICTING:
             self.data_predict = CacheDataset(
                 data=self.predict_files, transform=self.predict_transforms, cache_rate=1.0

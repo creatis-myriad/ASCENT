@@ -9,3 +9,4 @@ do_dummy_2D_data_aug: ???
 fold: ${fold}
 num_workers: 12
 pin_memory: True
+test_splits: True

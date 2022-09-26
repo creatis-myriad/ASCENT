@@ -510,7 +510,10 @@ class nnUNetLitModule(LightningModule):
 
     def save_mask(self, preds, fname, spacing):
         print(f"\nSaving prediction for {fname}...\n")
-        save_dir = os.path.join(self.trainer.default_root_dir, "testing_raw")
+        if self.trainer.datamodule.hparams.test_splits:
+            save_dir = os.path.join(self.trainer.default_root_dir, "testing_raw")
+        else:
+            save_dir = os.path.join(self.trainer.default_root_dir, "validation_raw")
         os.makedirs(save_dir, exist_ok=True)
 
         preds = preds.astype(np.uint8)
