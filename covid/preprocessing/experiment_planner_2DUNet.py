@@ -168,6 +168,8 @@ class nnUNetPlanner2D:
         ).astype(int)
         batch_size = max(1, min(batch_size, max_batch_size))
 
+        pool_op_kernel_sizes = [[1] * len(input_patch_size)] + pool_op_kernel_sizes
+
         plan = {
             "batch_size": batch_size,
             "num_pool_per_axis": network_num_pool_per_axis,
@@ -219,6 +221,14 @@ class nnUNetPlanner2D:
             retval.fa.set_flow_style()  # fa -> format attribute
             return retval
 
+        def fdict(*args, **kw):
+            x = ruamel.yaml.comments.CommentedMap()
+            x.fa.set_flow_style()
+            for a in args:
+                x.update(a)
+            x.update(kw)
+            return x
+
         DoubleQuote = ruamel.yaml.scalarstring.DoubleQuotedScalarString
         yaml = ruamel.yaml.YAML()
         yaml.indent(mapping=2, sequence=4, offset=2)
@@ -243,16 +253,35 @@ class nnUNetPlanner2D:
         datamodule = ruamel.yaml.comments.CommentedMap(datamodule)
         datamodule.yaml_set_comment_before_after_key("batch_size", before="\n")
 
-        model = {
-            "defaults": ["nnunet"],
-            "net": {
-                "in_channels": len(list(self.dataset_properties["modalities"].keys())),
-                "num_classes": len(self.dataset_properties["all_classes"]) + 1,
-                "patch_size": flist(plan["patch_size"].tolist()),
-                "kernels": flist(plan["conv_kernel_sizes"]),
-                "strides": flist([[1] * len(plan["patch_size"])] + plan["pool_op_kernel_sizes"]),
-            },
-        }
+        if dim == 2:
+            model = {
+                "defaults": ["nnunet"],
+                "net": {
+                    "in_channels": len(list(self.dataset_properties["modalities"].keys())),
+                    "num_classes": len(self.dataset_properties["all_classes"]) + 1,
+                    "patch_size": flist(plan["patch_size"].tolist()),
+                    "kernels": flist(plan["conv_kernel_sizes"]),
+                    "strides": flist(plan["pool_op_kernel_sizes"]),
+                },
+            }
+        elif dim == 3:
+            model = {
+                "defaults": ["nnunet"],
+                "net": {
+                    "in_channels": len(list(self.dataset_properties["modalities"].keys())),
+                    "num_classes": len(self.dataset_properties["all_classes"]) + 1,
+                    "patch_size": flist(plan["patch_size"].tolist()),
+                    "kernels": flist(plan["conv_kernel_sizes"]),
+                    "strides": flist(plan["pool_op_kernel_sizes"]),
+                    "soft_dice_kwargs": fdict(
+                        {
+                            DoubleQuote("batch_dice"): False,
+                            DoubleQuote("smooth"): 1e-5,
+                            DoubleQuote("do_bg"): False,
+                        }
+                    ),
+                },
+            }
 
         model = ruamel.yaml.comments.CommentedMap(model)
         model.yaml_set_comment_before_after_key("net", before="\n")

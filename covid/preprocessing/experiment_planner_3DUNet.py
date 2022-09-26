@@ -160,6 +160,8 @@ class nnUNetPlanner3D(nnUNetPlanner2D):
             bool(max(input_patch_size) / input_patch_size[0]) > self.anisotropy_threshold
         )
 
+        pool_op_kernel_sizes = [[1] * len(input_patch_size)] + pool_op_kernel_sizes
+
         plan = {
             "batch_size": batch_size,
             "num_pool_per_axis": network_num_pool_per_axis,

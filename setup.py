@@ -48,5 +48,4 @@ setup(
     long_description=load_long_description(),
     long_description_content_type="text/markdown",
     python_requires=">=3.9",
-    setup_requires=[],
 )

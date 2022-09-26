@@ -15,7 +15,13 @@ import hydra
 from omegaconf import DictConfig
 
 
-def plan_and_preprocess(cfg: DictConfig):
+def preprocess_and_plan(cfg: DictConfig):
+    """Preprocess dataset and plan experiments.
+
+    Args:
+        cfg: Configuration composed by Hydra.
+    """
+
     print(f"Instantiating preprocessor <{cfg.preprocessor._target_}>")
     preprocessor = hydra.utils.instantiate(cfg.preprocessor)
 
@@ -37,9 +43,9 @@ def plan_and_preprocess(cfg: DictConfig):
         planner3d.plan_experiment()
 
 
-@hydra.main(version_base="1.2", config_path="../configs", config_name="plan_and_preprocess")
+@hydra.main(version_base="1.2", config_path="../configs", config_name="preprocess_and_plan")
 def main(cfg: DictConfig) -> None:
-    plan_and_preprocess(cfg)
+    preprocess_and_plan(cfg)
 
 
 if __name__ == "__main__":
