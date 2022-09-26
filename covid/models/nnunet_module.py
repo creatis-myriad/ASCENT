@@ -84,13 +84,10 @@ class nnUNetLitModule(LightningModule):
         self.online_eval_fp = []
         self.online_eval_fn = []
 
-        self.tta = tta
-        if self.tta:
+        if self.hparams.tta:
             self.tta_flips = self.get_tta_flips()
         self.test_idx = 0
         self.test_imgs = []
-
-        self.save_predictions = save_predictions
 
     def forward(self, img):  # noqa: D102
         return self.net(img)
@@ -210,7 +207,7 @@ class nnUNetLitModule(LightningModule):
 
     def test_step(self, batch, batch_idx):  # noqa: D102
         img, label, image_meta_dict = batch["image"], batch["label"], batch["image_meta_dict"]
-        preds = self.tta_predict(img) if self.tta else self.predict(img)
+        preds = self.tta_predict(img) if self.hparams.tta else self.predict(img)
 
         num_classes = preds.shape[1]
         pred_softmax = softmax_helper(preds)
@@ -253,10 +250,33 @@ class nnUNetLitModule(LightningModule):
             "image_meta_dict": image_meta_dict,
         }
 
+    # def test_step_end(self, test_step_outputs):  # noqa: D102
+    #     preds = test_step_outputs["preds"]
+    #     image_meta_dict = test_step_outputs["image_meta_dict"]
+    #     if self.save_predictions:
+    #         preds = softmax_helper(preds).argmax(1)
+    #         preds = preds.squeeze(0).cpu().detach().numpy()
+    #         original_shape = image_meta_dict["original_shape"][0].tolist()
+    #         if len(preds.shape) == len(original_shape) - 1:
+    #             preds = preds[..., None]
+    #         if image_meta_dict["resampling_flag"].item():
+    #             shape_after_cropping = image_meta_dict["shape_after_cropping"][0].tolist()
+    #             preds = self.recovery_prediction(
+    #                 preds, shape_after_cropping, image_meta_dict["anisotropy_flag"].item()
+    #             )
+    #         box_start, box_end = image_meta_dict["crop_bbox"][0].tolist()
+    #         min_w, min_h, min_d = box_start
+    #         max_w, max_h, max_d = box_end
+    #         final_preds = np.zeros(original_shape)
+    #         final_preds[min_w:max_w, min_h:max_h, min_d:max_d] = preds
+    #         fname = image_meta_dict["case_identifier"][0]
+    #         spacing = image_meta_dict["original_spacing"][0].tolist()
+    #         self.save_mask(final_preds, fname, spacing)
+
     def test_step_end(self, test_step_outputs):  # noqa: D102
         preds = test_step_outputs["preds"]
         image_meta_dict = test_step_outputs["image_meta_dict"]
-        if self.save_predictions:
+        if self.hparams.save_predictions:
             preds = softmax_helper(preds)
             preds = preds.squeeze(0).cpu().detach().numpy()
             original_shape = image_meta_dict["original_shape"][0].tolist()
@@ -274,11 +294,18 @@ class nnUNetLitModule(LightningModule):
 
             final_preds = np.zeros([preds.shape[0], *original_shape])
             final_preds[:, min_w:max_w, min_h:max_h, min_d:max_d] = preds
-            final_preds = final_preds.argmax(0)
+
+            if self.trainer.datamodule.hparams.test_splits:
+                save_dir = os.path.join(self.trainer.default_root_dir, "testing_raw")
+            else:
+                save_dir = os.path.join(self.trainer.default_root_dir, "validation_raw")
+
             fname = image_meta_dict["case_identifier"][0]
             spacing = image_meta_dict["original_spacing"][0].tolist()
 
-            self.save_mask(final_preds, fname, spacing)
+            final_preds = final_preds.argmax(0)
+
+            self.save_mask(final_preds, fname, spacing, save_dir)
 
     def test_epoch_end(self, test_step_outputs):  # noqa: D102
         mean_dice = self.metric_mean("test/dice", test_step_outputs)
@@ -417,7 +444,7 @@ class nnUNetLitModule(LightningModule):
 
     @staticmethod
     def recovery_prediction(
-        prediction: Union[torch.Tensor, MetaTensor],
+        prediction: np.array,
         new_shape: Union[tuple, list],
         anisotropy_flag: bool,
     ) -> np.array:
@@ -574,15 +601,21 @@ class nnUNetLitModule(LightningModule):
     def metric_mean(name, outputs):
         return torch.stack([out[name] for out in outputs]).mean(dim=0)
 
-    def save_mask(self, preds, fname, spacing):
-        print(f"\nSaving prediction for {fname}...\n")
-        if self.trainer.datamodule.hparams.test_splits:
-            save_dir = os.path.join(self.trainer.default_root_dir, "testing_raw")
-        else:
-            save_dir = os.path.join(self.trainer.default_root_dir, "validation_raw")
+    def save_mask(self, preds, fname, spacing, save_dir):
+        print(f"\nSaving segmentation for {fname}...\n")
+
         os.makedirs(save_dir, exist_ok=True)
 
         preds = preds.astype(np.uint8)
+        itk_image = sitk.GetImageFromArray(np.transpose(preds, list(range(0, len(spacing)))[::-1]))
+        itk_image.SetSpacing(spacing)
+        sitk.WriteImage(itk_image, os.path.join(save_dir, fname + ".nii.gz"))
+
+    def save_npz(self, preds, fname, spacing, save_dir):
+        print(f"\nSaving softmax for {fname}...\n")
+
+        os.makedirs(save_dir, exist_ok=True)
+
         itk_image = sitk.GetImageFromArray(np.transpose(preds, list(range(0, len(spacing)))[::-1]))
         itk_image.SetSpacing(spacing)
         sitk.WriteImage(itk_image, os.path.join(save_dir, fname + ".nii.gz"))
@@ -609,6 +642,7 @@ if __name__ == "__main__":
     import hydra
     import omegaconf
     import pyrootutils
+    from hydra import compose, initialize_config_dir
     from pytorch_lightning import (
         Callback,
         LightningDataModule,
@@ -619,16 +653,22 @@ if __name__ == "__main__":
     from covid import utils
 
     root = pyrootutils.setup_root(__file__, pythonpath=True)
-    cfg = omegaconf.OmegaConf.load(root / "configs" / "model" / "camus_2d.yaml")
+
+    cfg = omegaconf.OmegaConf.load(root / "configs" / "model" / "nnunet.yaml")
     cfg.scheduler.max_decay_steps = 1000
+    cfg.net.in_channels = 1
+    cfg.net.num_classes = 3
     cfg.net.patch_size = [128, 128]
     cfg.net.kernels = [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
     cfg.net.strides = [[1, 1], [2, 2], [2, 2], [2, 2], [2, 2]]
     nnunet: LightningModule = hydra.utils.instantiate(cfg)
 
-    cfg = omegaconf.OmegaConf.load(root / "configs" / "datamodule" / "camus.yaml")
+    cfg = omegaconf.OmegaConf.load(root / "configs" / "datamodule" / "nnunet.yaml")
     cfg.data_dir = str(root / "data")
+    cfg.dataset_name = "CAMUS"
     cfg.patch_size = [128, 128]
+    cfg.do_dummy_2D_data_aug = False
+    cfg.in_channels = 1
     # cfg.patch_size = [128, 128, 12]
     cfg.batch_size = 2
     cfg.fold = 4
