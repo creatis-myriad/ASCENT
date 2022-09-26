@@ -1,5 +1,9 @@
+from typing import Union
+
 import numpy as np
+import torch
 import torch.nn as nn
+from monai.data import MetaTensor
 
 from covid.models.components.unet_related.layers import (
     ConvBlock,
@@ -10,6 +14,8 @@ from covid.models.components.unet_related.layers import (
 
 
 class UNet(nn.Module):
+    """A generic U-Net that can be instantiated dynamically."""
+
     DEFAULT_BATCH_SIZE_3D = 2
     DEFAULT_PATCH_SIZE_3D = (64, 192, 160)
     SPACING_FACTOR_BETWEEN_STAGES = 2
@@ -28,21 +34,44 @@ class UNet(nn.Module):
 
     def __init__(
         self,
-        in_channels,
-        num_classes,
-        patch_size,
-        kernels,
-        strides,
-        normalization_layer="instance",
-        negative_slope=1e-2,
-        deep_supervision=True,
-        attention=False,
-        drop_block=False,
-        residual=False,
-        out_seg_bias=False,
-    ):
+        in_channels: int,
+        num_classes: int,
+        patch_size: list,
+        kernels: list[list],
+        strides: list[list],
+        normalization_layer: str = "instance",
+        negative_slope: float = 1e-2,
+        deep_supervision: bool = True,
+        attention: bool = False,
+        drop_block: bool = False,
+        residual: bool = False,
+        out_seg_bias: bool = False,
+    ) -> None:
+        """
+        Args:
+            in_channels: Number of input channels.
+            num_classes: Total number of classes in the dataset including background.
+            patch_size: Input patch size according to which the data will be cropped. Can be 2D or
+                3D.
+            kernels: List of list containing convolution kernel size of the first convolution layer
+                of each double convolutions block.
+            strides: List of list containing convolution strides of the first convolution layer
+                of each double convolutions block.
+            normalization_layer: Normalization to use. Can be either 'batch' or 'instance'.
+            negative_slope: Negative slope used in LeakyRELU.
+            deep_supervision: Whether to use deep supervision.
+            attention: Whether to use attention module.
+            drop_block: Whether to use drop out layers.
+            residual: Whether to use residual block.
+            out_seg_bias: Whether to include trainable bias in the output segmentation layers.
+
+        Raises:
+            NotImplementedError: Error when input patch size is neither 2D nor 3D.
+        """
+
         super().__init__()
-        assert len(patch_size) in [2, 3], "Only 2D and 3D patches are supported right now!"
+        if not len(patch_size) in [2, 3]:
+            raise NotImplementedError("Only 2D and 3D patches are supported right now!")
 
         self.patch_size = patch_size
         self.dim = str(len(patch_size))
@@ -93,7 +122,9 @@ class UNet(nn.Module):
         self.deep_supervision_heads = self.get_deep_supervision_heads()
         self.apply(self.initialize_weights)
 
-    def forward(self, input_data):
+    def forward(
+        self, input_data: Union[torch.Tensor, MetaTensor]
+    ) -> Union[torch.Tensor, MetaTensor]:  # noqa: D102
         out = self.input_block(input_data)
         encoder_outputs = [out]
         for downsample in self.downsamples:
@@ -112,8 +143,31 @@ class UNet(nn.Module):
         return out
 
     def get_conv_block(
-        self, conv_block, in_channels, out_channels, kernel_size, stride, drop_block=False
-    ):
+        self,
+        conv_block: nn.Module,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: list,
+        stride: list,
+        drop_block: bool = False,
+    ) -> nn.Module:
+        """Build a double convolutions block.
+
+        Args:
+            conv_block: Convolution block. Can be usual double convolutions block or with residual
+                connections or with attention modules.
+            in_channels: Number of input channels.
+            out_channels: Number of output channels.
+            kernel_size: List containing convolution kernel size of the first convolution layer
+                of double convolutions block.
+            strides: List containing convolution strides of the first convolution layer
+                of double convolutions block.
+            drop_block: Whether to use drop out layers.
+
+        Returns:
+            Double convolutions block.
+        """
+
         return conv_block(
             dim=self.dim,
             stride=stride,
@@ -126,7 +180,16 @@ class UNet(nn.Module):
             negative_slope=self.negative_slope,
         )
 
-    def get_output_block(self, decoder_level):
+    def get_output_block(self, decoder_level: int) -> nn.Module:
+        """Build the output convolution layer of the specified decoder layer.
+
+        Args:
+            decoder_level: Level of decoder.
+
+        Returns:
+            Output convolution layer.
+        """
+
         return OutputBlock(
             in_channels=self.filters[decoder_level],
             out_channels=self.num_classes,
@@ -134,14 +197,40 @@ class UNet(nn.Module):
             bias=self.out_seg_bias,
         )
 
-    def get_deep_supervision_heads(self):
+    def get_deep_supervision_heads(self) -> nn.ModuleList:
+        """Build the deep supervision heads of all decoder levels except the two lowest
+        resolutions.
+
+        Returns:
+            ModuleList of all deep supervision heads.
+        """
+
         return nn.ModuleList(
             [self.get_output_block(i + 1) for i in range(len(self.upsamples) - 1)]
         )
 
     def get_module_list(
-        self, in_channels, out_channels, kernels, strides, conv_block, drop_block=False
-    ):
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernels: list[list],
+        strides: list[list],
+        conv_block: nn.Module,
+        drop_block: bool = False,
+    ) -> nn.ModuleList:
+        """Combine multiple convolution blocks to form a ModuleList.
+
+        Args:
+            in_channels: Number of input channels.
+            out_channels: Number of output channels.
+            kernels: List of list containing convolution kernel size of the first convolution layer
+                of each double convolutions block.
+            strides: List of list containing convolution strides of the first convolution layer
+                of each double convolutions block.
+            conv_block: Convolution block to use.
+            drop_block: Whether to use drop out layers.
+        """
+
         layers = []
         for i, (in_channel, out_channel, kernel, stride) in enumerate(
             zip(in_channels, out_channels, kernels, strides)
@@ -161,30 +250,41 @@ class UNet(nn.Module):
 
     @staticmethod
     def compute_approx_vram_consumption(
-        patch_size,
-        num_pool_per_axis,
-        base_num_features,
-        max_num_features,
-        num_modalities,
-        num_classes,
-        pool_op_kernel_sizes,
-        deep_supervision=False,
-        conv_per_stage=2,
-    ):
-        """This only applies for num_conv_per_stage and convolutional_upsampling=True not real vram
-        consumption. just a constant term to which the vram consumption will be approx proportional
-        (+ offset for parameter storage)
+        patch_size: list,
+        num_pool_per_axis: list,
+        base_num_features: int,
+        max_num_features: int,
+        num_modalities: int,
+        num_classes: int,
+        pool_op_kernel_sizes: list[list],
+        deep_supervision: bool = False,
+        conv_per_stage: int = 2,
+    ) -> int:
+        """Calculate the approximate GPU memory required for the U-Net model.
 
-        :param deep_supervision:
-        :param patch_size:
-        :param num_pool_per_axis:
-        :param base_num_features:
-        :param max_num_features:
-        :param num_modalities:
-        :param num_classes:
-        :param pool_op_kernel_sizes:
-        :return:
+        This only applies for num_conv_per_stage=2 and convolutional_upsampling=True not real vram
+        consumption. just a constant term to which the vram consumption will be approx proportional
+        (+ offset for parameter storage).
+
+        Args:
+            patch_size: Input patch size.
+            num_pool_per_axis: List containing the number of poolings for each axe.
+            base_num_features: Starting features of U-Net.
+            max_num_features: Maximum features allowed in U-Net.
+            num_modalities: Number of modalities/ Number of input channels.
+            num_classes: Total number of classes.
+            pool_op_kernel_sizes: List of list containing convolution strides of the first convolution layer
+                of each double convolutions block.
+            deep_supervision: Whether to use deep supervision.
+            conv_per_stage: Number of convolution layers per level.
+
+        Returns:
+            Approximate total number of features in pixels of U-Net.
+
+        Ref:
+            https://github.com/MIC-DKFZ/nnUNet/blob/master/nnunet/network_architecture/generic_UNet.py
         """
+
         if not isinstance(num_pool_per_axis, np.ndarray):
             num_pool_per_axis = np.array(num_pool_per_axis)
 
