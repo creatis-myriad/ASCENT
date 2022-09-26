@@ -39,6 +39,7 @@ class UNet(nn.Module):
         attention=False,
         drop_block=False,
         residual=False,
+        out_seg_bias=False,
     ):
         super().__init__()
         assert len(patch_size) in [2, 3], "Only 2D and 3D patches are supported right now!"
@@ -49,6 +50,7 @@ class UNet(nn.Module):
         self.num_classes = num_classes
         self.attention = attention
         self.residual = residual
+        self.out_seg_bias = out_seg_bias
         self.negative_slope = negative_slope
         self.deep_supervision = deep_supervision
         self.norm = normalization_layer + f"norm{self.dim}d"
@@ -129,7 +131,7 @@ class UNet(nn.Module):
             in_channels=self.filters[decoder_level],
             out_channels=self.num_classes,
             dim=self.dim,
-            bias=False,
+            bias=self.out_seg_bias,
         )
 
     def get_deep_supervision_heads(self):

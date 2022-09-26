@@ -27,6 +27,7 @@ net:
   attention: False
   drop_block: False
   residual: False
+  out_seg_bias: False
 
 loss:
   _target_: covid.models.components.unet_related.losses.DC_and_CE_loss

@@ -273,6 +273,8 @@ class nnUNetPlanner2D:
                     "patch_size": flist(plan["patch_size"].tolist()),
                     "kernels": flist(plan["conv_kernel_sizes"]),
                     "strides": flist(plan["pool_op_kernel_sizes"]),
+                },
+                "loss": {
                     "soft_dice_kwargs": fdict(
                         {
                             DoubleQuote("batch_dice"): False,
@@ -285,6 +287,8 @@ class nnUNetPlanner2D:
 
         model = ruamel.yaml.comments.CommentedMap(model)
         model.yaml_set_comment_before_after_key("net", before="\n")
+        if dim == 3:
+            model.yaml_set_comment_before_after_key("loss", before="\n")
 
         experiment = {
             "defaults": [
