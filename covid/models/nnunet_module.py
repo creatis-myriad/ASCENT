@@ -30,6 +30,7 @@ class nnUNetLitModule(LightningModule):
         sliding_window_overlap: float = 0.5,
         sliding_window_importance_map: bool = "gaussian",
         save_predictions: bool = True,
+        save_npz: bool = False,
     ):
         """Saves the system's configuration in `hparams`. Initialize variables for training and
         validation loop.
@@ -256,14 +257,14 @@ class nnUNetLitModule(LightningModule):
         preds = test_step_outputs["preds"]
         image_meta_dict = test_step_outputs["image_meta_dict"]
         if self.save_predictions:
-            preds = softmax_helper(preds).argmax(1)
+            preds = softmax_helper(preds)
             preds = preds.squeeze(0).cpu().detach().numpy()
             original_shape = image_meta_dict["original_shape"][0].tolist()
-            if len(preds.shape) == len(original_shape) - 1:
+            if len(preds.shape[1:]) == len(original_shape) - 1:
                 preds = preds[..., None]
             if image_meta_dict["resampling_flag"].item():
                 shape_after_cropping = image_meta_dict["shape_after_cropping"][0].tolist()
-                preds = self.recovery_prediction(
+                preds = self.recovery_predictionV2(
                     preds, shape_after_cropping, image_meta_dict["anisotropy_flag"].item()
                 )
 
@@ -271,8 +272,9 @@ class nnUNetLitModule(LightningModule):
             min_w, min_h, min_d = box_start
             max_w, max_h, max_d = box_end
 
-            final_preds = np.zeros(original_shape)
-            final_preds[min_w:max_w, min_h:max_h, min_d:max_d] = preds
+            final_preds = np.zeros([preds.shape[0], *original_shape])
+            final_preds[:, min_w:max_w, min_h:max_h, min_d:max_d] = preds
+            final_preds = final_preds.argmax(0)
             fname = image_meta_dict["case_identifier"][0]
             spacing = image_meta_dict["original_spacing"][0].tolist()
 
@@ -308,8 +310,8 @@ class nnUNetLitModule(LightningModule):
         """Compute the multi-scale loss if deep supervision is set to True.
 
         Args:
-            preds: Logits predicted
-            label: Ground truth label
+            preds: Predicted logits.
+            label: Ground truth label.
         """
 
         if self.net.deep_supervision:
@@ -422,13 +424,14 @@ class nnUNetLitModule(LightningModule):
         """Recover prediction to its original shape in case of resampling.
 
         Args:
-            prediciton: Logits predicted.
+            prediciton: Predicted logits.
             new_shape: Shape for resampling.
             anisotropy_flag: Whether to use anisotropic resampling.
 
         Returns:
             Resampled prediction to the original spacing.
         """
+
         shape = np.array(prediction.shape)
         if np.any(shape != np.array(new_shape)):
             reshaped = np.zeros(new_shape, dtype=np.uint8)
@@ -477,6 +480,69 @@ class nnUNetLitModule(LightningModule):
                     )
                     reshaped[resized >= 0.5] = class_
 
+            return reshaped
+        else:
+            return prediction
+
+    @staticmethod
+    def recovery_predictionV2(
+        prediction: np.array,
+        new_shape: Union[tuple, list],
+        anisotropy_flag: bool,
+    ) -> np.array:
+        """Recover prediction to its original shape in case of resampling.
+
+        Args:
+            prediciton: Predicted logits.
+            new_shape: Shape for resampling.
+            anisotropy_flag: Whether to use anisotropic resampling.
+
+        Returns:
+            Resampled prediction to the original spacing.
+        """
+
+        shape = np.array(prediction[0].shape)
+        if np.any(shape != np.array(new_shape)):
+            resized_channels = []
+            if anisotropy_flag:
+                for image_c in prediction:
+                    resized_slices = []
+                    for i in range(image_c.shape[-1]):
+                        image_c_2d_slice = image_c[:, :, i]
+                        image_c_2d_slice = resize(
+                            image_c_2d_slice,
+                            new_shape[:-1],
+                            order=1,
+                            mode="edge",
+                            cval=0,
+                            clip=True,
+                            anti_aliasing=False,
+                        )
+                        resized_slices.append(image_c_2d_slice)
+                    resized = np.stack(resized_slices, axis=-1)
+                    resized = resize(
+                        resized,
+                        new_shape,
+                        order=0,
+                        mode="constant",
+                        cval=0,
+                        clip=True,
+                        anti_aliasing=False,
+                    )
+                    resized_channels.append(resized)
+            else:
+                for image_c in prediction:
+                    resized = resize(
+                        image_c,
+                        new_shape,
+                        order=3,
+                        mode="edge",
+                        cval=0,
+                        clip=True,
+                        anti_aliasing=False,
+                    )
+                    resized_channels.append(resized)
+            reshaped = np.stack(resized_channels, axis=0)
             return reshaped
         else:
             return prediction
