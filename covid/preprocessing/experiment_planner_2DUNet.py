@@ -166,7 +166,7 @@ class nnUNetPlanner2D:
             * dataset_num_voxels
             / np.prod(input_patch_size, dtype=np.int64)
         ).astype(int)
-        batch_size = max(1, min(batch_size, max_batch_size))
+        batch_size = int(max(1, min(batch_size, max_batch_size)))
 
         pool_op_kernel_sizes = [[1] * len(input_patch_size)] + pool_op_kernel_sizes
 
@@ -329,6 +329,6 @@ class nnUNetPlanner2D:
 
 if __name__ == "__main__":
     root = pyrootutils.setup_root(__file__, pythonpath=True)
-    preprocessed_folder = root / "data" / "CAMUS" / "preprocessed"
+    preprocessed_folder = root / "data" / "DEALIAS" / "preprocessed"
     planner = nnUNetPlanner2D(preprocessed_folder)
     planner.plan_experiment()

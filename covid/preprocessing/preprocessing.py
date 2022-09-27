@@ -1,5 +1,4 @@
 import itertools
-import json
 import os
 import pickle  # nosec B403
 from collections import OrderedDict
@@ -9,14 +8,7 @@ from typing import Callable, Union
 import numpy as np
 from joblib import Parallel, delayed
 from monai.data import MetaTensor
-from monai.transforms import (
-    Compose,
-    ConcatItemsd,
-    EnsureChannelFirstd,
-    LoadImaged,
-    SelectItemsd,
-    SpatialCropd,
-)
+from monai.transforms import Compose, EnsureChannelFirstd, LoadImaged, SpatialCropd
 from monai.transforms.utils import generate_spatial_bounding_box
 from skimage.transform import resize
 from torch import Tensor
@@ -217,25 +209,25 @@ class SegPreprocessor:
         d = load_json(json_file)
         training_files = d["training"]
         num_modalities = len(d["modality"].keys())
-        if num_modalities > 1:
-            image_keys = ["image_%d" % mod for mod in range(num_modalities)]
-        else:
-            image_keys = ["image"]
         for tr in training_files:
             cur_pat = OrderedDict()
+            image_paths = []
             for mod in range(num_modalities):
-                cur_pat[image_keys[mod]] = os.path.join(
-                    self.dataset_path,
-                    "imagesTr",
-                    tr["image"].split("/")[-1][:-7] + "_%04.0d.nii.gz" % mod,
+                image_paths.append(
+                    os.path.join(
+                        self.dataset_path,
+                        "imagesTr",
+                        tr["image"].split("/")[-1][:-7] + "_%04.0d.nii.gz" % mod,
+                    )
                 )
+            cur_pat["image"] = image_paths
             cur_pat["label"] = os.path.join(
                 self.dataset_path, "labelsTr", tr["label"].split("/")[-1]
             )
             datalist.append(cur_pat)
             modalities = {int(i): d["modality"][str(i)] for i in d["modality"].keys()}
 
-        return datalist, image_keys, modalities
+        return datalist, modalities
 
     def _get_target_spacing(
         self,
@@ -385,7 +377,7 @@ class SegPreprocessor:
                 in datalist and transform the data.
         """
 
-        list_of_data_files = list(data.values())[:-1]
+        list_of_data_files = data["image"]
         case_identifier = os.path.basename(list_of_data_files[0]).split(".nii.gz")[0][:-5]
         if self.overwrite_existing or (
             not os.path.isfile(os.path.join(self.cropped_folder, "%s.npz" % case_identifier))
@@ -774,7 +766,7 @@ class SegPreprocessor:
         prop["do_normalize"] = self.do_normalize
         prop["modalities"] = self.modalities
         prop["use_nonzero_mask"] = self.use_nonzero_mask
-        prop["intensiity_properties"] = self.intensity_properties
+        prop["intensity_properties"] = self.intensity_properties
         all_cases = [
             self.get_case_identifier_from_npz(case) for case in list_of_preprocessed_npz_files
         ]
@@ -828,21 +820,13 @@ class SegPreprocessor:
         """Perform the cropping, resampling, normalization and saving of the dataset."""
 
         # get all training data
-        datalist, image_keys, self.modalities = self._create_datalist()
+        datalist, self.modalities = self._create_datalist()
 
         load_transforms = [
-            LoadImaged(keys=[*image_keys, "label"]),
-            EnsureChannelFirstd(keys=[*image_keys, "label"]),
+            LoadImaged(keys=["image", "label"]),
+            EnsureChannelFirstd(keys=["image", "label"]),
         ]
-
-        if len(image_keys) > 1:
-            concat_transform = [
-                ConcatItemsd(keys=image_keys, name="image"),
-                SelectItemsd(keys="image"),
-            ]
-        else:
-            concat_transform = []
-        transforms = Compose(load_transforms + concat_transform)
+        transforms = Compose(load_transforms)
 
         print("Initializing to run preprocessing...")
         print("Cropped folder: ", self.cropped_folder)
@@ -883,6 +867,6 @@ if __name__ == "__main__":
     import pyrootutils
 
     root = pyrootutils.setup_root(__file__, pythonpath=True)
-    dataset_dir = os.path.join(root, "data", "CAMUS")
+    dataset_dir = os.path.join(root, "data", "DEALIAS")
     preprocessor = SegPreprocessor(dataset_dir)
     preprocessor.run()

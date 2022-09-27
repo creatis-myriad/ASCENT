@@ -1,16 +1,19 @@
 import os
+from collections import OrderedDict
 from typing import Union
 
 import numpy as np
 import SimpleITK as sitk
 import torch
 import torch.nn as nn
+from einops.einops import rearrange
 from monai.data import MetaTensor
 from pytorch_lightning import LightningModule
 from skimage.transform import resize
 
 from covid.datamodules.components.inferers import sliding_window_inference
 from covid.models.components.unet_related.utils import softmax_helper, sum_tensor
+from covid.utils.file_and_folder_operations import save_pickle
 
 
 class nnUNetLitModule(LightningModule):
@@ -250,45 +253,23 @@ class nnUNetLitModule(LightningModule):
             "image_meta_dict": image_meta_dict,
         }
 
-    # def test_step_end(self, test_step_outputs):  # noqa: D102
-    #     preds = test_step_outputs["preds"]
-    #     image_meta_dict = test_step_outputs["image_meta_dict"]
-    #     if self.save_predictions:
-    #         preds = softmax_helper(preds).argmax(1)
-    #         preds = preds.squeeze(0).cpu().detach().numpy()
-    #         original_shape = image_meta_dict["original_shape"][0].tolist()
-    #         if len(preds.shape) == len(original_shape) - 1:
-    #             preds = preds[..., None]
-    #         if image_meta_dict["resampling_flag"].item():
-    #             shape_after_cropping = image_meta_dict["shape_after_cropping"][0].tolist()
-    #             preds = self.recovery_prediction(
-    #                 preds, shape_after_cropping, image_meta_dict["anisotropy_flag"].item()
-    #             )
-    #         box_start, box_end = image_meta_dict["crop_bbox"][0].tolist()
-    #         min_w, min_h, min_d = box_start
-    #         max_w, max_h, max_d = box_end
-    #         final_preds = np.zeros(original_shape)
-    #         final_preds[min_w:max_w, min_h:max_h, min_d:max_d] = preds
-    #         fname = image_meta_dict["case_identifier"][0]
-    #         spacing = image_meta_dict["original_spacing"][0].tolist()
-    #         self.save_mask(final_preds, fname, spacing)
-
     def test_step_end(self, test_step_outputs):  # noqa: D102
         preds = test_step_outputs["preds"]
-        image_meta_dict = test_step_outputs["image_meta_dict"]
+        properties_dict = self.get_properties(test_step_outputs["image_meta_dict"])
+
         if self.hparams.save_predictions:
             preds = softmax_helper(preds)
             preds = preds.squeeze(0).cpu().detach().numpy()
-            original_shape = image_meta_dict["original_shape"][0].tolist()
+            original_shape = properties_dict.get("original_shape")
             if len(preds.shape[1:]) == len(original_shape) - 1:
                 preds = preds[..., None]
-            if image_meta_dict["resampling_flag"].item():
-                shape_after_cropping = image_meta_dict["shape_after_cropping"][0].tolist()
-                preds = self.recovery_predictionV2(
-                    preds, shape_after_cropping, image_meta_dict["anisotropy_flag"].item()
+            if properties_dict.get("resampling_flag"):
+                shape_after_cropping = properties_dict.get("shape_after_cropping")
+                preds = self.recovery_prediction(
+                    preds, shape_after_cropping, properties_dict.get("anisotropy_flag")
                 )
 
-            box_start, box_end = image_meta_dict["crop_bbox"][0].tolist()
+            box_start, box_end = properties_dict.get("crop_bbox")
             min_w, min_h, min_d = box_start
             max_w, max_h, max_d = box_end
 
@@ -300,8 +281,11 @@ class nnUNetLitModule(LightningModule):
             else:
                 save_dir = os.path.join(self.trainer.default_root_dir, "validation_raw")
 
-            fname = image_meta_dict["case_identifier"][0]
-            spacing = image_meta_dict["original_spacing"][0].tolist()
+            fname = properties_dict.get("case_identifier")
+            spacing = properties_dict.get("original_spacing")
+
+            if self.hparams.save_npz:
+                self.save_npz_and_properties(final_preds, properties_dict, fname, save_dir)
 
             final_preds = final_preds.argmax(0)
 
@@ -451,81 +435,12 @@ class nnUNetLitModule(LightningModule):
         """Recover prediction to its original shape in case of resampling.
 
         Args:
-            prediciton: Predicted logits.
-            new_shape: Shape for resampling.
+            prediciton: Predicted logits. (c, W, H, D)
+            new_shape: Shape for resampling. (W, H, D)
             anisotropy_flag: Whether to use anisotropic resampling.
 
         Returns:
-            Resampled prediction to the original spacing.
-        """
-
-        shape = np.array(prediction.shape)
-        if np.any(shape != np.array(new_shape)):
-            reshaped = np.zeros(new_shape, dtype=np.uint8)
-            n_class = np.max(prediction)
-            if anisotropy_flag:
-                shape_2d = new_shape[:-1]
-                depth = prediction.shape[-1]
-                reshaped_2d = np.zeros((*shape_2d, depth), dtype=np.uint8)
-
-                for class_ in range(1, int(n_class) + 1):
-                    for depth_ in range(depth):
-                        mask = prediction[:, :, depth_] == class_
-                        resized_2d = resize(
-                            mask.astype(float),
-                            shape_2d,
-                            order=1,
-                            mode="edge",
-                            cval=0,
-                            clip=True,
-                            anti_aliasing=False,
-                        )
-                        reshaped_2d[:, :, depth_][resized_2d >= 0.5] = class_
-                for class_ in range(1, int(n_class) + 1):
-                    mask = reshaped_2d == class_
-                    resized = resize(
-                        mask.astype(float),
-                        new_shape,
-                        order=0,
-                        mode="constant",
-                        cval=0,
-                        clip=True,
-                        anti_aliasing=False,
-                    )
-                    reshaped[resized >= 0.5] = class_
-            else:
-                for class_ in range(1, int(n_class) + 1):
-                    mask = prediction == class_
-                    resized = resize(
-                        mask.astype(float),
-                        new_shape,
-                        order=1,
-                        mode="edge",
-                        cval=0,
-                        clip=True,
-                        anti_aliasing=False,
-                    )
-                    reshaped[resized >= 0.5] = class_
-
-            return reshaped
-        else:
-            return prediction
-
-    @staticmethod
-    def recovery_predictionV2(
-        prediction: np.array,
-        new_shape: Union[tuple, list],
-        anisotropy_flag: bool,
-    ) -> np.array:
-        """Recover prediction to its original shape in case of resampling.
-
-        Args:
-            prediciton: Predicted logits.
-            new_shape: Shape for resampling.
-            anisotropy_flag: Whether to use anisotropic resampling.
-
-        Returns:
-            Resampled prediction to the original spacing.
+            (c, W, H, D) Resampled prediction.
         """
 
         shape = np.array(prediction[0].shape)
@@ -601,24 +516,46 @@ class nnUNetLitModule(LightningModule):
     def metric_mean(name, outputs):
         return torch.stack([out[name] for out in outputs]).mean(dim=0)
 
+    @staticmethod
+    def get_properties(image_meta_dict: dict) -> OrderedDict:
+        """Convert values in image meta dictionary loaded from torch.tensor to normal list/boolean.
+
+        Args:
+            image_meta_dict: Dictionary containing image meta information.
+
+        Returns:
+            Converted properties dictionary.
+        """
+        properties_dict = OrderedDict()
+        properties_dict["original_shape"] = image_meta_dict["original_shape"][0].tolist()
+        properties_dict["resampling_flag"] = image_meta_dict["resampling_flag"].item()
+        properties_dict["shape_after_cropping"] = image_meta_dict["shape_after_cropping"][
+            0
+        ].tolist()
+        properties_dict["anisotropy_flag"] = image_meta_dict["anisotropy_flag"].item()
+        properties_dict["crop_bbox"] = image_meta_dict["crop_bbox"][0].tolist()
+        properties_dict["case_identifier"] = image_meta_dict["case_identifier"][0]
+        properties_dict["original_spacing"] = image_meta_dict["original_spacing"][0].tolist()
+
     def save_mask(self, preds, fname, spacing, save_dir):
         print(f"\nSaving segmentation for {fname}...\n")
 
         os.makedirs(save_dir, exist_ok=True)
 
         preds = preds.astype(np.uint8)
-        itk_image = sitk.GetImageFromArray(np.transpose(preds, list(range(0, len(spacing)))[::-1]))
+        itk_image = sitk.GetImageFromArray(rearrange(preds, "w h d ->  d h w"))
         itk_image.SetSpacing(spacing)
         sitk.WriteImage(itk_image, os.path.join(save_dir, fname + ".nii.gz"))
 
-    def save_npz(self, preds, fname, spacing, save_dir):
+    def save_npz_and_properties(self, preds, properties_dict, fname, save_dir):
         print(f"\nSaving softmax for {fname}...\n")
 
         os.makedirs(save_dir, exist_ok=True)
 
-        itk_image = sitk.GetImageFromArray(np.transpose(preds, list(range(0, len(spacing)))[::-1]))
-        itk_image.SetSpacing(spacing)
-        sitk.WriteImage(itk_image, os.path.join(save_dir, fname + ".nii.gz"))
+        np.savez_compressed(
+            os.path.join(save_dir, fname + ".npz"), softmax=preds.astype(np.float16)
+        )
+        save_pickle(properties_dict, os.path.join(save_dir, fname + ".pkl"))
 
     def update_eval_criterion_MA(self):
         if self.val_eval_criterion_MA is None:

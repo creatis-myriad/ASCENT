@@ -2,9 +2,11 @@ import numpy as np
 from einops.einops import rearrange
 from monai.config import KeysCollection
 from monai.data import MetaTensor
-from monai.transforms import LoadImage, SqueezeDim
+from monai.transforms import LoadImage, SpatialCrop, SqueezeDim
 from monai.transforms.transform import MapTransform
+from monai.transforms.utils import generate_spatial_bounding_box
 
+from covid.preprocessing.preprocessing import resample_image, resample_label
 from covid.utils.file_and_folder_operations import load_pickle
 
 
@@ -91,6 +93,93 @@ class MayBeSqueezed(MapTransform):
         return d
 
 
+class LoadAndPreprocessd(MapTransform):
+    """Load and preprocess data path given in dictionary keys.
+
+    Dictionary must contain the following keys: "image" and "dataset_properties"
+    """
+
+    def __init__(self, keys) -> None:
+        """
+        Args:
+            keys: Keys of the corresponding items to be transformed.
+        """
+
+        super().__init__(keys)
+        self.keys = keys
+        self.target_spacing = []
+        self.intensity_properties = None
+        self.do_resample = None
+        self.do_normalize = None
+        self.use_nonzero_mask = None
+
+    def calculate_new_shape(self, spacing, shape):
+        spacing_ratio = np.array(spacing) / np.array(self.target_spacing)
+        new_shape = (spacing_ratio * np.array(shape)).astype(int).tolist()
+        return new_shape
+
+    def check_anisotrophy(self, spacing):
+        def check(spacing):
+            return np.max(spacing) / np.min(spacing) >= 3
+
+        return check(spacing) or check(self.target_spacing)
+
+    def __call__(self, data):
+        # load data
+        d = dict(data)
+        image = LoadImage(image_only=True)(d["image"])
+        image_spacings = image["meta_data"]["pixdim"][1:4].tolist()
+
+        if "label" in self.keys:
+            label = d["label"]
+            label[label < 0] = 0
+
+        dataset_properties = load_pickle(d["dataset_properties"])
+        self.target_spacing = dataset_properties["spacing_after_resampling"]
+        self.do_resample = dataset_properties["do_resample"]
+        self.do_normalize = dataset_properties["do_normalize"]
+        self.use_nonzero_mask = dataset_properties["use_nonzero_mask"]
+
+        image_meta_dict = {}
+
+        d["original_shape"] = np.array(image.shape[1:])
+        box_start, box_end = generate_spatial_bounding_box(image)
+        image = SpatialCrop(roi_start=box_start, roi_end=box_end)(image)
+        d["bbox"] = np.vstack([box_start, box_end])
+        d["crop_shape"] = np.array(image.shape[1:])
+
+        original_shape = image.shape[1:]
+        # calculate shape
+        resample_flag = False
+        anisotrophy_flag = False
+
+        image = image.numpy()
+        if self.target_spacing != image_spacings:
+            # resample
+            resample_flag = True
+            resample_shape = self.calculate_new_shape(image_spacings, original_shape)
+            anisotrophy_flag = self.check_anisotrophy(image_spacings)
+            image = resample_image(image, resample_shape, anisotrophy_flag)
+            if self.training:
+                label = resample_label(label, resample_shape, anisotrophy_flag)
+
+        d["resample_flag"] = resample_flag
+        d["anisotrophy_flag"] = anisotrophy_flag
+        # clip image for CT dataset
+        if self.low != 0 or self.high != 0:
+            image = np.clip(image, self.low, self.high)
+            image = (image - self.mean) / self.std
+        else:
+            image = self.normalize_intensity(image.copy())
+
+        d["image"] = image
+
+        if "label" in self.keys:
+            d["label"] = label
+
+        return d
+
+
 class LoadNpyd(MapTransform):
     """Load numpy array from .npz/.npy files.
 
@@ -124,7 +213,7 @@ class LoadNpyd(MapTransform):
             data: Dict to transform.
 
         Returns:
-            d: Dict containing either two {"image":, "label"} or three {"image":, "label",
+            d: Dict containing either two {"image":, "label":} or three {"image":, "label":,
                 "image_meta_dict":} keys
 
         Raises:
@@ -171,6 +260,12 @@ class LoadNpyd(MapTransform):
 
 
 if __name__ == "__main__":
+    image_path = [
+        "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/DEALIAS/raw/imagesTr/Dealias_0001_0000.nii.gz",
+        "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/DEALIAS/raw/imagesTr/Dealias_0001_0001.nii.gz",
+    ]
+
+    image = LoadImage()([image_path[0]])
     data_path = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/CAMUS/preprocessed/data_and_properties/NewCamus_0001.npy"
     # data_path = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/CAMUS/cropped/NewCamus_0001.npz"
     prop = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/CAMUS/preprocessed/data_and_properties/NewCamus_0001.pkl"
