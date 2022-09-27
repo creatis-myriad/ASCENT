@@ -31,7 +31,7 @@ def resample_image(
     """
 
     shape = np.array(image[0].shape)
-    if np.any(shape != np.array(new_shape)):
+    if not np.all(shape == np.array(new_shape)):
         resized_channels = []
         if anisotropy_flag:
             print("Anisotropic image, using separate z resampling")
@@ -95,7 +95,7 @@ def resample_label(
     """
 
     shape = np.array(label[0].shape)
-    if np.any(shape != np.array(new_shape)):
+    if not np.all(shape == np.array(new_shape)):
         reshaped = np.zeros(new_shape, dtype=np.uint8)
         n_class = np.max(label)
         if anisotropy_flag:
@@ -653,7 +653,7 @@ class SegPreprocessor:
             print("before:", before, "\nafter: ", after, "\n")
 
         if not self.do_normalize:
-            print("\n", "Skip normalization...")
+            print("\nSkip normalization...")
             properties["normalization_flag"] = False
         else:
             properties["normalization_flag"] = True

@@ -1,5 +1,6 @@
 import os
 from collections import OrderedDict
+from pathlib import Path
 from typing import Union
 
 import numpy as np
@@ -34,6 +35,7 @@ class nnUNetLitModule(LightningModule):
         sliding_window_importance_map: bool = "gaussian",
         save_predictions: bool = True,
         save_npz: bool = False,
+        output_dir: Union[str, Path] = None,
     ):
         """Saves the system's configuration in `hparams`. Initialize variables for training and
         validation loop.
@@ -47,6 +49,7 @@ class nnUNetLitModule(LightningModule):
             sliding_window_overlap: Minimum overlap for sliding window inference.
             sliding_window_importance_map: Importance map used for sliding window inference.
             save_prediction: Whether to save the test predictions.
+            output_dir: Output directory to save predictions. Only for inference.
         """
         super().__init__()
         # ignore net and loss as they are nn.module and will be saved automatically

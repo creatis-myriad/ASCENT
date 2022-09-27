@@ -31,11 +31,15 @@ root = pyrootutils.setup_root(
 # https://github.com/ashleve/pyrootutils
 # ------------------------------------------------------------------------------------ #
 
+import warnings
+
+warnings.filterwarnings(action="ignore", category=UserWarning, module="torchaudio")
+
 from typing import List, Tuple
 
 import hydra
 from omegaconf import DictConfig
-from pytorch_lightning import LightningDataModule, LightningModule, Trainer
+from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.loggers import LightningLoggerBase
 
 from covid import utils
@@ -44,8 +48,8 @@ log = utils.get_pylogger(__name__)
 
 
 @utils.task_wrapper
-def evaluate(cfg: DictConfig) -> Tuple[dict, dict]:
-    """Evaluates given checkpoint on a datamodule testset.
+def predict(cfg: DictConfig) -> Tuple[dict, dict]:
+    """Predict unseen cases with a given checkpoint.
 
     This method is wrapped in optional @task_wrapper decorator which applies extra utilities
     before and after the call.
@@ -57,33 +61,23 @@ def evaluate(cfg: DictConfig) -> Tuple[dict, dict]:
 
     assert cfg.ckpt_path
 
-    log.info(f"Instantiating datamodule <{cfg.datamodule._target_}>")
-    datamodule: LightningDataModule = hydra.utils.instantiate(cfg.datamodule)
-
     log.info(f"Instantiating model <{cfg.model._target_}>")
     model: LightningModule = hydra.utils.instantiate(cfg.model)
 
-    log.info("Instantiating loggers...")
-    logger: List[LightningLoggerBase] = utils.instantiate_loggers(cfg.get("logger"))
-
     log.info(f"Instantiating trainer <{cfg.trainer._target_}>")
-    trainer: Trainer = hydra.utils.instantiate(cfg.trainer, logger=logger)
+    trainer: Trainer = hydra.utils.instantiate(cfg.trainer)
 
     object_dict = {
         "cfg": cfg,
-        "datamodule": datamodule,
         "model": model,
-        "logger": logger,
         "trainer": trainer,
     }
 
-    if logger:
-        log.info("Logging hyperparameters!")
-        utils.log_hyperparameters(object_dict)
+    dataloader = None
 
-    log.info("Starting testing!")
-    log.info(f"Using checkpoint: {cfg.ckpt_path}")
-    trainer.test(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
+    print("Starting predicting!")
+    print(f"Using checkpoint: {cfg.ckpt_path}")
+    trainer.predict(model=model, dataloaders=dataloader, ckpt_path=cfg.ckpt_path)
 
     # for predictions use trainer.predict(...)
     # predictions = trainer.predict(model=model, dataloaders=dataloaders, ckpt_path=cfg.ckpt_path)
@@ -93,9 +87,9 @@ def evaluate(cfg: DictConfig) -> Tuple[dict, dict]:
     return metric_dict, object_dict
 
 
-@hydra.main(version_base="1.2", config_path="../configs", config_name="eval.yaml")
+@hydra.main(version_base="1.2", config_path="../configs", config_name="predict.yaml")
 def main(cfg: DictConfig) -> None:
-    evaluate(cfg)
+    predict(cfg)
 
 
 if __name__ == "__main__":

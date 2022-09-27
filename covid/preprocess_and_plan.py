@@ -14,6 +14,10 @@ warnings.filterwarnings(action="ignore", category=UserWarning, module="torchaudi
 import hydra
 from omegaconf import DictConfig
 
+from covid import utils
+
+log = utils.get_pylogger(__name__)
+
 
 def preprocess_and_plan(cfg: DictConfig):
     """Preprocess dataset and plan experiments.
@@ -22,18 +26,18 @@ def preprocess_and_plan(cfg: DictConfig):
         cfg: Configuration composed by Hydra.
     """
 
-    print(f"Instantiating preprocessor <{cfg.preprocessor._target_}>")
+    log.info(f"Instantiating preprocessor <{cfg.preprocessor._target_}>")
     preprocessor = hydra.utils.instantiate(cfg.preprocessor)
 
-    print("Start preprocessing...")
+    log.info("Start preprocessing...")
     preprocessor.run()
 
     if cfg.pl2d:
-        print(f'Instantiating 2D planner <{cfg.planner["planner2d"]._target_}>')
+        log.info(f'Instantiating 2D planner <{cfg.planner["planner2d"]._target_}>')
         planner2d = hydra.utils.instantiate(cfg.planner["planner2d"])
 
     if cfg.pl3d:
-        print(f'Instantiating 3D planner <{cfg.planner["planner3d"]._target_}>')
+        log.info(f'Instantiating 3D planner <{cfg.planner["planner3d"]._target_}>')
         planner3d = hydra.utils.instantiate(cfg.planner["planner3d"])
 
     if cfg.pl2d:

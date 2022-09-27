@@ -1,8 +1,10 @@
+import os
+
 import numpy as np
 from einops.einops import rearrange
 from monai.config import KeysCollection
 from monai.data import MetaTensor
-from monai.transforms import LoadImage, SpatialCrop, SqueezeDim
+from monai.transforms import LoadImage, SpatialCrop, SqueezeDim, ToTensor
 from monai.transforms.transform import MapTransform
 from monai.transforms.utils import generate_spatial_bounding_box
 
@@ -96,22 +98,26 @@ class MayBeSqueezed(MapTransform):
 class LoadAndPreprocessd(MapTransform):
     """Load and preprocess data path given in dictionary keys.
 
-    Dictionary must contain the following keys: "image" and "dataset_properties"
+    Dictionary must contain the following key(s): "image" and/or "label".
     """
 
-    def __init__(self, keys) -> None:
+    def __init__(
+        self, keys, target_spacing, intensity_properties, do_resample, do_normalize, modalities
+    ) -> None:
         """
         Args:
             keys: Keys of the corresponding items to be transformed.
+            target_spacing: Target spacing to resample the data.
+            intensity_properties: Global properties required to normalize CT data (mean, std, 0.5% )
         """
 
         super().__init__(keys)
         self.keys = keys
-        self.target_spacing = []
-        self.intensity_properties = None
-        self.do_resample = None
-        self.do_normalize = None
-        self.use_nonzero_mask = None
+        self.target_spacing = target_spacing
+        self.intensity_properties = intensity_properties
+        self.do_resample = do_resample
+        self.do_normalize = do_normalize
+        self.modalities = modalities
 
     def calculate_new_shape(self, spacing, shape):
         spacing_ratio = np.array(spacing) / np.array(self.target_spacing)
@@ -122,60 +128,71 @@ class LoadAndPreprocessd(MapTransform):
         def check(spacing):
             return np.max(spacing) / np.min(spacing) >= 3
 
-        return check(spacing) or check(self.target_spacing)
+        return bool(check(spacing) or check(self.target_spacing))
 
     def __call__(self, data):
         # load data
         d = dict(data)
         image = LoadImage(image_only=True)(d["image"])
-        image_spacings = image["meta_data"]["pixdim"][1:4].tolist()
 
         if "label" in self.keys:
             label = d["label"]
             label[label < 0] = 0
 
-        dataset_properties = load_pickle(d["dataset_properties"])
-        self.target_spacing = dataset_properties["spacing_after_resampling"]
-        self.do_resample = dataset_properties["do_resample"]
-        self.do_normalize = dataset_properties["do_normalize"]
-        self.use_nonzero_mask = dataset_properties["use_nonzero_mask"]
-
         image_meta_dict = {}
+        image_meta_dict["case_identifier"] = os.path.basename(image._meta["filename_or_obj"])[:-12]
+        image_meta_dict["original_shape"] = np.array(image.shape[1:])
+        image_meta_dict["original_spacing"] = np.array(image._meta["pixdim"][1:4].tolist())
 
-        d["original_shape"] = np.array(image.shape[1:])
+        image_meta_dict["resample_flag"] = self.do_resample
+
         box_start, box_end = generate_spatial_bounding_box(image)
         image = SpatialCrop(roi_start=box_start, roi_end=box_end)(image)
-        d["bbox"] = np.vstack([box_start, box_end])
-        d["crop_shape"] = np.array(image.shape[1:])
+        image_meta_dict["crop_bbox"] = np.vstack([box_start, box_end])
+        image_meta_dict["shape_after_cropping"] = np.array(image.shape[1:])
 
-        original_shape = image.shape[1:]
-        # calculate shape
-        resample_flag = False
         anisotrophy_flag = False
 
         image = image.numpy()
-        if self.target_spacing != image_spacings:
-            # resample
-            resample_flag = True
-            resample_shape = self.calculate_new_shape(image_spacings, original_shape)
-            anisotrophy_flag = self.check_anisotrophy(image_spacings)
-            image = resample_image(image, resample_shape, anisotrophy_flag)
-            if self.training:
-                label = resample_label(label, resample_shape, anisotrophy_flag)
+        if image_meta_dict.get("resample_flag"):
+            if not np.all(image_meta_dict.get("original_spacing") == self.target_spacing):
+                # resample
+                resample_shape = self.calculate_new_shape(
+                    image_meta_dict.get("original_spacing"), image_meta_dict.get("original_shape")
+                )
+                anisotrophy_flag = self.check_anisotrophy(image_meta_dict.get("original_spacing"))
+                image = resample_image(
+                    image, resample_shape, image_meta_dict.get("anisotrophy_flag")
+                )
+                if "label" in self.keys:
+                    label = resample_label(label, resample_shape, anisotrophy_flag)
 
-        d["resample_flag"] = resample_flag
-        d["anisotrophy_flag"] = anisotrophy_flag
-        # clip image for CT dataset
-        if self.low != 0 or self.high != 0:
-            image = np.clip(image, self.low, self.high)
-            image = (image - self.mean) / self.std
-        else:
-            image = self.normalize_intensity(image.copy())
+        image_meta_dict["anisotrophy_flag"] = anisotrophy_flag
 
-        d["image"] = image
+        if self.do_normalize:
+            for c in range(len(image)):
+                scheme = self.modalities[c]
+                if scheme == "CT":
+                    # clip to lb and ub from train data foreground and use foreground mn and sd from
+                    # training data
+                    assert (
+                        self.intensity_properties is not None
+                    ), "ERROR: if there is a CT then we need intensity properties"
+                    mean_intensity = self.intensity_properties[c]["mean"]
+                    std_intensity = self.intensity_properties[c]["sd"]
+                    lower_bound = self.intensity_properties[c]["percentile_00_5"]
+                    upper_bound = self.intensity_properties[c]["percentile_99_5"]
+                    image[c] = np.clip(image[c], lower_bound, upper_bound)
+                    image[c] = (image[c] - mean_intensity) / std_intensity
+                elif not scheme == "noNorm":
+                    image[c] = (image[c] - image[c].mean()) / (image[c].std() + 1e-8)
+
+        d["image"] = ToTensor(track_meta=True)(image)
 
         if "label" in self.keys:
-            d["label"] = label
+            d["label"] = ToTensor(track_meta=True)(label)
+
+        d["image_meta_dict"] = image_meta_dict
 
         return d
 
@@ -265,7 +282,10 @@ if __name__ == "__main__":
         "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/DEALIAS/raw/imagesTr/Dealias_0001_0001.nii.gz",
     ]
 
-    image = LoadImage()([image_path[0]])
+    load = LoadAndPreprocessd(
+        "images", np.array([0.5, 0.5, 1]), None, True, True, {0: "noNorm", 1: "noNorm"}
+    )
+    batch = load({"image": image_path})
     data_path = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/CAMUS/preprocessed/data_and_properties/NewCamus_0001.npy"
     # data_path = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/CAMUS/cropped/NewCamus_0001.npz"
     prop = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/CAMUS/preprocessed/data_and_properties/NewCamus_0001.pkl"

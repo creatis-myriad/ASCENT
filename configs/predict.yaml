@@ -1,0 +1,42 @@
+# @package _global_
+
+defaults:
+  - model: ???
+  - trainer: nnunet
+  - paths: default
+  - extras: default
+  # - override hydra/hydra_logging: disabled
+  # - override hydra/job_logging: disabled
+  - _self_
+
+task_name: "predict"
+
+tags: ["predict"]
+
+overwrite_existing: True
+
+save_npz: False
+
+tta: True
+
+dataset_name: ???
+
+input_folder: ???
+
+output_folder: ???
+
+# passing checkpoint path is necessary for prediction
+ckpt_path: ???
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+paths:
+  output_dir: ${output_folder}
+
+model:
+  save_npz: ${save_npz}
+  save_predictions: True
+  tta: ${tta}

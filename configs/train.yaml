@@ -35,7 +35,7 @@ task_name: "train"
 # overwrite from command line with `python train.py tags="[first_tag, second_tag]"`
 # appending lists from command line is currently not supported :(
 # https://github.com/facebookresearch/hydra/issues/1547
-tags: ["dev"]
+tags: ["train"]
 
 # desired fold for training
 fold: 0

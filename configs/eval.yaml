@@ -14,7 +14,7 @@ defaults:
 
 task_name: "eval"
 
-tags: ["dev"]
+tags: ["eval"]
 
 # desired fold for training
 fold: 0

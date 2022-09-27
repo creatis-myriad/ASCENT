@@ -30,10 +30,6 @@ root = pyrootutils.setup_root(
 # https://github.com/ashleve/pyrootutils
 # ------------------------------------------------------------------------------------ #
 
-import warnings
-
-warnings.filterwarnings(action="ignore", category=UserWarning, module="torchaudio")
-
 from typing import List, Optional, Tuple
 
 import hydra
