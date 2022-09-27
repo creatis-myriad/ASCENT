@@ -86,6 +86,7 @@ def evaluate(cfg: DictConfig) -> Tuple[dict, dict]:
         utils.log_hyperparameters(object_dict)
 
     log.info("Starting testing!")
+    log.info(f"Using checkpoint: {cfg.ckpt_path}")
     trainer.test(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
 
     # for predictions use trainer.predict(...)
