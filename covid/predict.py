@@ -94,24 +94,21 @@ def check_input_folder_and_return_datalist(
             else:
                 remaining.remove(expected_output_file)
 
-    print(
-        "Found %d unique case ids, here are some examples:" % len(maybe_case_ids),
-        np.random.choice(maybe_case_ids, min(len(maybe_case_ids), 10)),
+    log.info(
+        f"Found {len(maybe_case_ids)} unique case ids, here are some examples: {np.random.choice(maybe_case_ids, min(len(maybe_case_ids), 10))}."
     )
-    print(
-        "If they don't look right, make sure to double check your filenames. They must end with _0000.nii.gz etc"
+
+    log.info(
+        "If they don't look right, make sure to double check your filenames. They must end with _0000.nii.gz etc."
     )
 
     if len(remaining) > 0:
-        print(
-            "Found %d unexpected remaining files in the folder. Here are some examples:"
-            % len(remaining),
-            np.random.choice(remaining, min(len(remaining), 10)),
+        log.warning(
+            f"Found {len(remaining)} unexpected remaining files in the folder. Here are some examples: {np.random.choice(remaining, min(len(remaining), 10))}."
         )
 
     if len(missing) > 0:
-        print("Some files are missing:")
-        print(missing)
+        log.warning(f"Some files are missing: {missing}")
         raise RuntimeError("Missing files in input_folder")
 
     os.makedirs(output_folder, exist_ok=True)
@@ -125,7 +122,8 @@ def check_input_folder_and_return_datalist(
                 existing_case_ids = [case[:-7] for case in output_files]
                 for case in existing_case_ids:
                     if case in maybe_case_ids:
-                        maybe_case_ids.remove(case)
+                        index = np.argwhere(maybe_case_ids == case)
+                        maybe_case_ids = np.delete(maybe_case_ids, index)
 
     all_files = subfiles(input_folder, suffix=".nii.gz", join=False, sort=True)
     list_of_lists = [
@@ -166,7 +164,7 @@ def get_predict_transforms(dataset_properties: dict) -> Callable:
             do_normalize=dataset_properties["do_normalize"],
             modalities=dataset_properties["modalities"],
         ),
-        ToTensord(keys="image", track_meta=True),
+        ToTensord(keys="image", track_meta=False),
     ]
 
     return Compose(load_transforms + sample_transforms)
@@ -211,10 +209,14 @@ def predict(cfg: DictConfig) -> Tuple[dict, dict]:
         len(dataset_properties["modalities"].keys()),
     )
 
+    dataset = CacheDataset(data=datalist, transform=transforms, cache_rate=1.0)
+
     dataloader = DataLoader(
-        CacheDataset(data=datalist, transform=transforms, cache_rate=1.0),
+        dataset=dataset,
         batch_size=1,
         num_workers=cfg.num_workers,
+        pin_memory=cfg.pin_memory,
+        shuffle=False,
     )
 
     log.info("Starting predicting!")

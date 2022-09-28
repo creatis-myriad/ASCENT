@@ -320,7 +320,6 @@ class nnUNetDataModule(LightningDataModule):
         if self.hparams.do_dummy_2D_data_aug and self.threeD:
             other_transforms.append(Convert3Dto2Dd(keys=["image", "label"]))
 
-        # Temporally disable RandRotate augmentation while waiting for the bug fix from Monai
         other_transforms.extend(
             [
                 RandRotated(

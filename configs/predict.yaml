@@ -5,6 +5,7 @@ defaults:
   - trainer: nnunet
   - paths: default
   - extras: default
+  - hydra: nnunet
   - _self_
 
 task_name: "predict"
@@ -31,6 +32,8 @@ overwrite_existing: True
 
 # whether to save probability maps
 save_npz: False
+
+pin_memory: True
 
 num_workers: 12
 
