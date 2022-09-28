@@ -164,7 +164,7 @@ def get_predict_transforms(dataset_properties: dict) -> Callable:
             do_normalize=dataset_properties["do_normalize"],
             modalities=dataset_properties["modalities"],
         ),
-        ToTensord(keys="image", track_meta=False),
+        ToTensord(keys="image", track_meta=True),
     ]
 
     return Compose(load_transforms + sample_transforms)
