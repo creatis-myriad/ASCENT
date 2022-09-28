@@ -579,6 +579,8 @@ class nnUNetLitModule(LightningModule):
         properties_dict["case_identifier"] = image_meta_dict["case_identifier"][0]
         properties_dict["original_spacing"] = image_meta_dict["original_spacing"][0].tolist()
 
+        return properties_dict
+
     def save_mask(self, preds, fname, spacing, save_dir):
         print(f"\nSaving segmentation for {fname}...\n")
 
