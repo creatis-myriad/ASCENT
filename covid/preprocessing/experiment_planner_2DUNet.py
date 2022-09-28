@@ -9,9 +9,12 @@ import numpy as np
 import pyrootutils
 import ruamel.yaml
 
+from covid import utils
 from covid.models.components.unet import UNet
 from covid.preprocessing.utils import get_pool_and_conv_props
 from covid.utils.file_and_folder_operations import load_pickle
+
+log = utils.get_pylogger(__name__)
 
 
 class nnUNetPlanner2D:
@@ -185,7 +188,7 @@ class nnUNetPlanner2D:
     def plan_experiment(self):
         """Plan experiment."""
 
-        print("\nPlanning experiment for 2D U-Net...")
+        log.info("Planning experiment for 2D U-Net...")
         all_shapes_after_resampling = self.dataset_properties["all_shapes_after_resampling"]
         current_spacing = self.dataset_properties["spacing_after_resampling"]
         all_cases = self.dataset_properties["all_cases"]
@@ -194,24 +197,22 @@ class nnUNetPlanner2D:
         num_modalities = len(list(modalities.keys()))
 
         median_shape = np.median(np.vstack(all_shapes_after_resampling), 0).astype(int)
-        print("The median shape of the dataset is ", median_shape)
+        log.info(f"The median shape of the dataset is {median_shape}.")
 
         max_shape = np.max(np.vstack(all_shapes_after_resampling), 0)
-        print("The max shape in the dataset is ", max_shape)
+        log.info(f"The max shape in the dataset is {max_shape}.")
         min_shape = np.min(np.vstack(all_shapes_after_resampling), 0)
-        print("The min shape in the dataset is ", min_shape)
+        log.info(f"The min shape in the dataset is {min_shape}.")
 
-        print(
-            "We don't want feature maps smaller than ",
-            self.unet_featuremap_min_edge_length,
-            " in the bottleneck",
+        log.info(
+            f"We don't want feature maps smaller than {self.unet_featuremap_min_edge_length}  in the bottleneck.",
         )
 
         plan = self.get_properties(
             median_shape, current_spacing, len(all_cases), len(all_classes) + 1, num_modalities
         )
 
-        print(plan, "\n")
+        log.info(f"{plan}\n")
 
         self.write_plans_to_yaml(plan)
 

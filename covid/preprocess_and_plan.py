@@ -9,7 +9,7 @@ root = pyrootutils.setup_root(
 
 import warnings
 
-warnings.filterwarnings(action="ignore", category=UserWarning, module="torchaudio")
+warnings.filterwarnings(action="ignore")
 
 import hydra
 from omegaconf import DictConfig
@@ -19,7 +19,7 @@ from covid import utils
 log = utils.get_pylogger(__name__)
 
 
-def preprocess_and_plan(cfg: DictConfig):
+def preprocess_and_plan(cfg: DictConfig) -> None:
     """Preprocess dataset and plan experiments.
 
     Args:
@@ -35,15 +35,11 @@ def preprocess_and_plan(cfg: DictConfig):
     if cfg.pl2d:
         log.info(f'Instantiating 2D planner <{cfg.planner["planner2d"]._target_}>')
         planner2d = hydra.utils.instantiate(cfg.planner["planner2d"])
+        planner2d.plan_experiment()
 
     if cfg.pl3d:
         log.info(f'Instantiating 3D planner <{cfg.planner["planner3d"]._target_}>')
         planner3d = hydra.utils.instantiate(cfg.planner["planner3d"])
-
-    if cfg.pl2d:
-        planner2d.plan_experiment()
-
-    if cfg.pl3d:
         planner3d.plan_experiment()
 
 

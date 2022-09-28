@@ -11,6 +11,7 @@ from einops.einops import rearrange
 from monai.data import MetaTensor
 from pytorch_lightning import LightningModule
 from skimage.transform import resize
+from torch import Tensor
 
 from covid.datamodules.components.inferers import sliding_window_inference
 from covid.models.components.unet_related.utils import softmax_helper, sum_tensor
@@ -354,13 +355,16 @@ class nnUNetLitModule(LightningModule):
         self.all_val_eval_metrics = checkpoint["all_val_eval_metrics"]
 
     def compute_loss(
-        self, preds: Union[torch.Tensor, MetaTensor], label: Union[torch.Tensor, MetaTensor]
-    ):
+        self, preds: Union[Tensor, MetaTensor], label: Union[Tensor, MetaTensor]
+    ) -> float:
         """Compute the multi-scale loss if deep supervision is set to True.
 
         Args:
             preds: Predicted logits.
             label: Ground truth label.
+
+        Returns:
+            Train loss.
         """
 
         if self.net.deep_supervision:
@@ -372,7 +376,7 @@ class nnUNetLitModule(LightningModule):
             return c_norm * loss
         return self.loss(preds, label)
 
-    def predict(self, image) -> Union[torch.Tensor, MetaTensor]:
+    def predict(self, image: Union[Tensor, MetaTensor]) -> Union[Tensor, MetaTensor]:
         """Predict 2D/3D images with sliding window inference.
 
         Args:
@@ -397,9 +401,7 @@ class nnUNetLitModule(LightningModule):
             else:
                 raise NotImplementedError
 
-    def tta_predict(
-        self, image: Union[torch.Tensor, MetaTensor]
-    ) -> Union[torch.Tensor, MetaTensor]:
+    def tta_predict(self, image: Union[Tensor, MetaTensor]) -> Union[Tensor, MetaTensor]:
         """Predict with test time augmentation.
 
         Args:
@@ -416,8 +418,8 @@ class nnUNetLitModule(LightningModule):
         return preds
 
     def predict_2D_2Dconv_tiled(
-        self, image: Union[torch.Tensor, MetaTensor]
-    ) -> Union[torch.Tensor, MetaTensor]:
+        self, image: Union[Tensor, MetaTensor]
+    ) -> Union[Tensor, MetaTensor]:
         """Predict 2D image with 2D model.
 
         Args:
@@ -431,8 +433,8 @@ class nnUNetLitModule(LightningModule):
         return self.sliding_window_inference(image)
 
     def predict_3D_3Dconv_tiled(
-        self, image: Union[torch.Tensor, MetaTensor]
-    ) -> Union[torch.Tensor, MetaTensor]:
+        self, image: Union[Tensor, MetaTensor]
+    ) -> Union[Tensor, MetaTensor]:
         """Predict 3D image with 3D model.
 
         Args:
@@ -446,8 +448,8 @@ class nnUNetLitModule(LightningModule):
         return self.sliding_window_inference(image)
 
     def predict_3D_2Dconv_tiled(
-        self, image: Union[torch.Tensor, MetaTensor]
-    ) -> Union[torch.Tensor, MetaTensor]:
+        self, image: Union[Tensor, MetaTensor]
+    ) -> Union[Tensor, MetaTensor]:
         """Predict 3D image with 2D model.
 
         Args:
@@ -539,8 +541,17 @@ class nnUNetLitModule(LightningModule):
         else:
             return [[2], [3], [2, 3]]
 
-    def sliding_window_inference(self, image):
-        """"""
+    def sliding_window_inference(
+        self, image: Union[Tensor, MetaTensor]
+    ) -> Union[Tensor, MetaTensor]:
+        """Inference using sliding window.
+
+        Args:
+            image: Image to predict.
+
+        Returns:
+            Predicted logits.
+        """
         if self.trainer.datamodule is None:
             sw_batch_size = 2
         else:
@@ -555,7 +566,16 @@ class nnUNetLitModule(LightningModule):
         )
 
     @staticmethod
-    def metric_mean(name, outputs):
+    def metric_mean(name: str, outputs: dict) -> Tensor:
+        """Average metrics across batch dimension at epoch end.
+
+        Args:
+            name: Name of metrics to average.
+            outputs: Outputs dictionary returned at step end.
+
+        Returns:
+            Averaged metrics tensor.
+        """
         return torch.stack([out[name] for out in outputs]).mean(dim=0)
 
     @staticmethod
@@ -581,7 +601,18 @@ class nnUNetLitModule(LightningModule):
 
         return properties_dict
 
-    def save_mask(self, preds, fname, spacing, save_dir):
+    def save_mask(
+        self, preds: np.array, fname: str, spacing: np.array, save_dir: Union[str, Path]
+    ) -> None:
+        """Save segmentation mask to the given save directory.
+
+        Args:
+            preds: Predicted segmentation mask.
+            fname: Filename to save.
+            spacing: Spacing to save the segmentation mask.
+            save_dir: Directory to save the segmentation mask.
+        """
+
         print(f"\nSaving segmentation for {fname}...\n")
 
         os.makedirs(save_dir, exist_ok=True)
@@ -591,7 +622,19 @@ class nnUNetLitModule(LightningModule):
         itk_image.SetSpacing(spacing)
         sitk.WriteImage(itk_image, os.path.join(save_dir, fname + ".nii.gz"))
 
-    def save_npz_and_properties(self, preds, properties_dict, fname, save_dir):
+    def save_npz_and_properties(
+        self, preds: np.array, properties_dict: dict, fname: str, save_dir: Union[str, Path]
+    ) -> None:
+        """Save softmax probabilities to the given save directory.
+
+        Args:
+            preds: Predicted softmax.
+            properties_dict: Dictionary containing properties of predicted data (eg. spacing).
+            fname: Filename to save.
+            spacing: Spacing to save the segmentation mask.
+            save_dir: Directory to save the segmentation mask.
+        """
+
         print(f"\nSaving softmax for {fname}...\n")
 
         os.makedirs(save_dir, exist_ok=True)
@@ -602,6 +645,8 @@ class nnUNetLitModule(LightningModule):
         save_pickle(properties_dict, os.path.join(save_dir, fname + ".pkl"))
 
     def update_eval_criterion_MA(self):
+        """Update moving average validation loss."""
+
         if self.val_eval_criterion_MA is None:
             self.val_eval_criterion_MA = self.all_val_eval_metrics[-1]
         else:
@@ -611,6 +656,8 @@ class nnUNetLitModule(LightningModule):
             )
 
     def maybe_update_best_val_eval_criterion_MA(self):
+        """Update moving average validation metrics."""
+
         if self.best_val_eval_criterion_MA is None:
             self.best_val_eval_criterion_MA = self.val_eval_criterion_MA
         if self.val_eval_criterion_MA > self.best_val_eval_criterion_MA:

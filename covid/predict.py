@@ -178,6 +178,7 @@ def predict(cfg: DictConfig) -> Tuple[dict, dict]:
 
     This method is wrapped in optional @task_wrapper decorator which applies extra utilities
     before and after the call.
+
     Args:
         cfg (DictConfig): Configuration composed by Hydra.
     Returns:

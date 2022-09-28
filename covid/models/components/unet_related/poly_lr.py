@@ -3,16 +3,17 @@ from torch.optim.lr_scheduler import _LRScheduler
 
 
 class PolynomialLR(_LRScheduler):
-    """Polynomial learning rate decay until step reach to max_decay_step.
-
-    Args:
-        optimizer (Optimizer): Wrapped optimizer.
-        max_decay_steps: after this step, we stop decreasing learning rate
-        end_learning_rate: scheduler stopping learning rate decay, value of learning rate must be this value
-        power: The power of the polynomial.
-    """
+    """Polynomial learning rate decay until step reach to max_decay_step."""
 
     def __init__(self, optimizer, max_decay_steps, end_learning_rate=0, power=0.9):
+        """
+        Args:
+            optimizer (Optimizer): Wrapped optimizer.
+            max_decay_steps: after this step, we stop decreasing learning rate
+            end_learning_rate: scheduler stopping learning rate decay, value of learning rate must be this value
+            power: The power of the polynomial.
+        """
+
         if max_decay_steps <= 1.0:
             raise ValueError("max_decay_steps should be greater than 1.")
         self.max_decay_steps = max_decay_steps

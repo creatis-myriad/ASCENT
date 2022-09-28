@@ -13,7 +13,10 @@ from monai.transforms.utils import generate_spatial_bounding_box
 from skimage.transform import resize
 from torch import Tensor
 
+from covid import utils
 from covid.utils.file_and_folder_operations import load_json, subfiles
+
+log = utils.get_pylogger(__name__)
 
 
 def resample_image(
@@ -262,7 +265,7 @@ class SegPreprocessor:
         self,
         data: dict[str, Union[Path, str]],
         transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
-        **kwargs
+        **kwargs,
     ) -> list[float]:
         """Get the image spacing from image in the data dictionary.
 
@@ -321,7 +324,7 @@ class SegPreprocessor:
         self,
         data: dict[str, Union[Path, str]],
         transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
-        **kwargs
+        **kwargs,
     ) -> list:
         """Collect the intensities of a data.
 
@@ -367,7 +370,7 @@ class SegPreprocessor:
         self,
         data: dict[str, Union[Path, str]],
         transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
-        **kwargs
+        **kwargs,
     ) -> None:
         """Crop an image-label pair to non-zero region and save it.
 
@@ -784,7 +787,7 @@ class SegPreprocessor:
         func: Callable,
         datalist: list[dict[str, Union[Path, str]]],
         transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
-        **kwargs
+        **kwargs,
     ):
         """Parallel runs to perform operations on raw data.
 
@@ -828,20 +831,20 @@ class SegPreprocessor:
         ]
         transforms = Compose(load_transforms)
 
-        print("Initializing to run preprocessing...")
-        print("Cropped folder: ", self.cropped_folder)
-        print("Preprocessed folder: ", self.preprocessed_folder)
+        log.info("Initializing to run preprocessing...")
+        log.info(f"Cropped folder: {self.cropped_folder}")
+        log.info(f"Preprocessed folder: {self.preprocessed_folder}")
         # get target spacing
         self.target_spacing = self._get_target_spacing(datalist, transforms)
-        print("\nTarget spacing:", np.array(self.target_spacing))
+        log.info("Target spacing: {np.array(self.target_spacing)}.")
 
         # get intensity properties if input contains CT data
         if "CT" in self.modalities.values():
-            print("\nCT input, calculating intensity propoerties...")
+            log.info("CT input, calculating intensity propoerties...")
             self.intensity_properties = self._collect_intensities(datalist, transforms)
         else:
             self.intensity_properties = None
-            print("\nNon CT input, skipping the calculation of intensity properties...")
+            log.info("Non CT input, skipping the calculation of intensity properties...")
 
         # crop to non zero
         self._crop_from_list_of_files(datalist, transforms)
