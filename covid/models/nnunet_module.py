@@ -541,10 +541,14 @@ class nnUNetLitModule(LightningModule):
 
     def sliding_window_inference(self, image):
         """"""
+        if self.trainer is None:
+            sw_batch_size = 2
+        else:
+            sw_batch_size = self.trainer.datamodule.hparams.batch_size
         return sliding_window_inference(
             inputs=image,
             roi_size=self.patch_size,
-            sw_batch_size=self.trainer.datamodule.hparams.batch_size,
+            sw_batch_size=sw_batch_size,
             predictor=self.net,
             overlap=self.hparams.sliding_window_overlap,
             mode=self.hparams.sliding_window_importance_map,
