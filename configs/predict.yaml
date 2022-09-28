@@ -32,6 +32,8 @@ overwrite_existing: True
 # whether to save probability maps
 save_npz: False
 
+num_workers: 12
+
 hydra:
   output_subdir: null
   run:

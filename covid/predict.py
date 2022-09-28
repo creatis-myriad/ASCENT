@@ -211,7 +211,11 @@ def predict(cfg: DictConfig) -> Tuple[dict, dict]:
         len(dataset_properties["modalities"].keys()),
     )
 
-    dataloader = CacheDataset(data=datalist, transform=transforms, cache_rate=1.0)
+    dataloader = DataLoader(
+        CacheDataset(data=datalist, transform=transforms, cache_rate=1.0),
+        batch_size=1,
+        num_workers=cfg.num_workers,
+    )
 
     log.info("Starting predicting!")
     log.info(f"Using checkpoint: {cfg.ckpt_path}")
