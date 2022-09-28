@@ -48,4 +48,13 @@ setup(
     long_description=load_long_description(),
     long_description_content_type="text/markdown",
     python_requires=">=3.9",
+    classifiers=[
+        "Environment :: Console",
+        "Natural Language :: English",
+        "License :: OSI Approved :: Apache Software License",
+        "Operating System :: OS Independent",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+    ],
 )
