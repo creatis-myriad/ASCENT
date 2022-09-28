@@ -306,6 +306,46 @@ class nnUNetLitModule(LightningModule):
             batch_size=self.trainer.datamodule.hparams.batch_size,
         )
 
+    def predict_step(self, batch, batch_idx):  # noqa: D102
+        img, image_meta_dict = batch["image"], batch["image_meta_dict"]
+        preds = self.tta_predict(img) if self.hparams.tta else self.predict(img)
+
+        properties_dict = self.get_properties(image_meta_dict)
+
+        preds = softmax_helper(preds)
+        preds = preds.squeeze(0).cpu().detach().numpy()
+        original_shape = properties_dict.get("original_shape")
+        if len(preds.shape[1:]) == len(original_shape) - 1:
+            preds = preds[..., None]
+        if properties_dict.get("resampling_flag"):
+            shape_after_cropping = properties_dict.get("shape_after_cropping")
+            preds = self.recovery_prediction(
+                preds, shape_after_cropping, properties_dict.get("anisotropy_flag")
+            )
+
+        box_start, box_end = properties_dict.get("crop_bbox")
+        min_w, min_h, min_d = box_start
+        max_w, max_h, max_d = box_end
+
+        final_preds = np.zeros([preds.shape[0], *original_shape])
+        final_preds[:, min_w:max_w, min_h:max_h, min_d:max_d] = preds
+
+        if self.hparams.output_dir is not None:
+            save_dir = self.hparams.output_dir
+        else:
+            save_dir = os.path.join(self.trainer.default_root_dir, "inference_raw")
+
+        fname = properties_dict.get("case_identifier")
+        spacing = properties_dict.get("original_spacing")
+
+        if self.hparams.save_npz:
+            self.save_npz_and_properties(final_preds, properties_dict, fname, save_dir)
+
+        final_preds = final_preds.argmax(0)
+
+        self.save_mask(final_preds, fname, spacing, save_dir)
+        return final_preds
+
     def configure_optimizers(self):  # noqa: D102
         optimizer = self.hparams.optimizer(params=self.parameters())
         scheduler = self.hparams.scheduler(optimizer)

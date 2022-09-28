@@ -56,12 +56,17 @@ log = utils.get_pylogger(__name__)
 
 
 def check_input_folder_and_return_datalist(
-    input_folder: Union[str, Path], expected_num_modalities: int
+    input_folder: Union[str, Path],
+    output_folder: Union[str, Path],
+    overwrite_existing: bool,
+    expected_num_modalities: int,
 ) -> list[dict[str, str]]:
     """Analyze input folder and convert the nifti files to datalist, eg. [{"image": ././path"}].
 
     Args:
         input_folder: Folder containing nifti files for inference.
+        output_folder: Output folder to save predictions.
+        overwrite_existing: Whether to overwrite existing predictions in output folder.
         expected_num_modalities: Number of input modalities.
 
     Returns:
@@ -108,6 +113,19 @@ def check_input_folder_and_return_datalist(
         print("Some files are missing:")
         print(missing)
         raise RuntimeError("Missing files in input_folder")
+
+    os.makedirs(output_folder, exist_ok=True)
+
+    # check if potential output files already existed in the output folder and remove the existing
+    # case ids from datalist
+    if overwrite_existing:
+        if os.listdir(output_folder):
+            output_files = subfiles(output_folder, suffix=".nii.gz", join=False, sort=True)
+            if output_files:
+                existing_case_ids = [case[:-7] for case in output_files]
+                for case in existing_case_ids:
+                    if case in maybe_case_ids:
+                        maybe_case_ids.remove(case)
 
     all_files = subfiles(input_folder, suffix=".nii.gz", join=False, sort=True)
     list_of_lists = [
@@ -187,10 +205,13 @@ def predict(cfg: DictConfig) -> Tuple[dict, dict]:
     )
     transforms = get_predict_transforms(dataset_properties)
     datalist = check_input_folder_and_return_datalist(
-        cfg.input_folder, len(dataset_properties["modalities"].keys())
+        cfg.input_folder,
+        cfg.output_folder,
+        cfg.overwrite_existing,
+        len(dataset_properties["modalities"].keys()),
     )
 
-    dataloader = CacheDataset(data=datalist, transform=transforms, cache_rate=1)
+    dataloader = CacheDataset(data=datalist, transform=transforms, cache_rate=1.0)
 
     log.info("Starting predicting!")
     log.info(f"Using checkpoint: {cfg.ckpt_path}")
