@@ -35,7 +35,6 @@ class nnUNetLitModule(LightningModule):
         sliding_window_importance_map: bool = "gaussian",
         save_predictions: bool = True,
         save_npz: bool = False,
-        output_dir: Union[str, Path] = None,
     ):
         """Saves the system's configuration in `hparams`. Initialize variables for training and
         validation loop.
@@ -49,7 +48,6 @@ class nnUNetLitModule(LightningModule):
             sliding_window_overlap: Minimum overlap for sliding window inference.
             sliding_window_importance_map: Importance map used for sliding window inference.
             save_prediction: Whether to save the test predictions.
-            output_dir: Output directory to save predictions. Only for inference.
         """
         super().__init__()
         # ignore net and loss as they are nn.module and will be saved automatically
@@ -330,10 +328,7 @@ class nnUNetLitModule(LightningModule):
         final_preds = np.zeros([preds.shape[0], *original_shape])
         final_preds[:, min_w:max_w, min_h:max_h, min_d:max_d] = preds
 
-        if self.hparams.output_dir is not None:
-            save_dir = self.hparams.output_dir
-        else:
-            save_dir = os.path.join(self.trainer.default_root_dir, "inference_raw")
+        save_dir = os.path.join(self.trainer.default_root_dir, "inference_raw")
 
         fname = properties_dict.get("case_identifier")
         spacing = properties_dict.get("original_spacing")
