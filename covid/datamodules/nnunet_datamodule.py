@@ -100,7 +100,6 @@ class nnUNetDataModule(LightningDataModule):
         self.data_train: Optional[torch.utils.Dataset] = None
         self.data_val: Optional[torch.utils.Dataset] = None
         self.data_test: Optional[torch.utils.Dataset] = None
-        self.data_predict: Optional[torch.utils.Dataset] = None
 
     def prepare_data(self) -> None:
         """Data preparation.
@@ -239,11 +238,6 @@ class nnUNetDataModule(LightningDataModule):
                 data=self.test_files, transform=self.test_transforms, cache_rate=1.0
             )
 
-        if stage == TrainerFn.PREDICTING:
-            self.data_predict = CacheDataset(
-                data=self.predict_files, transform=self.predict_transforms, cache_rate=1.0
-            )
-
     def train_dataloader(self) -> DataLoader:  # noqa: D102
         return DataLoader(
             dataset=self.data_train,
@@ -275,47 +269,6 @@ class nnUNetDataModule(LightningDataModule):
             pin_memory=self.hparams.pin_memory,
             shuffle=False,
         )
-
-    def predict_dataloader(self) -> DataLoader:  # noqa: D102
-        # We use a batch size of 1 for prediction as the images have different shapes and we can't
-        # stack them
-
-        return DataLoader(
-            dataset=self.data_predict,
-            batch_size=1,
-            num_workers=self.hparams.num_workers,
-            pin_memory=self.hparams.pin_memory,
-            shuffle=False,
-        )
-
-    def prepare_for_prediction(self, predict_files: list[dict[str, str]]) -> None:
-        """Setup the prediction transforms for `self.data_predict`.
-
-        Don't forget to run this method before predicting.
-
-        TODO
-        preprocess transform
-        aliasing transform
-        """
-
-        self.predict_files = predict_files
-
-        image_keys = list(predict_files[0].keys())
-
-        load_transforms = [
-            LoadImaged(keys=image_keys),
-            EnsureChannelFirstd(keys=image_keys),
-        ]
-
-        if len(image_keys) > 1:
-            concat_transform = [
-                ConcatItemsd(keys=image_keys, name="image"),
-                SelectItemsd(keys="image"),
-            ]
-        else:
-            concat_transform = []
-
-        self.predict_transforms = Compose(load_transforms + concat_transform)
 
     def setup_transforms(self) -> None:
         """Define the data augmentations used by nnUNet including the data reading using

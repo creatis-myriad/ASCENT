@@ -5,8 +5,6 @@ defaults:
   - trainer: nnunet
   - paths: default
   - extras: default
-  # - override hydra/hydra_logging: disabled
-  # - override hydra/job_logging: disabled
   - _self_
 
 task_name: "predict"
@@ -19,7 +17,7 @@ save_npz: False
 
 tta: True
 
-dataset_name: ???
+dataset: ???
 
 input_folder: ???
 

@@ -582,7 +582,8 @@ if __name__ == "__main__":
     import hydra
     import omegaconf
     import pyrootutils
-    from hydra import compose, initialize_config_dir
+    from hydra import compose, initialize
+    from omegaconf import OmegaConf
     from pytorch_lightning import (
         Callback,
         LightningDataModule,
@@ -594,7 +595,11 @@ if __name__ == "__main__":
 
     root = pyrootutils.setup_root(__file__, pythonpath=True)
 
-    cfg = omegaconf.OmegaConf.load(root / "configs" / "model" / "nnunet.yaml")
+    with initialize(version_base="1.2", config_path="../../configs/model"):
+        cfg = compose(config_name="camus_2d.yaml")
+        print(OmegaConf.to_yaml(cfg))
+
+    # cfg = omegaconf.OmegaConf.load(root / "configs" / "model" / "nnunet.yaml")
     cfg.scheduler.max_decay_steps = 1000
     cfg.net.in_channels = 1
     cfg.net.num_classes = 3

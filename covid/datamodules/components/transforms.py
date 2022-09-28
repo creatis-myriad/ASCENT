@@ -95,7 +95,7 @@ class MayBeSqueezed(MapTransform):
         return d
 
 
-class LoadAndPreprocessd(MapTransform):
+class Preprocessd(MapTransform):
     """Load and preprocess data path given in dictionary keys.
 
     Dictionary must contain the following key(s): "image" and/or "label".
@@ -133,7 +133,7 @@ class LoadAndPreprocessd(MapTransform):
     def __call__(self, data):
         # load data
         d = dict(data)
-        image = LoadImage(image_only=True)(d["image"])
+        image = d["image"]
 
         if "label" in self.keys:
             label = d["label"]
@@ -187,10 +187,10 @@ class LoadAndPreprocessd(MapTransform):
                 elif not scheme == "noNorm":
                     image[c] = (image[c] - image[c].mean()) / (image[c].std() + 1e-8)
 
-        d["image"] = ToTensor(track_meta=True)(image)
+        d["image"] = image
 
         if "label" in self.keys:
-            d["label"] = ToTensor(track_meta=True)(label)
+            d["label"] = label
 
         d["image_meta_dict"] = image_meta_dict
 
@@ -282,10 +282,10 @@ if __name__ == "__main__":
         "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/DEALIAS/raw/imagesTr/Dealias_0001_0001.nii.gz",
     ]
 
-    load = LoadAndPreprocessd(
+    load = Preprocessd(
         "images", np.array([0.5, 0.5, 1]), None, True, True, {0: "noNorm", 1: "noNorm"}
     )
-    batch = load({"image": image_path})
+    batch = load({"image": LoadImage(image_path)})
     data_path = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/CAMUS/preprocessed/data_and_properties/NewCamus_0001.npy"
     # data_path = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/CAMUS/cropped/NewCamus_0001.npz"
     prop = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/CAMUS/preprocessed/data_and_properties/NewCamus_0001.pkl"

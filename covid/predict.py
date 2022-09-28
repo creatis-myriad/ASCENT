@@ -31,25 +31,134 @@ root = pyrootutils.setup_root(
 # https://github.com/ashleve/pyrootutils
 # ------------------------------------------------------------------------------------ #
 
+import os
 import warnings
 
-warnings.filterwarnings(action="ignore", category=UserWarning, module="torchaudio")
+warnings.filterwarnings(action="ignore")
 
-from typing import List, Tuple
+from copy import deepcopy
+from pathlib import Path
+from typing import Callable, List, Tuple, Union
 
 import hydra
+import numpy as np
+from monai.data import CacheDataset, DataLoader
+from monai.transforms import Compose, EnsureChannelFirstd, LoadImaged, ToTensord
 from omegaconf import DictConfig
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.loggers import LightningLoggerBase
 
 from covid import utils
+from covid.datamodules.components.transforms import Preprocessd
+from covid.utils.file_and_folder_operations import load_pickle, save_pickle, subfiles
 
 log = utils.get_pylogger(__name__)
+
+
+def check_input_folder_and_return_datalist(
+    input_folder: Union[str, Path], expected_num_modalities: int
+) -> list[dict[str, str]]:
+    """Analyze input folder and convert the nifti files to datalist, eg. [{"image": ././path"}].
+
+    Args:
+        input_folder: Folder containing nifti files for inference.
+        expected_num_modalities: Number of input modalities.
+
+    Returns:
+        Datalist. [{"image": ././path"},]
+    """
+
+    log.info(f"This model expects {expected_num_modalities} input modalities for each image.")
+    files = subfiles(input_folder, suffix=".nii.gz", join=False, sort=True)
+
+    maybe_case_ids = np.unique([i[:-12] for i in files])
+
+    remaining = deepcopy(files)
+    missing = []
+
+    assert (
+        len(files) > 0
+    ), "input folder did not contain any images (expected to find .nii.gz file endings)"
+
+    # now check if all required files are present and that no unexpected files are remaining
+    for c in maybe_case_ids:
+        for n in range(expected_num_modalities):
+            expected_output_file = c + "_%04.0d.nii.gz" % n
+            if not os.path.isfile(os.path.join(input_folder, expected_output_file)):
+                missing.append(expected_output_file)
+            else:
+                remaining.remove(expected_output_file)
+
+    print(
+        "Found %d unique case ids, here are some examples:" % len(maybe_case_ids),
+        np.random.choice(maybe_case_ids, min(len(maybe_case_ids), 10)),
+    )
+    print(
+        "If they don't look right, make sure to double check your filenames. They must end with _0000.nii.gz etc"
+    )
+
+    if len(remaining) > 0:
+        print(
+            "Found %d unexpected remaining files in the folder. Here are some examples:"
+            % len(remaining),
+            np.random.choice(remaining, min(len(remaining), 10)),
+        )
+
+    if len(missing) > 0:
+        print("Some files are missing:")
+        print(missing)
+        raise RuntimeError("Missing files in input_folder")
+
+    all_files = subfiles(input_folder, suffix=".nii.gz", join=False, sort=True)
+    list_of_lists = [
+        [
+            os.path.join(input_folder, i)
+            for i in all_files
+            if i[: len(j)].startswith(j) and len(i) == (len(j) + 12)
+        ]
+        for j in maybe_case_ids
+    ]
+
+    datalist = [{"image": image_paths} for image_paths in list_of_lists]
+
+    return datalist
+
+
+def get_predict_transforms(dataset_properties: dict) -> Callable:
+    """Build transforms compose to read and preprocess inference data.
+
+    Args:
+        dataset_properties: Properties used for preprocessing, eg. intensity properties.
+
+    Returns:
+        Monai Compose(transforms)
+    """
+
+    load_transforms = [
+        LoadImaged(keys="image", image_only=True),
+        EnsureChannelFirstd(keys="image"),
+    ]
+
+    sample_transforms = [
+        Preprocessd(
+            keys="image",
+            target_spacing=dataset_properties["spacing_after_resampling"],
+            intensity_properties=dataset_properties["intensity_properties"],
+            do_resample=dataset_properties["do_resample"],
+            do_normalize=dataset_properties["do_normalize"],
+            modalities=dataset_properties["modalities"],
+        ),
+        ToTensord(keys="image", track_meta=True),
+    ]
+
+    return Compose(load_transforms + sample_transforms)
 
 
 @utils.task_wrapper
 def predict(cfg: DictConfig) -> Tuple[dict, dict]:
     """Predict unseen cases with a given checkpoint.
+
+    Currently, this method only supports inference for nnUNet models.
 
     This method is wrapped in optional @task_wrapper decorator which applies extra utilities
     before and after the call.
@@ -73,14 +182,19 @@ def predict(cfg: DictConfig) -> Tuple[dict, dict]:
         "trainer": trainer,
     }
 
-    dataloader = None
+    dataset_properties = load_pickle(
+        os.path.join(cfg.paths.data_dir, cfg.dataset, "preprocessed", "dataset_properties.pkl")
+    )
+    transforms = get_predict_transforms(dataset_properties)
+    datalist = check_input_folder_and_return_datalist(
+        cfg.input_folder, len(dataset_properties["modalities"].keys())
+    )
 
-    print("Starting predicting!")
-    print(f"Using checkpoint: {cfg.ckpt_path}")
+    dataloader = CacheDataset(data=datalist, transform=transforms, cache_rate=1)
+
+    log.info("Starting predicting!")
+    log.info(f"Using checkpoint: {cfg.ckpt_path}")
     trainer.predict(model=model, dataloaders=dataloader, ckpt_path=cfg.ckpt_path)
-
-    # for predictions use trainer.predict(...)
-    # predictions = trainer.predict(model=model, dataloaders=dataloaders, ckpt_path=cfg.ckpt_path)
 
     metric_dict = trainer.callback_metrics
 
