@@ -1,0 +1,51 @@
+# @package _global_
+
+defaults:
+  - model: ???
+  - trainer: nnunet
+  - paths: default
+  - extras: default
+  - hydra: nnunet
+  - _self_
+
+task_name: "predict"
+
+tags: ["predict"]
+
+# dataset name (eg. CAMUS)
+dataset: ???
+
+# input folder containing data for inference
+input_folder: ???
+
+# output folder to save predictions
+output_folder: ???
+
+# passing checkpoint path is necessary for prediction
+ckpt_path: ???
+
+# whether to use test time augmentation (flipping)
+tta: True
+
+# whether to overwrite existing predictions in the output folder
+overwrite_existing: True
+
+# whether to save probability maps
+save_npz: False
+
+pin_memory: True
+
+num_workers: 12
+
+hydra:
+  output_subdir: null
+  run:
+    dir: ${output_folder}
+
+paths:
+  output_dir: ${output_folder}
+
+model:
+  save_npz: ${save_npz}
+  save_predictions: True
+  tta: ${tta}

@@ -37,7 +37,7 @@ import pytorch_lightning as pl
 import torch
 from omegaconf import DictConfig
 from pytorch_lightning import Callback, LightningDataModule, LightningModule, Trainer
-from pytorch_lightning.loggers import LightningLoggerBase
+from pytorch_lightning.loggers import CometLogger, LightningLoggerBase
 
 from covid import utils
 
@@ -104,14 +104,30 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
         else:
             trainer.fit(model=model, datamodule=datamodule)
 
+        if isinstance(trainer.logger, CometLogger):
+            if cfg.nnUNet_variant:
+                trainer.logger.experiment.log_model(
+                    "model", trainer.checkpoint_callback.last_model_path
+                )
+            else:
+                trainer.logger.experiment.log_model(
+                    "model", trainer.checkpoint_callback.best_model_path
+                )
+
     train_metrics = trainer.callback_metrics
 
     if cfg.get("test"):
         log.info("Starting testing!")
-        ckpt_path = trainer.checkpoint_callback.best_model_path
-        if ckpt_path == "":
-            log.warning("Best ckpt not found! Using current weights for testing...")
-            ckpt_path = None
+        if cfg.nnUNet_variant:
+            ckpt_path = trainer.checkpoint_callback.last_model_path
+            if ckpt_path == "":
+                log.warning("Last ckpt not found! Using current weights for testing...")
+                ckpt_path = None
+        else:
+            ckpt_path = trainer.checkpoint_callback.best_model_path
+            if ckpt_path == "":
+                log.warning("Best ckpt not found! Using current weights for testing...")
+                ckpt_path = None
         trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
         log.info(f"Best ckpt path: {ckpt_path}")
 
@@ -123,9 +139,8 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
     return metric_dict, object_dict
 
 
-@hydra.main(version_base="1.2", config_path=root / "configs", config_name="train.yaml")
+@hydra.main(version_base="1.2", config_path="../configs", config_name="train.yaml")
 def main(cfg: DictConfig) -> Optional[float]:
-
     # train the model
     metric_dict, _ = train(cfg)
 

@@ -21,8 +21,10 @@ pre-commit      		# hooks for applying linters on commit
 rich            		# beautiful text formatting in terminal
 pytest          		# tests
 sh<=1.14.2      		# for running bash commands in some tests
-batchgenerators>=0.23	# data augmentations library
 torchinfo 				# for model summary printing
 matplotlib				# for plotting
 SimpleITK				# read_io for data
 nibabel					# manipulate nifti files
+monai==1.0.0            # for data reading and transformations
+einops                  # useful tensor operations
+ruamel.yaml             # yaml io

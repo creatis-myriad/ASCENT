@@ -1,5 +1,5 @@
 defaults:
-  - default.yaml
+  - default
 
 # use "ddp_spawn" instead of "ddp",
 # it's slower but normal "ddp" currently doesn't work ideally with hydra

@@ -49,8 +49,10 @@ def evaluate(cfg: DictConfig) -> Tuple[dict, dict]:
 
     This method is wrapped in optional @task_wrapper decorator which applies extra utilities
     before and after the call.
+
     Args:
         cfg (DictConfig): Configuration composed by Hydra.
+
     Returns:
         Tuple[dict, dict]: Dict with metrics and dict with all instantiated objects.
     """
@@ -82,6 +84,7 @@ def evaluate(cfg: DictConfig) -> Tuple[dict, dict]:
         utils.log_hyperparameters(object_dict)
 
     log.info("Starting testing!")
+    log.info(f"Using checkpoint: {cfg.ckpt_path}")
     trainer.test(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
 
     # for predictions use trainer.predict(...)
@@ -92,7 +95,7 @@ def evaluate(cfg: DictConfig) -> Tuple[dict, dict]:
     return metric_dict, object_dict
 
 
-@hydra.main(version_base="1.2", config_path=root / "configs", config_name="eval.yaml")
+@hydra.main(version_base="1.2", config_path="../configs", config_name="eval.yaml")
 def main(cfg: DictConfig) -> None:
     evaluate(cfg)
 
