@@ -541,7 +541,7 @@ class nnUNetLitModule(LightningModule):
 
     def sliding_window_inference(self, image):
         """"""
-        if self.trainer is None:
+        if self.trainer.datamodule is None:
             sw_batch_size = 2
         else:
             sw_batch_size = self.trainer.datamodule.hparams.batch_size
