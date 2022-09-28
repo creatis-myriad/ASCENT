@@ -144,7 +144,7 @@ class Preprocessd(MapTransform):
         image_meta_dict["original_shape"] = np.array(image.shape[1:])
         image_meta_dict["original_spacing"] = np.array(image._meta["pixdim"][1:4].tolist())
 
-        image_meta_dict["resample_flag"] = self.do_resample
+        image_meta_dict["resampling_flag"] = self.do_resample
 
         box_start, box_end = generate_spatial_bounding_box(image)
         image = SpatialCrop(roi_start=box_start, roi_end=box_end)(image)
