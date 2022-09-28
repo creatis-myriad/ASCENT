@@ -151,7 +151,7 @@ class Preprocessd(MapTransform):
         image_meta_dict["crop_bbox"] = np.vstack([box_start, box_end])
         image_meta_dict["shape_after_cropping"] = np.array(image.shape[1:])
 
-        anisotrophy_flag = False
+        anisotropy_flag = False
 
         image = image.numpy()
         if image_meta_dict.get("resample_flag"):
@@ -160,14 +160,12 @@ class Preprocessd(MapTransform):
                 resample_shape = self.calculate_new_shape(
                     image_meta_dict.get("original_spacing"), image_meta_dict.get("original_shape")
                 )
-                anisotrophy_flag = self.check_anisotrophy(image_meta_dict.get("original_spacing"))
-                image = resample_image(
-                    image, resample_shape, image_meta_dict.get("anisotrophy_flag")
-                )
+                anisotropy_flag = self.check_anisotrophy(image_meta_dict.get("original_spacing"))
+                image = resample_image(image, resample_shape, anisotropy_flag)
                 if "label" in self.keys:
-                    label = resample_label(label, resample_shape, anisotrophy_flag)
+                    label = resample_label(label, resample_shape, anisotropy_flag)
 
-        image_meta_dict["anisotrophy_flag"] = anisotrophy_flag
+        image_meta_dict["anisotropy_flag"] = anisotropy_flag
 
         if self.do_normalize:
             for c in range(len(image)):
