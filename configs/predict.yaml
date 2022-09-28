@@ -40,7 +40,7 @@ num_workers: 12
 hydra:
   output_subdir: null
   run:
-    dir: .
+    dir: ${output_folder}
 
 paths:
   output_dir: ${output_folder}

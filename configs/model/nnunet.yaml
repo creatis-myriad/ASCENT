@@ -39,5 +39,3 @@ tta: True
 save_predictions: True
 
 save_npz: False
-
-output_dir: null
