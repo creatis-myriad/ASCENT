@@ -215,8 +215,8 @@ class nnUNetLitModule(LightningModule):
         preds = self.tta_predict(img) if self.hparams.tta else self.predict(img)
 
         num_classes = preds.shape[1]
-        pred_softmax = softmax_helper(preds)
-        pred_seg = pred_softmax.argmax(1)
+        preds = softmax_helper(preds)
+        pred_seg = preds.argmax(1)
         label = label[:, 0]
         axes = tuple(range(1, len(label.shape)))
         tp_hard = torch.zeros((label.shape[0], num_classes - 1)).to(pred_seg.device.index)
@@ -249,18 +249,10 @@ class nnUNetLitModule(LightningModule):
             logger=True,
             batch_size=self.trainer.datamodule.hparams.batch_size,
         )
-        return {
-            "test/dice": test_dice,
-            "preds": preds,
-            "image_meta_dict": image_meta_dict,
-        }
 
-    def test_step_end(self, test_step_outputs):  # noqa: D102
-        preds = test_step_outputs["preds"]
-        properties_dict = self.get_properties(test_step_outputs["image_meta_dict"])
+        properties_dict = self.get_properties(image_meta_dict)
 
         if self.hparams.save_predictions:
-            preds = softmax_helper(preds)
             preds = preds.squeeze(0).cpu().detach().numpy()
             original_shape = properties_dict.get("original_shape")
             if len(preds.shape[1:]) == len(original_shape) - 1:
@@ -292,6 +284,46 @@ class nnUNetLitModule(LightningModule):
             final_preds = final_preds.argmax(0)
 
             self.save_mask(final_preds, fname, spacing, save_dir)
+
+        return {"test/dice": test_dice}
+
+    # def test_step_end(self, test_step_outputs):  # noqa: D102
+    #     preds = test_step_outputs["preds"]
+    #     properties_dict = self.get_properties(test_step_outputs["image_meta_dict"])
+
+    #     if self.hparams.save_predictions:
+    #         preds = softmax_helper(preds)
+    #         preds = preds.squeeze(0).cpu().detach().numpy()
+    #         original_shape = properties_dict.get("original_shape")
+    #         if len(preds.shape[1:]) == len(original_shape) - 1:
+    #             preds = preds[..., None]
+    #         if properties_dict.get("resampling_flag"):
+    #             shape_after_cropping = properties_dict.get("shape_after_cropping")
+    #             preds = self.recovery_prediction(
+    #                 preds, shape_after_cropping, properties_dict.get("anisotropy_flag")
+    #             )
+
+    #         box_start, box_end = properties_dict.get("crop_bbox")
+    #         min_w, min_h, min_d = box_start
+    #         max_w, max_h, max_d = box_end
+
+    #         final_preds = np.zeros([preds.shape[0], *original_shape])
+    #         final_preds[:, min_w:max_w, min_h:max_h, min_d:max_d] = preds
+
+    #         if self.trainer.datamodule.hparams.test_splits:
+    #             save_dir = os.path.join(self.trainer.default_root_dir, "testing_raw")
+    #         else:
+    #             save_dir = os.path.join(self.trainer.default_root_dir, "validation_raw")
+
+    #         fname = properties_dict.get("case_identifier")
+    #         spacing = properties_dict.get("original_spacing")
+
+    #         if self.hparams.save_npz:
+    #             self.save_npz_and_properties(final_preds, properties_dict, fname, save_dir)
+
+    #         final_preds = final_preds.argmax(0)
+
+    #         self.save_mask(final_preds, fname, spacing, save_dir)
 
     def test_epoch_end(self, test_step_outputs):  # noqa: D102
         mean_dice = self.metric_mean("test/dice", test_step_outputs)
