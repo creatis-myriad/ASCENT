@@ -1,4 +1,4 @@
-_target_: covid.datamodules.nnunet_datamodule.nnUNetDataModule
+_target_: ascent.datamodules.nnunet_datamodule.nnUNetDataModule
 data_dir: ${paths.data_dir}
 batch_size: ???
 dataset_name: ???

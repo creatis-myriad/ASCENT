@@ -14,9 +14,9 @@ from pytorch_lightning import LightningModule
 from skimage.transform import resize
 from torch import Tensor
 
-from covid.datamodules.components.inferers import sliding_window_inference
-from covid.models.components.unet_related.utils import softmax_helper, sum_tensor
-from covid.utils.file_and_folder_operations import save_pickle
+from ascent.datamodules.components.inferers import sliding_window_inference
+from ascent.models.components.unet_related.utils import softmax_helper, sum_tensor
+from ascent.utils.file_and_folder_operations import save_pickle
 
 
 class nnUNetLitModule(LightningModule):
@@ -679,7 +679,7 @@ if __name__ == "__main__":
         Trainer,
     )
 
-    from covid import utils
+    from ascent import utils
 
     root = pyrootutils.setup_root(__file__, pythonpath=True)
 
@@ -726,5 +726,5 @@ if __name__ == "__main__":
 
     # trainer.fit(model=nnunet, datamodule=camus_datamodule)
     print("Starting testing!")
-    ckpt_path = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/logs/lightning_logs/version_0/checkpoints/epoch=1-step=500.ckpt"
+    ckpt_path = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/logs/lightning_logs/version_0/checkpoints/epoch=1-step=500.ckpt"
     trainer.test(model=nnunet, datamodule=camus_datamodule, ckpt_path=ckpt_path)

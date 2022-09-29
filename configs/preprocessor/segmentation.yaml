@@ -1,4 +1,4 @@
-_target_: covid.preprocessing.preprocessing.SegPreprocessor
+_target_: ascent.preprocessing.preprocessing.SegPreprocessor
 dataset_path: ${paths.data_dir}/${dataset}
 do_resample: ${resample}
 do_normalize: ${normalize}

@@ -1,4 +1,4 @@
-_target_: covid.models.nnunet_module.nnUNetLitModule
+_target_: ascent.models.nnunet_module.nnUNetLitModule
 
 optimizer:
   _target_: torch.optim.SGD
@@ -10,12 +10,12 @@ optimizer:
   weight_decay: 3e-05
 
 scheduler:
-  _target_: covid.models.components.unet_related.poly_lr.PolynomialLR
+  _target_: ascent.models.components.unet_related.poly_lr.PolynomialLR
   _partial_: true
   max_decay_steps: ${trainer.max_epochs}
 
 net:
-  _target_: covid.models.components.unet.UNet
+  _target_: ascent.models.components.unet.UNet
   in_channels: ???
   num_classes: ???
   patch_size: ???
@@ -30,7 +30,7 @@ net:
   out_seg_bias: False
 
 loss:
-  _target_: covid.models.components.unet_related.losses.DC_and_CE_loss
+  _target_: ascent.models.components.unet_related.losses.DC_and_CE_loss
   soft_dice_kwargs: { "batch_dice": True, "smooth": 1e-5, "do_bg": False }
   ce_kwargs: {}
 

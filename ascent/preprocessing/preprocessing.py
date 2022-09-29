@@ -13,8 +13,8 @@ from monai.transforms.utils import generate_spatial_bounding_box
 from skimage.transform import resize
 from torch import Tensor
 
-from covid import utils
-from covid.utils.file_and_folder_operations import load_json, subfiles
+from ascent import utils
+from ascent.utils.file_and_folder_operations import load_json, subfiles
 
 log = utils.get_pylogger(__name__)
 

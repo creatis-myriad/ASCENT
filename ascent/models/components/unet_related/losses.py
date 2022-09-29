@@ -2,7 +2,7 @@ import monai
 import torch
 from torch import Tensor, nn
 
-from covid.models.components.unet_related.utils import (
+from ascent.models.components.unet_related.utils import (
     get_tp_fp_fn_tn,
     softmax_helper,
     sum_tensor,

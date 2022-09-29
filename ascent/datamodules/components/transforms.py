@@ -8,8 +8,8 @@ from monai.transforms import LoadImage, SpatialCrop, SqueezeDim, ToTensor
 from monai.transforms.transform import MapTransform
 from monai.transforms.utils import generate_spatial_bounding_box
 
-from covid.preprocessing.preprocessing import resample_image, resample_label
-from covid.utils.file_and_folder_operations import load_pickle
+from ascent.preprocessing.preprocessing import resample_image, resample_label
+from ascent.utils.file_and_folder_operations import load_pickle
 
 
 class Convert3Dto2Dd(MapTransform):
@@ -276,15 +276,15 @@ class LoadNpyd(MapTransform):
 
 if __name__ == "__main__":
     image_path = [
-        "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/DEALIAS/raw/imagesTr/Dealias_0001_0000.nii.gz",
-        "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/DEALIAS/raw/imagesTr/Dealias_0001_0001.nii.gz",
+        "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/DEALIAS/raw/imagesTr/Dealias_0001_0000.nii.gz",
+        "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/DEALIAS/raw/imagesTr/Dealias_0001_0001.nii.gz",
     ]
 
     load = Preprocessd(
         "images", np.array([0.5, 0.5, 1]), None, True, True, {0: "noNorm", 1: "noNorm"}
     )
     batch = load({"image": LoadImage(image_path)})
-    data_path = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/CAMUS/preprocessed/data_and_properties/NewCamus_0001.npy"
-    # data_path = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/CAMUS/cropped/NewCamus_0001.npz"
-    prop = "C:/Users/ling/Desktop/Thesis/REPO/CoVID/data/CAMUS/preprocessed/data_and_properties/NewCamus_0001.pkl"
+    data_path = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/CAMUS/preprocessed/data_and_properties/NewCamus_0001.npy"
+    # data_path = "C:/Users/ling/Desktop/Thesis/REPO/ascent/data/CAMUS/cropped/NewCamus_0001.npz"
+    prop = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/CAMUS/preprocessed/data_and_properties/NewCamus_0001.pkl"
     data = LoadNpyd(["data", "image_meta_dict"], test=True)({"data": data_path})

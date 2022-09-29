@@ -4,10 +4,10 @@ from typing import Union
 
 import numpy as np
 
-from covid import utils
-from covid.models.components.unet import UNet
-from covid.preprocessing.experiment_planner_2DUNet import nnUNetPlanner2D
-from covid.preprocessing.utils import get_pool_and_conv_props
+from ascent import utils
+from ascent.models.components.unet import UNet
+from ascent.preprocessing.experiment_planner_2DUNet import nnUNetPlanner2D
+from ascent.preprocessing.utils import get_pool_and_conv_props
 
 log = utils.get_pylogger(__name__)
 

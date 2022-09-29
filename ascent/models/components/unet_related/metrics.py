@@ -4,7 +4,7 @@ from torchmetrics import Metric
 from torchmetrics.functional import dice, stat_scores
 from torchmetrics.utilities import check_forward_full_state_property
 
-from covid.models.components.unet_related.utils import softmax_helper, sum_tensor
+from ascent.models.components.unet_related.utils import softmax_helper, sum_tensor
 
 
 class Dice(Metric):

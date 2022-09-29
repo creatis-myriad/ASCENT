@@ -93,7 +93,7 @@ jobs:
           pip install pytest-cov[toml]
           pip install sh
       - name: Run tests and collect coverage
-        run: pytest --cov covid # NEEDS TO BE UPDATED WHEN CHANGING THE NAME OF "src" FOLDER
+        run: pytest --cov ascent # NEEDS TO BE UPDATED WHEN CHANGING THE NAME OF "src" FOLDER
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3

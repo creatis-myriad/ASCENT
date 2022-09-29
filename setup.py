@@ -8,7 +8,7 @@ from setuptools import find_packages, setup
 # https://packaging.python.org/guides/single-sourcing-package-version/
 # http://blog.ionelmc.ro/2014/05/25/python-packaging/
 PATH_ROOT = pathlib.Path(__file__).parent
-builtins.__COVID_SETUP__ = True
+builtins.__ASCENT_SETUP__ = True
 
 
 def load_requirements(
@@ -37,12 +37,12 @@ def load_long_description():  # noqa: D103
 
 
 setup(
-    name="covid",
+    name="ascent",
     version="0.0.1",
-    description="Color-Doppler intracardiac Vector flow Imaging using physics-constrained Deep learning",
+    description="Cardiac Ultrasound Segmentation & Color-Doppler Dealiasing Toolbox",
     author="Hang Jung Ling",
     author_email="hang-jung.ling@insa-lyon.fr",
-    url="https://github.com/HangJung97/CoVID",  # REPLACE WITH YOUR OWN GITHUB PROJECT LINK
+    url="https://github.com/HangJung97/ASCENT",  # REPLACE WITH YOUR OWN GITHUB PROJECT LINK
     install_requires=load_requirements(),
     packages=find_packages(),
     long_description=load_long_description(),

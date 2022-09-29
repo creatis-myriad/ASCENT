@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from monai.data import MetaTensor
 
-from covid.models.components.unet_related.layers import (
+from ascent.models.components.unet_related.layers import (
     ConvBlock,
     OutputBlock,
     ResidBlock,

@@ -1,15 +1,21 @@
 <div align="center">
 
-# CoVID
+# ASCENT
 
-Welcome to the code repository for projects related to the *Color-Doppler intracardiac Vector flow Imaging using physics-constrained Deep learning* (CoVID) project.
+Welcome to the code repository for *cardiAc ultrasound Segmentation & Color-dopplEr dealiasiNg Toolbox* (ASCENT).
 
 <a href="https://pytorch.org/get-started/locally/"><img alt="PyTorch" src="https://img.shields.io/badge/PyTorch-ee4c2c?logo=pytorch&logoColor=white"></a>
 <a href="https://pytorchlightning.ai/"><img alt="Lightning" src="https://img.shields.io/badge/-Lightning-792ee5?logo=pytorchlightning&logoColor=white"></a>
 <a href="https://hydra.cc/"><img alt="Config: Hydra" src="https://img.shields.io/badge/Config-Hydra-89b8cd"></a>
 <a href="https://github.com/ashleve/lightning-hydra-template"><img alt="Template" src="https://img.shields.io/badge/-Lightning--Hydra--Template-017F2F?style=flat&logo=github&labelColor=gray"></a><br>
-[![Paper](http://img.shields.io/badge/paper-arxiv.1001.2234-B31B1B.svg)](https://www.nature.com/articles/nature14539)
-[![Conference](http://img.shields.io/badge/AnyConference-year-4b44ce.svg)](https://papers.nips.cc/paper/2020)
+
+[![python](https://img.shields.io/badge/-Python_3.9_%7C_3.10-blue?logo=python&logoColor=white)](https://github.com/pre-commit/pre-commit)
+[![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336)](https://pycqa.github.io/isort/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![pre-commit](https://img.shields.io/badge/Pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
+[![code-quality](https://github.com/HangJung97/ASCENT/actions/workflows/code-quality-main.yaml/badge.svg)](https://github.com/HangJung97/ASCENT/actions/workflows/code-quality-main.yaml)
+
+[![license](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/HangJung97/ASCENT#LICENSE)
 
 </div>
 
@@ -23,38 +29,32 @@ Install dependencies
 
 ```bash
 # clone project
-git clone https://github.com/YourGithubName/your-repo-name
-cd your-repo-name
+git clone https://github.com/HangJung97/ASCENT
+cd ASCENT
 
 # [OPTIONAL] create conda environment
-conda create -n myenv python=3.9
-conda activate myenv
+conda create -n ascent python=3.10
+conda activate ascent
 
 # install pytorch according to instructions
 # https://pytorch.org/get-started/
 
-# install requirements
-pip install -r requirements.txt
-```
-
-Train model with default configuration
-
-```bash
-# train on CPU
-python src/train.py trainer=cpu
-
-# train on GPU
-python src/train.py trainer=gpu
+# install the project
+pip install .
 ```
 
 Train model with chosen experiment configuration from [configs/experiment/](configs/experiment/)
 
 ```bash
-python src/train.py experiment=experiment_name.yaml
+# train on CPU
+ascent_train experiment=camus_2d trainer.accelerator=cpu
+
+# train on GPU
+ascent_train experiment=camus_2d trainer.accelerator=gpu
 ```
 
 You can override any parameter from command line like this
 
 ```bash
-python src/train.py trainer.max_epochs=20 datamodule.batch_size=64
+ascent_train experiment=camus_2d trainer.max_epochs=20 datamodule.batch_size=8
 ```

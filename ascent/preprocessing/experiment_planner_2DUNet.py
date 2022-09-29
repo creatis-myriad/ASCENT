@@ -1,6 +1,5 @@
 import errno
 import os
-from collections import OrderedDict
 from copy import deepcopy
 from pathlib import Path
 from typing import Union
@@ -9,10 +8,10 @@ import numpy as np
 import pyrootutils
 import ruamel.yaml
 
-from covid import utils
-from covid.models.components.unet import UNet
-from covid.preprocessing.utils import get_pool_and_conv_props
-from covid.utils.file_and_folder_operations import load_pickle
+from ascent import utils
+from ascent.models.components.unet import UNet
+from ascent.preprocessing.utils import get_pool_and_conv_props
+from ascent.utils.file_and_folder_operations import load_pickle
 
 log = utils.get_pylogger(__name__)
 

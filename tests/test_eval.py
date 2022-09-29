@@ -4,8 +4,8 @@ import pytest
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import open_dict
 
-from covid.eval import evaluate
-from covid.train import train
+from ascent.eval import evaluate
+from ascent.train import train
 
 
 @pytest.mark.slow

@@ -32,13 +32,9 @@ root = pyrootutils.setup_root(
 # ------------------------------------------------------------------------------------ #
 
 import os
-import warnings
-
-warnings.filterwarnings(action="ignore")
-
 from copy import deepcopy
 from pathlib import Path
-from typing import Callable, List, Tuple, Union
+from typing import Callable, Tuple, Union
 
 import hydra
 import numpy as np
@@ -46,11 +42,10 @@ from monai.data import CacheDataset, DataLoader
 from monai.transforms import Compose, EnsureChannelFirstd, LoadImaged, ToTensord
 from omegaconf import DictConfig
 from pytorch_lightning import LightningModule, Trainer
-from pytorch_lightning.loggers import LightningLoggerBase
 
-from covid import utils
-from covid.datamodules.components.transforms import Preprocessd
-from covid.utils.file_and_folder_operations import load_pickle, save_pickle, subfiles
+from ascent import utils
+from ascent.datamodules.components.transforms import Preprocessd
+from ascent.utils.file_and_folder_operations import load_pickle, subfiles
 
 log = utils.get_pylogger(__name__)
 

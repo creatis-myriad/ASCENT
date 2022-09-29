@@ -1,6 +1,6 @@
-from covid.utils.pylogger import get_pylogger
-from covid.utils.rich_utils import enforce_tags, print_config_tree
-from covid.utils.utils import (
+from ascent.utils.pylogger import get_pylogger
+from ascent.utils.rich_utils import enforce_tags, print_config_tree
+from ascent.utils.utils import (
     close_loggers,
     extras,
     get_metric_value,

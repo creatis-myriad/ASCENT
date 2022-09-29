@@ -1,4 +1,4 @@
-_target_: covid.models.mnist_module.MNISTLitModule
+_target_: ascent.models.mnist_module.MNISTLitModule
 
 optimizer:
   _target_: torch.optim.Adam
@@ -7,7 +7,7 @@ optimizer:
   weight_decay: 0.0
 
 net:
-  _target_: covid.models.components.simple_dense_net.SimpleDenseNet
+  _target_: ascent.models.components.simple_dense_net.SimpleDenseNet
   input_size: 784
   lin1_size: 64
   lin2_size: 128

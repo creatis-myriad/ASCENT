@@ -14,7 +14,7 @@ warnings.filterwarnings(action="ignore")
 import hydra
 from omegaconf import DictConfig
 
-from covid import utils
+from ascent import utils
 
 log = utils.get_pylogger(__name__)
 

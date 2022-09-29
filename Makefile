@@ -27,7 +27,7 @@ test-full: ## Run all tests
 	pytest
 
 train: ## Train the model
-	python covid/train.py
+	python ascent/train.py
 
 debug: ## Enter debugging mode with pdb
 	#
@@ -39,4 +39,4 @@ debug: ## Enter debugging mode with pdb
 	# - use "l" to print src code around current line, "ll" for full function code
 	# - docs: https://docs.python.org/3/library/pdb.html
 	#
-	python -m pdb covid/train.py debug=default
+	python -m pdb ascent/train.py debug=default
