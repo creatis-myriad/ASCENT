@@ -223,7 +223,13 @@ class nnUNetDataModule(LightningDataModule):
                         for key in test_keys
                     ]
                 else:
-                    self.test_files = self.val_files
+                    self.test_files = [
+                        {
+                            "data": os.path.join(self.full_data_dir, "%s.npy" % key),
+                            "image_meta_dict": os.path.join(self.full_data_dir, "%s.pkl" % key),
+                        }
+                        for key in val_keys
+                    ]
 
         if stage == TrainerFn.FITTING:
             self.data_train = IterableDataset(
