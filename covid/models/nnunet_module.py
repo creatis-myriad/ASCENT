@@ -1,4 +1,5 @@
 import os
+import time
 from collections import OrderedDict
 from pathlib import Path
 from typing import Union
@@ -212,7 +213,10 @@ class nnUNetLitModule(LightningModule):
 
     def test_step(self, batch, batch_idx):  # noqa: D102
         img, label, image_meta_dict = batch["image"], batch["label"], batch["image_meta_dict"]
+
+        start_time = time.time()
         preds = self.tta_predict(img) if self.hparams.tta else self.predict(img)
+        print(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
 
         num_classes = preds.shape[1]
         preds = softmax_helper(preds)
@@ -287,44 +291,6 @@ class nnUNetLitModule(LightningModule):
 
         return {"test/dice": test_dice}
 
-    # def test_step_end(self, test_step_outputs):  # noqa: D102
-    #     preds = test_step_outputs["preds"]
-    #     properties_dict = self.get_properties(test_step_outputs["image_meta_dict"])
-
-    #     if self.hparams.save_predictions:
-    #         preds = softmax_helper(preds)
-    #         preds = preds.squeeze(0).cpu().detach().numpy()
-    #         original_shape = properties_dict.get("original_shape")
-    #         if len(preds.shape[1:]) == len(original_shape) - 1:
-    #             preds = preds[..., None]
-    #         if properties_dict.get("resampling_flag"):
-    #             shape_after_cropping = properties_dict.get("shape_after_cropping")
-    #             preds = self.recovery_prediction(
-    #                 preds, shape_after_cropping, properties_dict.get("anisotropy_flag")
-    #             )
-
-    #         box_start, box_end = properties_dict.get("crop_bbox")
-    #         min_w, min_h, min_d = box_start
-    #         max_w, max_h, max_d = box_end
-
-    #         final_preds = np.zeros([preds.shape[0], *original_shape])
-    #         final_preds[:, min_w:max_w, min_h:max_h, min_d:max_d] = preds
-
-    #         if self.trainer.datamodule.hparams.test_splits:
-    #             save_dir = os.path.join(self.trainer.default_root_dir, "testing_raw")
-    #         else:
-    #             save_dir = os.path.join(self.trainer.default_root_dir, "validation_raw")
-
-    #         fname = properties_dict.get("case_identifier")
-    #         spacing = properties_dict.get("original_spacing")
-
-    #         if self.hparams.save_npz:
-    #             self.save_npz_and_properties(final_preds, properties_dict, fname, save_dir)
-
-    #         final_preds = final_preds.argmax(0)
-
-    #         self.save_mask(final_preds, fname, spacing, save_dir)
-
     def test_epoch_end(self, test_step_outputs):  # noqa: D102
         mean_dice = self.metric_mean("test/dice", test_step_outputs)
         self.log(
@@ -339,7 +305,10 @@ class nnUNetLitModule(LightningModule):
 
     def predict_step(self, batch, batch_idx):  # noqa: D102
         img, image_meta_dict = batch["image"], batch["image_meta_dict"]
+
+        start_time = time.time()
         preds = self.tta_predict(img) if self.hparams.tta else self.predict(img)
+        print(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
 
         properties_dict = self.get_properties(image_meta_dict)
 
@@ -372,7 +341,6 @@ class nnUNetLitModule(LightningModule):
         final_preds = final_preds.argmax(0)
 
         self.save_mask(final_preds, fname, spacing, save_dir)
-        return final_preds
 
     def configure_optimizers(self):  # noqa: D102
         optimizer = self.hparams.optimizer(params=self.parameters())
@@ -645,7 +613,7 @@ class nnUNetLitModule(LightningModule):
             save_dir: Directory to save the segmentation mask.
         """
 
-        print(f"\nSaving segmentation for {fname}...\n")
+        print(f"Saving segmentation for {fname}...\n")
 
         os.makedirs(save_dir, exist_ok=True)
 
@@ -667,7 +635,7 @@ class nnUNetLitModule(LightningModule):
             save_dir: Directory to save the segmentation mask.
         """
 
-        print(f"\nSaving softmax for {fname}...\n")
+        print(f"Saving softmax for {fname}...\n")
 
         os.makedirs(save_dir, exist_ok=True)
 
