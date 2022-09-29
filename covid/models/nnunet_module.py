@@ -613,7 +613,7 @@ class nnUNetLitModule(LightningModule):
             save_dir: Directory to save the segmentation mask.
         """
 
-        print(f"\nSaving segmentation for {fname}...\n")
+        print(f"Saving segmentation for {fname}...\n")
 
         os.makedirs(save_dir, exist_ok=True)
 
@@ -635,7 +635,7 @@ class nnUNetLitModule(LightningModule):
             save_dir: Directory to save the segmentation mask.
         """
 
-        print(f"\nSaving softmax for {fname}...\n")
+        print(f"Saving softmax for {fname}...\n")
 
         os.makedirs(save_dir, exist_ok=True)
 
