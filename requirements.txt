@@ -21,13 +21,13 @@ pre-commit      		# hooks for applying linters on commit
 rich            		# beautiful text formatting in terminal
 pytest          		# tests
 sh<=1.14.2      		# for running bash commands in some tests
-torchinfo 				# for model summary printing
+torchinfo				# for model summary printing
 matplotlib				# for plotting
 SimpleITK				# read/write io for data
-scikit-image            # image transformations
-scikit-learn            # dataset split
+scikit-image			# image transformations
+scikit-learn			# dataset split
 nibabel					# manipulate nifti files
-monai==1.0.0            # for data reading and transformations
-einops                  # useful tensor operations
-ruamel.yaml             # yaml io
-joblib                  # parallel process
+monai==1.0.0			# for data reading and transformations
+einops					# useful tensor operations
+ruamel.yaml				# yaml io
+joblib					# parallel process
