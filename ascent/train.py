@@ -104,7 +104,7 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
         else:
             trainer.fit(model=model, datamodule=datamodule)
 
-        if isinstance(trainer.logger, CometLogger):
+        if isinstance(trainer.logger, CometLogger) and cfg.comet_save_model:
             if cfg.nnUNet_variant:
                 trainer.logger.experiment.log_model(
                     "model", trainer.checkpoint_callback.last_model_path
