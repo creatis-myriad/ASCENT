@@ -6,11 +6,22 @@ defaults:
   - paths: default
   - _self_
 
+# name of dataset, e.g. CAMUS
 dataset: ???
+
+# set true to resample the dataset
 resample: True
+
+# set true to normalize the dataset
 normalize: True
+
+# set true to overwrite the existing cropped folder
 overwrite: False
+
+# set true to plan 2D experiment
 pl2d: True
+
+# set true to plan 3D experiment
 pl3d: True
 
 hydra:
