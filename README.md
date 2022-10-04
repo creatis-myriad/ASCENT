@@ -1,15 +1,15 @@
 <div align="center">
 
-# ASCENT
+# ASCENT <!-- no toc -->
 
 Welcome to the code repository for *cardiAc ultrasound Segmentation & Color-dopplEr dealiasiNg Toolbox* (ASCENT).
 
+[![python](https://img.shields.io/badge/-Python_3.9_%7C_3.10-blue?logo=python&logoColor=white)](https://github.com/pre-commit/pre-commit)
 <a href="https://pytorch.org/get-started/locally/"><img alt="PyTorch" src="https://img.shields.io/badge/PyTorch-ee4c2c?logo=pytorch&logoColor=white"></a>
 <a href="https://pytorchlightning.ai/"><img alt="Lightning" src="https://img.shields.io/badge/-Lightning-792ee5?logo=pytorchlightning&logoColor=white"></a>
 <a href="https://hydra.cc/"><img alt="Config: Hydra" src="https://img.shields.io/badge/Config-Hydra-89b8cd"></a>
 <a href="https://github.com/ashleve/lightning-hydra-template"><img alt="Template" src="https://img.shields.io/badge/-Lightning--Hydra--Template-017F2F?style=flat&logo=github&labelColor=gray"></a><br>
 
-[![python](https://img.shields.io/badge/-Python_3.9_%7C_3.10-blue?logo=python&logoColor=white)](https://github.com/pre-commit/pre-commit)
 [![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336)](https://pycqa.github.io/isort/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![pre-commit](https://img.shields.io/badge/Pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
@@ -23,12 +23,27 @@ Welcome to the code repository for *cardiAc ultrasound Segmentation & Color-dopp
 
 ASCENT is a toolbox to segment cardiac structures (left ventricle, right ventricle, etc.) on ultrasound images and perform dealiasing on color Doppler echocardiography. It combines one of the best segmentation framework, [nnUNet](https://github.com/MIC-DKFZ/nnUNet) with [PyTorch Lightning](https://www.pytorchlightning.ai/), [Hydra](https://hydra.cc/), and [monai](https://monai.io/). The main reasons of doing so are to take advantage of each library:
 
-- nnUNet's heuristic rules for hyperparameters determination and training scheme gives excellent segmentation results.
+- nnUNet's heuristic rules for hyperparameters determination and training scheme give excellent segmentation results.
 - PyTorch Lightning reduces boilerplate and provides better PyTorch code organization.
 - Hydra offers pluggable architectures, dynamic configurations, and easy configuration overriding through command lines.
 - Monai simplifies the data loading and pre-processing.
 
 For now, ASCENT provides only nnUNet 2D and 3D_fullres architectures (similar to monai's [DynUNet](https://docs.monai.io/en/stable/_modules/monai/networks/nets/dynunet.html)). You can easily plug your own models in ASCENT pipeline.
+
+# Table of Contents <!-- no toc -->
+
+- [Description](#description)
+- [How to run](#how-to-run)
+  - [Install](#install)
+  - [Data](#data)
+  - [Important note](#important-note)
+  - [Preprocess](#preprocess)
+  - [Model training](#model-training)
+  - [Model evaluation](#model-evaluation)
+  - [Run inference](#run-inference)
+  - [Experiment tracking](#experiment-tracking)
+  - [Define custom data and logs path](#define-custom-data-and-logs-path)
+- [Resources](#resources)
 
 # How to run
 
@@ -65,9 +80,11 @@ Several new commands will be added to the virtual environment once the installat
 Next, download the [Camus](https://www.creatis.insa-lyon.fr/Challenge/camus/) dataset. You have to reformat the dataset to new format and place the converted dataset in the `data/` folder.
 
 > **Note**
-> Refer to [here](custom_path) if you want to have a different `data/` folder location.
+> Refer to [here](#define-custom-data-and-logs-path) if you want to have a different `data/` folder location.
 
 The reformatted dataset should look like this:
+
+```
 data/
 ├── CAMUS
 │   ├──raw/
@@ -75,18 +92,24 @@ data/
 │   │  │  ├──CAMUS_0001_0000.nii.gz
 │   │  │  ├──CAMUS_0002_0000.nii.gz
 │   │  │  ├──CAMUS_0003_0000.nii.gz
+│   │  │  └── ...
+│   │  │
 │   │  ├──labelsTr/
 │   │  │  ├──CAMUS_0001.nii.gz
 │   │  │  ├──CAMUS_0002.nii.gz
 │   │  │  ├──CAMUS_0003.nii.gz
+│   │  │  └── ...
+│   │  │
 │   │  ├──imagesTs/
 │   │  ├──labelsTs/
 │   │  ├──dataset.json
+```
+
 More details can be found in [nnUNet's dataset conversion instructions](https://github.com/MIC-DKFZ/nnUNet/blob/master/documentation/dataset_conversion.md)
 
 ## Important note
 
-ASCENT uses Hydra to handle the configurations and runs. To know more about Hydra's CLI, refer to its [documentation](https://hydra.cc/docs/intro/)
+ASCENT uses Hydra to handle the configurations and runs. To know more about Hydra's CLI, refer to its [documentation](https://hydra.cc/docs/intro/).
 
 ## Preprocess
 
@@ -144,6 +167,8 @@ ascent_train experiment=camus_2d --cfg --resolve
 ```
 
 Hydra creates new output directory for every executed run. Default ASCENT's nnUNet logging structure is as follows:
+
+```
 ├── logs
 │   ├── dataset_name
 │   │   ├── nnUNet
@@ -163,6 +188,7 @@ Hydra creates new output directory for every executed run. Default ASCENT's nnUN
 │   │   │   │   │       │   ├──2
 │   │   │   │   │       │   └── ...
 │   │   │   │   │       └── ...
+```
 
 At the end of the training, the prediction on validation or test data will be executed and saved in the output folder, named as `validation_raw` or `testing_raw`. To disable this, override `test=False`:
 
@@ -171,7 +197,7 @@ ascent_train experiment=camus_2d test=False logger=tensorboard
 ```
 
 > **Note**
-> Refer to [here](custom_path) if you want to have a different `logs/` folder location.
+> Refer to [here](#define-custom-data-and-logs-path) if you want to have a different `logs/` folder location.
 
 ## Model evaluation
 
@@ -213,7 +239,7 @@ Override `logger` to use your logger of preference:
 ascent_train experiment=camus_2d logger=tensorboard
 ```
 
-## Define custom data and logs path <a name="custom_path"></a>
+## Define custom data and logs path
 
 In some cases, you may want to specify your own data and logs paths instead of using the default `data/` and `logs/`. You can do this by setting them in environments variables after renaming the [.env.example](.env.example) file to `.env`. In the `.env`, simply override:
 
@@ -228,6 +254,15 @@ LOGS_PATH="paths/to/logs"
 After that, you must override `paths=custom` in all your commands, e.g.:
 
 ```bash
-# to use the custom data and logs paths
+# to use custom data and logs paths
 ascent_train experiment=camus_2d paths=custom
 ```
+
+# Resources
+
+This project was inspired by:
+
+- [MIC-DKFZ/nnUNet](https://github.com/MIC-DKFZ/nnUNet)
+- [Project-MONAI/tutorials/modules/dynunet_pipeline](https://github.com/Project-MONAI/tutorials/tree/main/modules/dynunet_pipeline)
+- [NVIDIA/DeepLearningExamples/PyTorch/Segmentation/nnUNet/](https://github.com/NVIDIA/DeepLearningExamples/tree/ddbcd54056e8d1bc1c4d5a8ab34cb570ebea1947/PyTorch/Segmentation/nnUNet)
+- [ashleve/lightning-hydra-template](https://github.com/ashleve/lightning-hydra-template)
