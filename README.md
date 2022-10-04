@@ -105,7 +105,7 @@ data/
 │   │  ├──dataset.json
 ```
 
-More details can be found in [nnUNet's dataset conversion instructions](https://github.com/MIC-DKFZ/nnUNet/blob/master/documentation/dataset_conversion.md)
+More details can be found in [nnUNet's dataset conversion instructions](https://github.com/MIC-DKFZ/nnUNet/blob/master/documentation/dataset_conversion.md).
 
 ## Important note
 
