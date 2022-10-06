@@ -62,7 +62,7 @@ if __name__ == "__main__":
     from mpl_toolkits.axes_grid1 import make_axes_locatable
     from torchvision import datasets, transforms
 
-    from covid.models.components.spyrit_related.utils import (
+    from ascent.models.components.spyrit_related.utils import (
         Forward_operator,
         Tikhonov_solve,
         Unet,
