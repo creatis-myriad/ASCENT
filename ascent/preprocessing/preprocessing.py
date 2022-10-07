@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Callable, Union
 
 import numpy as np
+from einops.einops import rearrange
 from joblib import Parallel, delayed
 from monai.data import MetaTensor
 from monai.transforms import Compose, EnsureChannelFirstd, LoadImaged, SpatialCropd
@@ -852,6 +853,235 @@ class SegPreprocessor:
 
         # get all size reductions
         self.all_size_reductions = self._get_all_size_reductions(list_of_cropped_npz_files)
+
+        # determine whether to use non zero mask for normalization
+        self.use_nonzero_mask = self._determine_whether_to_use_mask_for_norm()
+
+        # resample and normalize
+        self._preprocess(list_of_cropped_npz_files)
+
+        # save dataset properties
+        list_of_preprocessed_npz_files = subfiles(
+            self.preprocessed_npz_folder, True, None, ".npz", True
+        )
+        self._save_dataset_properties(list_of_preprocessed_npz_files)
+
+
+class RegPreprocessor(SegPreprocessor):
+    def _get_intensities(
+        self,
+        data: dict[str, Union[Path, str]],
+        transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
+        **kwargs,
+    ) -> list:
+        """Collect the intensities of a data.
+
+        Gather the intensities of all the foreground pixels in an image.
+
+        Args:
+            data: Paths to a pair of image and label.
+            transforms: Compose of sequences of monai's transformations to read the path provided
+                in datalist and transform the data.
+            kwargs: Indication of the desired modality for intensity collection.
+
+        Returns:
+            Image intensities of foreground pixels.
+        """
+
+        # simply return all intensities of the image in a list
+        data = transforms(data)
+        image = data["image"].astype(np.float32)
+        intensities = rearrange(image, "b c h w d -> (b c h w d)").tolist()
+        return intensities
+
+    def _crop(
+        self,
+        data: dict[str, Union[Path, str]],
+        transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
+        **kwargs,
+    ) -> None:
+        """Crop an image-label pair to non-zero region and save it.
+
+        Args:
+            data: Paths to a pair of image and label.
+            transforms: Compose of sequences of monai's transformations to read the path provided
+                in datalist and transform the data.
+        """
+
+        # skip cropping but save some useful information
+        list_of_data_files = data["image"]
+        case_identifier = os.path.basename(list_of_data_files[0]).split(".nii.gz")[0][:-5]
+        if self.overwrite_existing or (
+            not os.path.isfile(os.path.join(self.cropped_folder, "%s.npz" % case_identifier))
+            or not os.path.isfile(os.path.join(self.cropped_folder, "%s.pkl" % case_identifier))
+        ):
+            properties = OrderedDict()
+            data = transforms(data)
+            properties["case_identifier"] = case_identifier
+            properties["list_of_data_files"] = list_of_data_files
+            properties["original_shape"] = np.array(data["image"].shape[1:])
+            properties["original_spacing"] = np.array(data["image"].meta["pixdim"][1:4].tolist())
+
+            properties["crop_bbox"] = None
+            print("\nSkip cropping %s..." % properties["case_identifier"])
+            properties["shape_after_cropping"] = properties["original_shape"]
+            properties["cropping_size_reduction"] = 1
+
+            cropped_filename = os.path.join(
+                self.cropped_folder, "%s.npz" % properties["case_identifier"]
+            )
+            properties_name = os.path.join(
+                self.cropped_folder, "%s.pkl" % properties["case_identifier"]
+            )
+            all_data = np.vstack([data["image"].array, data["label"].array])
+            print("\nSaving to", cropped_filename)
+            np.savez_compressed(cropped_filename, data=all_data)
+            with open(properties_name, "wb") as f:
+                pickle.dump(properties, f)  # nosec B301
+
+    def _determine_whether_to_use_mask_for_norm(
+        self,
+    ) -> dict[bool]:
+        """Determine whether to use non-zero mask for data normalization.
+
+        Use non-zero mask for normalization when the image is not a CT and when the cropping to
+        non-zero reduces the median image size to more than 25%.
+
+        Returns:
+            Boolean flags to indicate the use of non-zero mask for each modality.
+        """
+
+        # disable non zero mask normalization as we don't have the segmentation
+        num_modalities = len(list(self.modalities.keys()))
+        use_nonzero_mask_for_norm = OrderedDict()
+
+        for i in range(num_modalities):
+            use_nonzero_mask_for_norm[i] = False
+
+        return use_nonzero_mask_for_norm
+
+    def _save_dataset_properties(self, list_of_preprocessed_npz_files) -> None:
+        """Save useful dataset properties that will be used during inference and for experiment
+        planning."""
+
+        prop = OrderedDict()
+        prop["do_resample"] = self.do_resample
+        prop["spacing_after_resampling"] = self.target_spacing
+        prop["do_normalize"] = self.do_normalize
+        prop["modalities"] = self.modalities
+        prop["use_nonzero_mask"] = self.use_nonzero_mask
+        prop["intensity_properties"] = self.intensity_properties
+        all_cases = [
+            self.get_case_identifier_from_npz(case) for case in list_of_preprocessed_npz_files
+        ]
+        prop["all_cases"] = all_cases
+        prop["all_shapes_after_resampling"] = self._get_all_shapes_after_resampling(
+            list_of_preprocessed_npz_files
+        )
+        prop["all_classes"] = []
+
+        with open(os.path.join(self.preprocessed_folder, "dataset_properties.pkl"), "wb") as f:
+            pickle.dump(prop, f)  # nosec B301
+
+    def _resample_and_normalize(self, case_identifier: str) -> None:
+        """Resample and normalize a data.
+
+        Resample, normalize and save the data to the preprocessed folder
+        (~/data/DATASET_NAME/preprocessed/data_and_properties).
+
+        Args:
+            case_identifier: Case identifier of a data.
+        """
+
+        data, seg, properties = self._load_cropped(case_identifier)
+        if not self.do_resample:
+            print("\n", "Skip resampling...")
+            properties["resampling_flag"] = False
+            properties["shape_after_resampling"] = np.array(data[0].shape)
+            properties["spacing_after_resampling"] = properties["original_spacing"]
+        else:
+            properties["resampling_flag"] = True
+
+            before = {"spacing": properties["original_spacing"], "data.shape": data.shape}
+
+            anisotropy_flag = bool(self._check_anisotropy(properties["original_spacing"]))
+            new_shape = self._calculate_new_shape(
+                properties["original_spacing"], properties["shape_after_cropping"]
+            )
+            data = resample_image(data, new_shape, anisotropy_flag)
+            seg = resample_image(seg.astype(np.float32), new_shape, anisotropy_flag)
+            properties["anisotropy_flag"] = anisotropy_flag
+            properties["shape_after_resampling"] = np.array(data[0].shape)
+            properties["spacing_after_resampling"] = np.array(self.target_spacing)
+
+            after = {
+                "spacing": properties["spacing_after_resampling"],
+                "data.shape (data is resampled)": data.shape,
+            }
+
+            print("before:", before, "\nafter: ", after, "\n")
+
+        if not self.do_normalize:
+            print("\nSkip normalization...")
+            properties["normalization_flag"] = False
+        else:
+            properties["normalization_flag"] = True
+            properties["use_nonzero_mask_for_norm"] = self.use_nonzero_mask
+            data, seg = self._normalize(data, seg)
+
+        all_data = np.vstack((data, seg.astype(np.float32))).astype(np.float32)
+        print(
+            "Saving: ",
+            os.path.join(
+                self.preprocessed_folder, "data_and_properties", "%s.npz" % case_identifier
+            ),
+            "\n",
+        )
+        np.savez_compressed(
+            os.path.join(
+                self.preprocessed_folder, "data_and_properties", "%s.npz" % case_identifier
+            ),
+            data=all_data.astype(np.float32),
+        )
+        with open(
+            os.path.join(
+                self.preprocessed_folder, "data_and_properties", "%s.pkl" % case_identifier
+            ),
+            "wb",
+        ) as f:
+            pickle.dump(properties, f)  # nosec B301
+
+    def run(self) -> None:
+        """Perform the resampling, normalization and saving of the dataset."""
+
+        # get all training data
+        datalist, self.modalities = self._create_datalist()
+
+        load_transforms = [
+            LoadImaged(keys=["image", "label"]),
+            EnsureChannelFirstd(keys=["image", "label"]),
+        ]
+        transforms = Compose(load_transforms)
+
+        log.info("Initializing to run preprocessing...")
+        log.info(f"Cropped folder: {self.cropped_folder}")
+        log.info(f"Preprocessed folder: {self.preprocessed_folder}")
+        # get target spacing
+        self.target_spacing = self._get_target_spacing(datalist, transforms)
+        log.info("Target spacing: {np.array(self.target_spacing)}.")
+
+        # get intensity properties if input contains CT data
+        if "CT" in self.modalities.values():
+            log.info("CT input, calculating intensity propoerties...")
+            self.intensity_properties = self._collect_intensities(datalist, transforms)
+        else:
+            self.intensity_properties = None
+            log.info("Non CT input, skipping the calculation of intensity properties...")
+
+        # crop to non zero
+        self._crop_from_list_of_files(datalist, transforms)
+
+        list_of_cropped_npz_files = subfiles(self.cropped_folder, True, None, ".npz", True)
 
         # determine whether to use non zero mask for normalization
         self.use_nonzero_mask = self._determine_whether_to_use_mask_for_norm()

@@ -1,0 +1,6 @@
+_target_: ascent.preprocessing.preprocessing.RegPreprocessor
+dataset_path: ${paths.data_dir}/${dataset}
+do_resample: ${resample}
+do_normalize: ${normalize}
+num_workers: 12
+overwrite_existing: ${overwrite}

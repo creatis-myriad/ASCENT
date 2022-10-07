@@ -211,16 +211,19 @@ class LoadNpyd(MapTransform):
         keys: KeysCollection,
         test: bool = False,
         allow_missing_keys: bool = False,
+        seg_label: bool = True,
     ) -> None:
         """
         Args:
             keys: Keys of the corresponding items to be transformed.
             test: Set to true to return image meta properties during test.
             allow_missing_keys: Don't raise exception if key is missing.
+            seg_label: Set to true if the label is segmentation
         """
 
         super().__init__(keys, allow_missing_keys)
         self.test = test
+        self.seg_label = seg_label
 
     def __call__(self, data):
         """
@@ -244,7 +247,10 @@ class LoadNpyd(MapTransform):
                 meta = case_all_data._meta
                 d.pop(key, None)
                 d["image"] = MetaTensor(case_all_data.array[:-1].astype(np.float32), meta=meta)
-                d["label"] = MetaTensor(case_all_data.array[-1:].astype(np.uint8), meta=meta)
+                if self.seg_label:
+                    d["label"] = MetaTensor(case_all_data.array[-1:].astype(np.uint8), meta=meta)
+                else:
+                    d["label"] = MetaTensor(case_all_data.array[-1:].astype(np.float32), meta=meta)
                 del case_all_data
                 if not len(d["image"].shape) == 4:
                     raise ValueError("Image should be (c, w, h, d)")

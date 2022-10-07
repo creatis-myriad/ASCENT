@@ -21,6 +21,7 @@ from monai.transforms import (
     RandGaussianSmoothd,
     RandRotated,
     RandScaleIntensityd,
+    RandSpatialCropd,
     RandZoomd,
     SpatialPadd,
 )
@@ -56,6 +57,7 @@ class nnUNetDataModule(LightningDataModule):
         num_workers: int = os.cpu_count() - 1,
         pin_memory: bool = True,
         test_splits: bool = True,
+        seg_label: bool = True,
     ):
         """Initializes class instance.
 
@@ -72,6 +74,7 @@ class nnUNetDataModule(LightningDataModule):
             num_workers: Number of subprocesses to use for data loading.
             pin_memory: Whether to pin memory to GPU.
             test_splits: Whether to split data into train/val/test (0.8/0.1/0.1).
+            seg_label: Whether the labels are segmentations.
         """
 
         super().__init__()
@@ -297,7 +300,7 @@ class nnUNetDataModule(LightningDataModule):
                 range_x = [-15.0 / 180 * np.pi, 15.0 / 180 * np.pi]
 
         shared_train_val_transforms = [
-            LoadNpyd(keys=["data"]),
+            LoadNpyd(keys=["data"], seg_label=self.hparams.seg_label),
             EnsureChannelFirstd(keys=["image", "label"]),
             SpatialPadd(
                 keys=["image", "label"],
@@ -313,6 +316,11 @@ class nnUNetDataModule(LightningDataModule):
                 neg=0.67,
                 num_samples=1,
             ),
+            # RandSpatialCropd(
+            #     keys=["image", "label"],
+            #     roi_size=self.crop_patch_size,
+            #     random_size=False,
+            # ),
         ]
 
         other_transforms = []
@@ -379,6 +387,7 @@ class nnUNetDataModule(LightningDataModule):
             LoadNpyd(
                 keys=["data", "image_meta_dict"],
                 test=True,
+                seg_label=self.hparams.seg_label,
             ),
             EnsureChannelFirstd(keys=["image", "label"]),
         ]
@@ -417,13 +426,13 @@ if __name__ == "__main__":
     root = pyrootutils.setup_root(__file__, pythonpath=True)
 
     initialize_config_dir(config_dir=str(root / "configs" / "datamodule"), job_name="test")
-    cfg = compose(config_name="camus_2d.yaml")
+    cfg = compose(config_name="unwrap_2d.yaml")
     print(OmegaConf.to_yaml(cfg))
 
     cfg.data_dir = str(root / "data")
     # cfg.patch_size = [128, 128]
-    cfg.in_channels = 1
-    cfg.patch_size = [640, 512]
+    cfg.in_channels = 3
+    cfg.patch_size = [40, 192]
     # cfg.patch_size = [128, 128, 12]
     cfg.batch_size = 1
     cfg.fold = 0
@@ -444,8 +453,8 @@ if __name__ == "__main__":
     # camus_datamodule.prepare_for_prediction(predict_files)
     # camus_datamodule.setup(stage=TrainerFn.PREDICTING)
     # predict_dl = camus_datamodule.predict_dataloader()
-
-    batch = next(iter(train_dl))
+    gen = iter(train_dl)
+    batch = next(gen)
     # batch = next(iter(test_dl))
     # batch = next(iter(predict_dl))
 

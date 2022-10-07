@@ -1,0 +1,28 @@
+# @package _global_
+
+defaults:
+  - override /datamodule: unwrap_2d
+  - override /model: unwrap_2d
+  - override /callbacks: nnunet
+  - override /logger: comet
+  - override /trainer: nnunet
+  - override /hydra: nnunet
+
+tags: ["unwrap", "nnUNet_2D"]
+task_name: "UNWRAP"
+fold: 0
+train: True
+test: True
+nnUNet_variant: 2D
+callbacks:
+  model_checkpoint:
+    dirpath: ${paths.output_dir}/checkpoints
+    filename: "epoch_{epoch:03d}"
+    monitor: "val/mse_MA"
+    mode: "min"
+    save_last: True
+    auto_insert_metric_name: False
+logger:
+  comet:
+    project_name: "UNWRAP"
+    experiment_name: "2D_Fold${fold}"

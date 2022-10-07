@@ -14,18 +14,18 @@ class SpyritNet(nn.Module):
     def wrap(x, n: int):
         return ((x + n) % (2 * n)) - n
 
-    def Forward(self, x, DPower):
+    def forward(self, x, DPower):
         _, c, h, w = x.shape
         A1, A2 = self.F_O.get_diff_matrix()
         # W =
         # x = A1.transpose().dot(csr_matrix()
-        x = self.Foward_tikh(x)
+        x = self.foward_tikh(x)
         x = self.Denoi(x)  # shape stays the same
         x = rearrange(x, "(b c) () (h w) -> b c h w", c=c, h=h)
 
         return x
 
-    def Forward_tikh(self, x, DPower):
+    def forward_tikh(self, x, DPower):
         # x - of shape [b,c,h,w]
         _, c, h, w = x.shape
         x = rearrange(x, "b c h w ->  (b c) (h w)")
