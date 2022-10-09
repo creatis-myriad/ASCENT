@@ -78,7 +78,7 @@ class nnUNetRegDataModule(nnUNetDataModule):
                     range_x=range_x,
                     range_y=range_y,
                     range_z=range_z,
-                    mode=[rot_inter_mode, "nearest"],
+                    mode=rot_inter_mode,
                     padding_mode="zeros",
                     prob=0.2,
                 ),
@@ -86,9 +86,9 @@ class nnUNetRegDataModule(nnUNetDataModule):
                     keys=["image", "label"],
                     min_zoom=0.7,
                     max_zoom=1.4,
-                    mode=[zoom_inter_mode, "nearest"],
+                    mode=zoom_inter_mode,
                     padding_mode="constant",
-                    align_corners=(True, None),
+                    align_corners=True,
                     prob=0.2,
                 ),
             ]
@@ -101,15 +101,6 @@ class nnUNetRegDataModule(nnUNetDataModule):
 
         other_transforms.extend(
             [
-                RandGaussianNoised(keys=["image", "label"], std=0.01, prob=0.15),
-                RandGaussianSmoothd(
-                    keys=["image", "label"],
-                    sigma_x=(0.5, 1.15),
-                    sigma_y=(0.5, 1.15),
-                    prob=0.15,
-                ),
-                RandScaleIntensityd(keys=["image", "label"], factors=0.3, prob=0.15),
-                RandAdjustContrastd(keys=["image", "label"], gamma=(0.7, 1.5), prob=0.3),
                 RandFlipd(["image", "label"], spatial_axis=[0], prob=0.5),
                 RandFlipd(["image", "label"], spatial_axis=[1], prob=0.5),
             ]
@@ -189,6 +180,7 @@ if __name__ == "__main__":
     img_shape = img.shape
     label_shape = label.shape
     print(f"image shape: {img_shape}, label shape: {label_shape}")
+    print(img._meta["filename_or_obj"])
     plt.figure("image", (18, 6))
     plt.subplot(1, 2, 1)
     plt.title("image")

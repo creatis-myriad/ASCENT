@@ -281,16 +281,16 @@ class LoadNpyd(MapTransform):
 
 
 if __name__ == "__main__":
-    image_path = [
-        "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/DEALIAS/raw/imagesTr/Dealias_0001_0000.nii.gz",
-        "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/DEALIAS/raw/imagesTr/Dealias_0001_0001.nii.gz",
-    ]
+    # image_path = [
+    #     "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/DEALIAS/raw/imagesTr/Dealias_0001_0000.nii.gz",
+    #     "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/DEALIAS/raw/imagesTr/Dealias_0001_0001.nii.gz",
+    # ]
 
-    load = Preprocessd(
-        "images", np.array([0.5, 0.5, 1]), None, True, True, {0: "noNorm", 1: "noNorm"}
-    )
-    batch = load({"image": LoadImage(image_path)})
-    data_path = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/CAMUS/preprocessed/data_and_properties/NewCamus_0001.npy"
+    # load = Preprocessd(
+    #     "images", np.array([0.5, 0.5, 1]), None, True, True, {0: "noNorm", 1: "noNorm"}
+    # )
+    # batch = load({"image": LoadImage(image_path)})
+    data_path = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/UNWRAP/preprocessed/data_and_properties/Dealias_0026.npy"
     # data_path = "C:/Users/ling/Desktop/Thesis/REPO/ascent/data/CAMUS/cropped/NewCamus_0001.npz"
-    prop = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/CAMUS/preprocessed/data_and_properties/NewCamus_0001.pkl"
-    data = LoadNpyd(["data", "image_meta_dict"], test=True)({"data": data_path})
+    # prop = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/CAMUS/preprocessed/data_and_properties/NewCamus_0001.pkl"
+    data = LoadNpyd(["data"], test=False)({"data": data_path})
