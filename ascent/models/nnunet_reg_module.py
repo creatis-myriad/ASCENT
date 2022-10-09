@@ -513,7 +513,7 @@ class nnUNetRegLitModule(LightningModule):
             0
         ].tolist()
         properties_dict["anisotropy_flag"] = image_meta_dict["anisotropy_flag"].item()
-        if len(properties_dict.get("crop_bbox")):
+        if len(image_meta_dict["crop_bbox"]):
             properties_dict["crop_bbox"] = image_meta_dict["crop_bbox"][0].tolist()
         else:
             properties_dict["crop_bbox"] = []
