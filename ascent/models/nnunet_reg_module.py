@@ -513,7 +513,10 @@ class nnUNetRegLitModule(LightningModule):
             0
         ].tolist()
         properties_dict["anisotropy_flag"] = image_meta_dict["anisotropy_flag"].item()
-        properties_dict["crop_bbox"] = image_meta_dict["crop_bbox"][0].tolist()
+        if len(properties_dict.get("crop_bbox")):
+            properties_dict["crop_bbox"] = image_meta_dict["crop_bbox"][0].tolist()
+        else:
+            properties_dict["crop_bbox"] = []
         properties_dict["case_identifier"] = image_meta_dict["case_identifier"][0]
         properties_dict["original_spacing"] = image_meta_dict["original_spacing"][0].tolist()
 
