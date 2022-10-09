@@ -922,7 +922,7 @@ class RegPreprocessor(SegPreprocessor):
             properties["original_shape"] = np.array(data["image"].shape[1:])
             properties["original_spacing"] = np.array(data["image"].meta["pixdim"][1:4].tolist())
 
-            properties["crop_bbox"] = None
+            properties["crop_bbox"] = []
             print("\nSkip cropping %s..." % properties["case_identifier"])
             properties["shape_after_cropping"] = properties["original_shape"]
             properties["cropping_size_reduction"] = 1

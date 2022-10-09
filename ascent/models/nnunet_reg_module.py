@@ -184,7 +184,7 @@ class nnUNetRegLitModule(LightningModule):
 
             final_preds = np.zeros([preds.shape[0], *original_shape])
 
-            if properties_dict.get("crop_bbox") is not None:
+            if len(properties_dict.get("crop_bbox")):
                 box_start, box_end = properties_dict.get("crop_bbox")
                 min_w, min_h, min_d = box_start
                 max_w, max_h, max_d = box_end
@@ -240,7 +240,7 @@ class nnUNetRegLitModule(LightningModule):
 
         final_preds = np.zeros([preds.shape[0], *original_shape])
 
-        if properties_dict.get("crop_bbox") is not None:
+        if len(properties_dict.get("crop_bbox")):
             box_start, box_end = properties_dict.get("crop_bbox")
             min_w, min_h, min_d = box_start
             max_w, max_h, max_d = box_end
@@ -513,10 +513,7 @@ class nnUNetRegLitModule(LightningModule):
             0
         ].tolist()
         properties_dict["anisotropy_flag"] = image_meta_dict["anisotropy_flag"].item()
-        if image_meta_dict["crop_bbox"][0] is not None:
-            properties_dict["crop_bbox"] = image_meta_dict["crop_bbox"][0].tolist()
-        else:
-            properties_dict["crop_bbox"] = None
+        properties_dict["crop_bbox"] = image_meta_dict["crop_bbox"][0].tolist()
         properties_dict["case_identifier"] = image_meta_dict["case_identifier"][0]
         properties_dict["original_spacing"] = image_meta_dict["original_spacing"][0].tolist()
 
