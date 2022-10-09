@@ -316,11 +316,6 @@ class nnUNetDataModule(LightningDataModule):
                 neg=0.67,
                 num_samples=1,
             ),
-            # RandSpatialCropd(
-            #     keys=["image", "label"],
-            #     roi_size=self.crop_patch_size,
-            #     random_size=False,
-            # ),
         ]
 
         other_transforms = []

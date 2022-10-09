@@ -16,7 +16,7 @@ scheduler:
 
 net:
   _target_: ascent.models.components.unet.UNet
-  in_channels: 2
+  in_channels: 3
   num_classes: 1
   patch_size: [40, 192]
   kernels: [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]

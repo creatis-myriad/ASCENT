@@ -1,8 +1,9 @@
 defaults:
   - nnunet
 
+_target_: ascent.datamodules.nnunet_reg_datamodule.nnUNetRegDataModule
 batch_size: 2
-dataset_name: DEALIAS
+dataset_name: UNWRAP
 do_dummy_2D_data_aug: False
 num_workers: 12
 seg_label: False

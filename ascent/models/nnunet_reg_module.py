@@ -200,7 +200,7 @@ class nnUNetRegLitModule(LightningModule):
             fname = properties_dict.get("case_identifier")
             spacing = properties_dict.get("original_spacing")
 
-            final_preds.squeeze(0)
+            final_preds = final_preds.squeeze(0)
 
             self.save_predictions(final_preds, fname, spacing, save_dir)
 
@@ -256,7 +256,7 @@ class nnUNetRegLitModule(LightningModule):
         fname = properties_dict.get("case_identifier")
         spacing = properties_dict.get("original_spacing")
 
-        final_preds.squeeze(0)
+        final_preds = final_preds.squeeze(0)
 
         self.save_predictions(final_preds, fname, spacing, save_dir)
 
@@ -534,7 +534,7 @@ class nnUNetRegLitModule(LightningModule):
             save_dir: Directory to save the segmentation mask.
         """
 
-        print(f"Saving segmentation for {fname}...\n")
+        print(f"Saving prediction for {fname}...\n")
 
         os.makedirs(save_dir, exist_ok=True)
 
@@ -581,7 +581,7 @@ class nnUNetRegLitModule(LightningModule):
 
         if self.best_val_eval_criterion_MA is None:
             self.best_val_eval_criterion_MA = self.val_eval_criterion_MA
-        if self.val_eval_criterion_MA > self.best_val_eval_criterion_MA:
+        if self.val_eval_criterion_MA < self.best_val_eval_criterion_MA:
             self.best_val_eval_criterion_MA = self.val_eval_criterion_MA
 
 
@@ -605,30 +605,32 @@ if __name__ == "__main__":
     root = pyrootutils.setup_root(__file__, pythonpath=True)
 
     with initialize(version_base="1.2", config_path="../../configs/model"):
-        cfg = compose(config_name="camus_2d.yaml")
+        cfg = compose(config_name="unwrap_2d.yaml")
         print(OmegaConf.to_yaml(cfg))
 
     # cfg = omegaconf.OmegaConf.load(root / "configs" / "model" / "nnunet.yaml")
     cfg.scheduler.max_decay_steps = 1000
-    cfg.net.in_channels = 1
-    cfg.net.num_classes = 3
-    cfg.net.patch_size = [128, 128]
-    cfg.net.kernels = [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
-    cfg.net.strides = [[1, 1], [2, 2], [2, 2], [2, 2], [2, 2]]
+    # cfg.net.in_channels = 3
+    # cfg.net.num_classes = 1
+    # cfg.net.patch_size = [40, 192]
+    # cfg.net.kernels = [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
+    # cfg.net.strides = [[1, 1], [2, 2], [2, 2], [2, 2], [2, 2]]
     nnunet: LightningModule = hydra.utils.instantiate(cfg)
 
     cfg = omegaconf.OmegaConf.load(root / "configs" / "datamodule" / "nnunet.yaml")
     cfg.data_dir = str(root / "data")
-    cfg.dataset_name = "CAMUS"
-    cfg.patch_size = [128, 128]
+    cfg.dataset_name = "UNWRAP"
+    cfg.patch_size = [40, 192]
     cfg.do_dummy_2D_data_aug = False
-    cfg.in_channels = 1
+    cfg.in_channels = 3
     # cfg.patch_size = [128, 128, 12]
     cfg.batch_size = 2
-    cfg.fold = 4
+    cfg.fold = 0
     camus_datamodule: LightningDataModule = hydra.utils.instantiate(cfg)
 
     cfg = omegaconf.OmegaConf.load(root / "configs" / "callbacks" / "nnunet.yaml")
+    cfg.model_checkpoint.monitor = "val/mse_MA"
+    cfg.model_checkpoint.mode = "max"
     callbacks: List[Callback] = utils.instantiate_callbacks(cfg)
 
     # cfg = omegaconf.OmegaConf.load(root / "configs" / "trainer" / "nnunet.yaml")
@@ -645,7 +647,8 @@ if __name__ == "__main__":
         devices=1,
     )
 
-    # trainer.fit(model=nnunet, datamodule=camus_datamodule)
+    trainer.fit(model=nnunet, datamodule=camus_datamodule)
+    ckpt_path = trainer.checkpoint_callback.best_model_path
     print("Starting testing!")
-    ckpt_path = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/logs/lightning_logs/version_0/checkpoints/epoch=1-step=500.ckpt"
+    # ckpt_path = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/logs/lightning_logs/version_0/checkpoints/epoch=1-step=500.ckpt"
     trainer.test(model=nnunet, datamodule=camus_datamodule, ckpt_path=ckpt_path)
