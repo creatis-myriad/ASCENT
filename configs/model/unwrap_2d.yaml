@@ -23,7 +23,7 @@ net:
   strides: [[1, 1], [2, 2], [2, 2], [2, 2], [1, 2]]
   normalization_layer: "instance"
   negative_slope: 1e-2
-  deep_supervision: False
+  deep_supervision: True
   attention: False
   drop_block: False
   residual: False
@@ -32,7 +32,7 @@ net:
 loss:
   _target_: torch.nn.SmoothL1Loss
   reduction: "mean"
-  beta: 1
+  beta: 0.2
 
 tta: True
 
