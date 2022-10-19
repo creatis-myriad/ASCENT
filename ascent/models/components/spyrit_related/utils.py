@@ -1,158 +1,183 @@
+from typing import Union
+
 import numpy as np
 import torch
 from einops import rearrange
-from scipy.sparse import csr_matrix, diags, identity, kron, lil_matrix
-from torch import nn
+from monai.data import MetaTensor
+from scipy.sparse import csr_matrix, identity, kron, lil_matrix
+from torch import Tensor, nn
 
 
-class Forward_operator(nn.Module):
-    def __init__(self, Hsub):
-        super().__init__()
-        r""" Defines different fully connected layers that take weights from Hsub matrix
-            Args:
-                Hsub (np.ndarray): M-by-N matrix.
-            Returns:
-                Pytorch Object of the parent-class nn.Module with two main methods:
-                    - Forward: Forward propagation nn.Linear layer that assigns weights from Hsub matrix
-                    - adjoint: Back-propagation pytorch nn.Linear layer obtained from Hsub.transpose() as it is orthogonal
-        """
-        # instancier nn.linear
-        # Pmat --> (torch) --> Poids ()
-        self.M = Hsub.shape[0]
-        self.N = Hsub.shape[1]
-        self.Hsub = nn.Linear(self.N, self.M, False)
-        self.Hsub.weight.data = torch.from_numpy(Hsub)
-        # Data must be of type float (or double) rather than the default float64 when creating torch tensor
-        self.Hsub.weight.data = self.Hsub.weight.data.float()
-        self.Hsub.weight.requires_grad = False
+def reshape_fortran(x: Union[MetaTensor, Tensor], shape: Union[tuple, list]):
+    """Reshape tensor in Fortran-like style.
 
-        # adjoint (Not useful here ??)
-        self.Hsub_adjoint = nn.Linear(self.M, self.N, False)
-        self.Hsub_adjoint.weight.data = torch.from_numpy(Hsub.transpose())
-        self.Hsub_adjoint.weight.data = self.Hsub_adjoint.weight.data.float()
-        self.Hsub_adjoint.weight.requires_grad = False
+    Args:
+        x: Tensor to reshape.
+        shape: Desired shape for reshapping.
+    """
 
-    def forward(self, x):
-        r"""Forward propagate x through fully connected layer.
-        Args:
-            x (np.ndarray): M-by-N matrix.
-        Returns:
-            nn.Linear Pytorch Fully Connecter Layer that has input shape of N and output shape of M
-        Example:
-            >>> Input_Matrix = np.array(np.random.random([100,32]))
-            >>> Forwad_OP = Forward_operator(Input_Matrix)
-            >>> print('Input Matrix shape:', Input_Matrix.shape)
-            >>> print('Forward propagation layer:',  Forwad_OP.Hsub)
-            Input Matrix shape: (100, 32)
-            Forward propagation layer: Linear(in_features=32, out_features=100, bias=False)
-        """
-        # x.shape[b*c,N]
-        x = self.Hsub(x)
-        return x
-
-    def direct(self, x):
-        # x.shape[b*c,N]
-        x = self.Hsub(x)
-        return x
-
-    def adjoint(self, x):
-        r"""Backpropagate x through fully connected layer.
-        Args:
-            x (np.ndarray): M-by-N matrix.
-        Returns:
-            nn.Linear Pytorch Fully Connecter Layer that has input shape of N and output shape of M
-        Example:
-            >>> Input_Matrix = np.array(np.random.random([100,32]))
-            >>> Forwad_OP = Forward_operator(Input_Matrix)
-            >>> print('Input Matrix shape:', Input_Matrix.shape)
-            >>> print('Backpropagaton layer:', Forwad_OP.Hsub_adjoint)
-            Input Matrix shape: (100, 32)
-            Backpropagaton layer: Linear(in_features=100, out_features=32, bias=False
-        """
-        # x.shape[b*c,M]
-        # Pmat.transpose()*f
-        x = self.Hsub_adjoint(x)
-        return x
-
-    def mat(self):  # todo: Remove capital letter
-        return self.Hsub.weight.data
+    if len(x.shape) > 0:
+        x = x.permute(*reversed(range(len(x.shape))))
+    return x.reshape(*reversed(shape)).permute(*reversed(range(len(shape))))
 
 
 class Doppler_operator(nn.Module):
-    def __init__(self, M, N, mu):
-        super().__init__()
-        r""" Defines different fully connected layers that take weights from Hsub matrix
-            Args:
-                Hsub (np.ndarray): M-by-N matrix.
-            Returns:
-                Pytorch Object of the parent-class nn.Module with two main methods:
-                    - Forward: Forward propagation nn.Linear layer that assigns weights from Hsub matrix
-                    - adjoint: Back-propagation pytorch nn.Linear layer obtained from Hsub.transpose() as it is orthogonal
-        """
-        # instancier nn.linear
-        # Pmat --> (torch) --> Poids ()
+    """Forward operator for phase unwrapping. Instead of solving the linear inverse problem using
+    the usual matrix multiplication, the A matrix (Forward Operator) is expressed in the form of
+    fully connected layers having a weight that equals to the elements in A.
 
-        self.mu = nn.Parameter(torch.tensor([float(mu)], requires_grad=True))
+    Reference: D. C. Ghiglia and L. A. Romero. "Robust two-dimensional weighted and unweighted
+    phase unwrapping that uses fast transforms and iterative methods". Journal of the Optical
+    Society of America A 1994.
+    """
+
+    def __init__(self, M: int, N: int, eta: float = 0.1):
+        super().__init__()
+        """ Define the sparse finite difference matrices (for faster matrix multiplication) and
+        fully connected layers.
+
+            Args:
+                M: Height of the input.
+                N: Width of the input.
+                mu: Initial regularization weight.
+        """
+
+        # learnable weight for regularization
+        self.eta = nn.Parameter(torch.tensor([float(eta)], requires_grad=True))
 
         self.M = M
         self.N = N
 
-        # create sparse differentiation matrix
+        # create sparse differentiation matrix; A1, A2 = (m*n, m*n) sparse array
         self.A1 = kron(identity(self.N, format="csr"), self.differentiation_matrix(M))
         self.A2 = kron(self.differentiation_matrix(N), identity(self.M, format="csr"))
 
-        # create empty sparse weight matrix
+        # create empty sparse weight matrix, Ws = (m*n, m*n) sparse array
         self.Ws = lil_matrix((self.M * self.N, self.M * self.N))
 
-        self.Hsub = nn.Linear(self.M * self.N, self.M * self.N, False)
-        self.Hsub.weight.requires_grad = False
+        # fully connected layers that take the weight equalling to the forward operator that will be
+        # defined in update_weight_matrix()
+        # A = (m*n, m*n)
+        self.A = nn.Linear(self.M * self.N, self.M * self.N, False)
+        self.A.weight.requires_grad = False
 
-        # adjoint (Not useful here ??)
-        self.Hsub_adjoint = nn.Linear(self.M * self.N, self.M * self.N, False)
-        self.Hsub_adjoint.weight.requires_grad = False
+        # adjoint of A
+        self.A_t = nn.Linear(self.M * self.N, self.M * self.N, False)
+        self.A_t.weight.requires_grad = False
 
-    def create_forward_operator(self, W):
-        # update weight
-        self.Ws.setdiag(W.array().flatten())
+    def update_weight_matrix(self, W: MetaTensor):
+        """Update the diagonal elements of the sparse weight matrix, Ws, with the flattened given.
 
-        # convert Ws to csr matrix for faster matrix operation
-        A = self.mu * torch.from_numpy(
+        weight and construct the A matrix (A = A1' @ Ws @ A1 + A2' @ Ws @ A2 + I). In Doppler
+        dealiasing, W refers to the Doppler power.
+
+        Args:
+            W: Weight tensor.
+        """
+
+        # update weight matrix
+        W = torch.nan_to_num(W)
+        W = W / torch.max(W)
+        W[W == 0] = 1e-6
+        self.Ws.setdiag(W.array.flatten(order="F"))
+
+        # build A matrix: A = A1' @ Ws @ A1 + A2' @ Ws @ A2 + I
+        A = self.eta * torch.from_numpy(
             (
                 self.A1.transpose().dot(self.Ws.tocsr()).dot(self.A1)
                 + self.A2.transpose().dot(self.Ws.tocsr()).dot(self.A2)
             ).toarray()
-        ) + torch.from_numpy(identity(self.M * self.N, format="csr").toarray())
+        ).to(W.device.index) + torch.from_numpy(
+            identity(self.M * self.N, format="csr").toarray()
+        ).to(
+            W.device.index
+        )
 
-        self.Hsub.weight.data = A.float()
-        self.Hsub_adjoint.weight.data = torch.from_numpy(A.t()).float()
+        # update the weight of the fully connected layers
+        self.A.weight.data = A.float()
+        self.A_t.weight.data = torch.t(A.float())
 
-    def wrap(x, param=1, normalize=False):
-        x = (x + param) % (2 * param) - param
+    @staticmethod
+    def wrap(x: MetaTensor, wrap_param: float = 1.0, normalize: bool = False):
+        """Wrap any element with its absolute value surpassing the wrapping parameter.
+
+        Args:
+            x: Input tensor.
+            wrap_param: Wrapping parameter.
+            normalize: Whether to normalize the wrapped tensor between -1 and 1.
+
+        Returns:
+            Wrapped tensor.
+        """
+
+        x = (x + wrap_param) % (2 * wrap_param) - wrap_param
         if normalize:
-            return x / param
+            return x / wrap_param
         else:
             return x
 
-    def preprocess(self, x, wrap_param):
-        d1x = csr_matrix(
-            self.wrap((self.differentiation_matrix(self.M).dot(x.array())).toarray(), wrap_param)
-        )
-        d1x = rearrange(d1x, "b c h w -> (b c) (h w)")
+    def preprocess(self, x: MetaTensor, wrap_param: float = 1.0, normalize: bool = False):
+        """Preprocess the input tensor by calculating its differentiation along the horizontal and
+        vertical axes.
+
+        Args:
+            x: Input tensor.
+            wrap_param: Wrapping parameter.
+            normalize: Whether to normalize the wrapped tensor between -1 and 1.
+
+        Returns:
+            Preprocessed input tensor.
+        """
+
+        b, c, m, n = x.shape
+
+        # finite difference matrix along vertical axis
         d1y = csr_matrix(
             self.wrap(
-                (csr_matrix(x.array()).dot(self.differentiation_matrix(self.N))).toarray(),
+                self.differentiation_matrix(self.M).dot(
+                    rearrange(x.array, "b c m n -> m (n b c)")
+                ),
                 wrap_param,
+                normalize,
             )
         )
-        d1y = rearrange(d1y, "b c h w -> (b c) (h w)")
-        return self.mu * torch.from_numpy(
-            (
-                self.A1.transpose().dot(self.Ws.tocsr()).dot(d1x)
-                + self.A2.transpose().dot(self.Ws.tocsr()).dot(d1y)
-            ).toarray()
-        ) + rearrange(x, "b c h w -> (b c) (h w)")
 
-    def differentiation_matrix(k):
+        # Fortran-style flatten
+        d1y = np.reshape(d1y.toarray(), (self.M * self.N, b * c), order="F")
+        # d1y = rearrange(d1y.toarray(), 'm (n b c) -> (m n) (b c)', b=b, c=c, m=m)
+
+        # finite difference matrix along horizontal axis
+        d1x = csr_matrix(
+            self.wrap(
+                (
+                    csr_matrix(rearrange(x.array, "b c m n -> (b c m) n")).dot(
+                        self.differentiation_matrix(self.N).transpose()
+                    )
+                ).toarray(),
+                wrap_param,
+                normalize,
+            )
+        )
+        d1x = np.reshape(d1x.toarray(), (self.M * self.N, b * c), order="F")
+        # d1x = rearrange(d1x.toarray(), '(b c m) n -> (m n) (b c)', b=b, c=c, m=m)
+
+        return self.eta * rearrange(
+            torch.from_numpy(
+                self.A1.transpose().dot(self.Ws.tocsr()).dot(d1y)
+                + self.A2.transpose().dot(self.Ws.tocsr()).dot(d1x)
+            )
+            .float()
+            .to(x.device.index),
+            "(m n) (b c) -> (b c) (m n)",
+            b=b,
+            c=c,
+            m=m,
+        ) + reshape_fortran(
+            x, (b * c, m * n)
+        )  # rearrange(x, 'b c m n -> (b c) (m n)')
+
+    @staticmethod
+    def differentiation_matrix(k: int):
         """Build a finite difference matrix with -1 and 1.
 
         Args:
@@ -161,235 +186,223 @@ class Doppler_operator(nn.Module):
         Returns:
             Sparse finite difference matrix.
         """
+
         m = -np.eye(k) + np.eye(k, k, 1)
         m[-1, -1] = 1
         m[-1, -2] = -1
         return csr_matrix(m)
 
-    def get_diff_matrix(self):
-        return self.A1, self.A2
+    def forward(
+        self, x: MetaTensor, W: MetaTensor, wrap_param: float = 1.0, normalize: bool = False
+    ):
+        """Forward propagate x through fully connected layer.
 
-    def forward(self, x, W):
-        r"""Forward propagate x through fully connected layer.
         Args:
-            x: Input.
-            W: Weight.
+            x: Input tensor (b, c, m, n).
+            W: Weight tensor (b, c, m, n).
+            wrap_param: Wrapping parameter.
+            normalize: Whether to normalize the wrapped tensor between -1 and 1.
+
         Returns:
-            nn.Linear Pytorch Fully Connecter Layer that has input shape of N and output shape of M
+            A @ x.
+
+        Raises:
+            ValueError: Error when the shape of the weight tensor does not match the one of input
+            tensor.
+
         Example:
             >>> Input_Matrix = np.array(np.random.random([100,32]))
-            >>> Forwad_OP = Forward_operator(Input_Matrix)
+            >>> Fwd_OP = Doppler_operator(Input_Matrix)
             >>> print('Input Matrix shape:', Input_Matrix.shape)
-            >>> print('Forward propagation layer:',  Forwad_OP.Hsub)
+            >>> print('Forward propagation layer:',  Fwd_OP.A)
             Input Matrix shape: (100, 32)
-            Forward propagation layer: Linear(in_features=32, out_features=100, bias=False)
+            Forward propagation layer: Linear(in_features=3200, out_features=3200, bias=False)
         """
 
-        if tuple([self.M, self.N]) != W.shape:
+        if tuple([self.M, self.N]) != W.shape[2:]:
             raise ValueError(f"Weight must have size ({self.M}, {self.N}), got {W.shape} instead.")
-        self.create_forward_operator(self, W.array())
-        x = self.Hsub(x)
+        self.update_weight_matrix(W)
+        b, _, m, _ = x.shape
+        # x = (b*c, m*n)
+        x = self.preprocess(x, wrap_param, normalize)
+        # x = (b*c, m*n)
+        x = self.A(x)
+        # x = (b, c, m, n)
+        x = rearrange(x, "(b c) (m n) -> b c m n", b=b, m=m)
         return x
 
-    def direct(self, x, W):
-        if tuple([self.M, self.N]) != W.shape:
+    def direct(
+        self, x: MetaTensor, W: MetaTensor, wrap_param: float = 1.0, normalize: bool = False
+    ):
+        if tuple([self.M, self.N]) != W.shape[2:]:
             raise ValueError(f"Weight must have size ({self.M}, {self.N}), got {W.shape} instead.")
-        self.create_forward_operator(self, W.array())
-        x = self.Hsub(x)
+        self.update_weight_matrix(W)
+        b, _, m, _ = x.shape
+        x = self.preprocess(x, wrap_param, normalize)
+        x = self.A(x)
+        x = rearrange(x, "(b c) (m n) -> b c m n", b=b, m=m)
         return x
 
-    def adjoint(self, x, W):
-        r"""Backpropagate x through fully connected layer.
+    def adjoint(
+        self, x: MetaTensor, W: MetaTensor, wrap_param: float = 1.0, normalize: bool = False
+    ):
+        """Back propagate x through fully connected layer.
+
         Args:
-            x (np.ndarray): M-by-N matrix.
+            x: Input tensor (b, c, m, n).
+            W: Weight tensor (b, c, m, n).
+            wrap_param: Wrapping parameter.
+            normalize: Whether to normalize the wrapped tensor between -1 and 1.
+
         Returns:
-            nn.Linear Pytorch Fully Connecter Layer that has input shape of N and output shape of M
+            A_t @ x.
+
+        Raises:
+            ValueError: Error when the shape of the weight tensor does not match the one of input
+            tensor.
+
         Example:
             >>> Input_Matrix = np.array(np.random.random([100,32]))
-            >>> Forwad_OP = Forward_operator(Input_Matrix)
+            >>> Fwd_OP = Doppler_operator(Input_Matrix)
             >>> print('Input Matrix shape:', Input_Matrix.shape)
-            >>> print('Backpropagaton layer:', Forwad_OP.Hsub_adjoint)
+            >>> print('Back propagation layer:',  Fwd_OP.A_t)
             Input Matrix shape: (100, 32)
-            Backpropagaton layer: Linear(in_features=100, out_features=32, bias=False
+            Back propagation layer: Linear(in_features=3200, out_features=3200, bias=False)
         """
 
-        if tuple([self.M, self.N]) != W.shape:
+        if tuple([self.M, self.N]) != W.shape[2:]:
             raise ValueError(f"Weight must have size ({self.M}, {self.N}), got {W.shape} instead.")
-        self.create_forward_operator(self, W.array())
-        x = self.Hsub_adjoint(x)
+        self.update_weight_matrix(W)
+        b, _, m, _ = x.shape
+        x = self.preprocess(x, wrap_param, normalize)
+        x = self.A_t(x)
+        x = rearrange(x, "(b c) (m n) -> b c m n", b=b, m=m)
         return x
 
     def mat(self):
-        return self.Hsub.weight.data
+        """Return the weight of the fully connected layers A.
+
+        Returns:
+            Weight of the fully connected layers A.
+        """
+
+        return self.A.weight.data
 
 
 class Tikhonov_solve(nn.Module):
-    def __init__(self):
+    """Tikhonov solver for linear inverse problem."""
+
+    def __init__(self, mu: int = 0.1):
+        """Initialize the Tikhonov regularization weight, mu.
+
+        Args:
+            mu: Weight for the Tikhonov regularization weight.
+        """
+
         super().__init__()
+        self.mu = nn.Parameter(torch.tensor([float(mu)], requires_grad=True))
 
-    # def solve(self, x, W, ForwOperator):
-    #     x = ForwOperator.preprocess(x)
-    #     ForwOperator.create_forward_operator(W)
-    #     A = ForwOperator.mat() @ torch.transpose(ForwOperator.mat(), 0, 1) + self.mu * torch.eye(F_O.M)
-    #     # Can precompute H@H.T to save time!
-    #     A = A.view(1, F_O.M, F_O.M)
-    #     # Instead of reshaping A, reshape x in the batch-final dimension
-    #     # A = A.repeat(x.shape[0],1, 1); # Not optimal in terms of memory
-    #     A = A.expand(x.shape[0], -1, -1)
-    #     # Not optimal in terms of memory
-    #     x = torch.linalg.solve(A, x)
-    #     return x
+    def solve(self, x: MetaTensor, W: MetaTensor, FwdOperator: nn.Module):
+        """Solve linear inverse problem using torch.linalg.solve.
 
-    def forward(self, x, x_0, F_O):
-        # x - input (b*c, M) - measurement vector
-        # x_0 - input (b*c, N) - previous estimate
-        # z - output (b*c, N)
+        Args:
+            x: Input tensor.
+            W: Weight tensor.
+            FwdOperator: Forward operator, i.e. A in Ax=b system.
+        """
 
+        b, c, m, n = x.shape
+
+        # update weight matrix
+        FwdOperator.update_weight_matrix(W)
+
+        # x = (b*c, m*n)
+        x = FwdOperator.preprocess(x)
+
+        # Fortran-style flatten
+        # x = (m*n, b*c)
+        x = reshape_fortran(x, (m * n, b * c))
+
+        # A = (m*n, m*n) @ (m*n, m*n) = (m*n, m*n)
+        # A = FwdOperator.mat() @ rearrange(FwdOperator.mat(), 'h w -> w h') # + self.mu * torch.eye(FwdOperator.M * FwdOperator.N);
+
+        # x = (m*n, b*c)
+        # x = torch.linalg.solve(A, x)
+        x = torch.linalg.solve(FwdOperator.mat(), x)
+
+        # Fortran-style reshape
+        x = reshape_fortran(x, (b, c, m, n))
+        return x
+
+    def forward(self, x, x_0, W, FwdOperator):  # noqa: D102
         # uses torch.linalg.solve [As of Pytorch 1.9 autograd supports solve!!]
-        x = x - F_O.Forward_op(x_0)
-        x = self.solve(x, F_O)
-        x = x_0 + F_O.adjoint(x)
+        # x = x - FwdOperator.direct(x_0, W)
+        x = self.solve(x, W, FwdOperator)
+        # x = x_0 + FwdOperator.adjoint(x, W)
         return x
 
 
-class Unet(nn.Module):
-    def __init__(self, in_channel=1, out_channel=1):
-        super().__init__()
-        # Descending branch
-        self.conv_encode1 = self.contract(in_channels=in_channel, out_channels=16)
-        self.conv_maxpool1 = torch.nn.MaxPool2d(kernel_size=2)
-        self.conv_encode2 = self.contract(16, 32)
-        self.conv_maxpool2 = torch.nn.MaxPool2d(kernel_size=2)
-        self.conv_encode3 = self.contract(32, 64)
-        self.conv_maxpool3 = torch.nn.MaxPool2d(kernel_size=2)
-        # Bottleneck
-        self.bottleneck = self.bottle_neck(64)
-        # Decode branch
-        self.conv_decode4 = self.expans(64, 64, 64)
-        self.conv_decode3 = self.expans(128, 64, 32)
-        self.conv_decode2 = self.expans(64, 32, 16)
-        self.final_layer = self.final_block(32, 16, out_channel)
+if __name__ == "__main__":
+    import pyrootutils
+    from monai.transforms import Compose, EnsureChannelFirstd, SpatialCropd, SpatialPadd
 
-    def contract(self, in_channels, out_channels, kernel_size=3, padding=1):
-        block = torch.nn.Sequential(
-            torch.nn.Conv2d(
-                kernel_size=kernel_size,
-                in_channels=in_channels,
-                out_channels=out_channels,
-                padding=padding,
-            ),
-            torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(out_channels),
-            torch.nn.Conv2d(
-                kernel_size=kernel_size,
-                in_channels=out_channels,
-                out_channels=out_channels,
-                padding=padding,
-            ),
-            torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(out_channels),
-        )
-        return block
+    from ascent.datamodules.components.transforms import LoadNpyd, MayBeSqueezed
 
-    def expans(self, in_channels, mid_channel, out_channels, kernel_size=3, padding=1):
-        block = torch.nn.Sequential(
-            torch.nn.Conv2d(
-                kernel_size=kernel_size,
-                in_channels=in_channels,
-                out_channels=mid_channel,
-                padding=padding,
-            ),
-            torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(mid_channel),
-            torch.nn.Conv2d(
-                kernel_size=kernel_size,
-                in_channels=mid_channel,
-                out_channels=mid_channel,
-                padding=padding,
-            ),
-            torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(mid_channel),
-            torch.nn.ConvTranspose2d(
-                in_channels=mid_channel,
-                out_channels=out_channels,
-                kernel_size=kernel_size,
-                stride=2,
-                padding=padding,
-                output_padding=1,
-            ),
-        )
+    root = pyrootutils.setup_root(
+        search_from=__file__,
+        indicator=[".git", "pyproject.toml"],
+        pythonpath=True,
+        dotenv=True,
+    )
 
-        return block
+    data_path = str(
+        root / "data" / "UNWRAP" / "preprocessed" / "data_and_properties" / "Dealias_0022.npy"
+    )
+    transforms = Compose(
+        [
+            LoadNpyd(keys=["data"], seg_label=False),
+            EnsureChannelFirstd(keys=["image", "label"]),
+        ]
+    )
+    batch = transforms({"data": data_path})["image"][:, :, :, 5]
+    Vd = rearrange(batch[0:1], "c h w -> () c w h")
+    Pd = rearrange(batch[1:2], "c h w -> () c w h")
+    Vu = rearrange(batch[-1:], "c h w -> () c w h")
+    Vgt = transforms({"data": data_path})["label"][:, :, :, 5]
+    Vgt = rearrange(Vgt, "c h w -> () c w h")
 
-    def concat(self, upsampled, bypass):
-        out = torch.cat((upsampled, bypass), 1)
-        return out
+    Fwd_OP = Doppler_operator(Vd.shape[-2], Vd.shape[-1], 1e6)
+    x = Vd
+    # x = Fwd_OP(Vd, Pd)
+    DC_layer = Tikhonov_solve(mu=0.1)
 
-    def bottle_neck(self, in_channels, kernel_size=3, padding=1):
-        bottleneck = torch.nn.Sequential(
-            torch.nn.Conv2d(
-                kernel_size=kernel_size,
-                in_channels=in_channels,
-                out_channels=2 * in_channels,
-                padding=padding,
-            ),
-            torch.nn.ReLU(),
-            torch.nn.Conv2d(
-                kernel_size=kernel_size,
-                in_channels=2 * in_channels,
-                out_channels=in_channels,
-                padding=padding,
-            ),
-            torch.nn.ReLU(),
-        )
-        return bottleneck
+    # %%
+    y = DC_layer(x, torch.zeros_like(x), Pd, Fwd_OP)
+    n = np.round((y.array - Vd.array) / 2.0)
+    y = Vd + 2 * n
 
-    def final_block(self, in_channels, mid_channel, out_channels, kernel_size=3):
-        block = torch.nn.Sequential(
-            torch.nn.Conv2d(
-                kernel_size=kernel_size,
-                in_channels=in_channels,
-                out_channels=mid_channel,
-                padding=1,
-            ),
-            torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(mid_channel),
-            torch.nn.Conv2d(
-                kernel_size=kernel_size,
-                in_channels=mid_channel,
-                out_channels=mid_channel,
-                padding=1,
-            ),
-            torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(mid_channel),
-            torch.nn.Conv2d(
-                kernel_size=kernel_size,
-                in_channels=mid_channel,
-                out_channels=out_channels,
-                padding=1,
-            ),
-        )
-        return block
+    # %%
+    from matplotlib import pyplot as plt
 
-    def forward(self, x):
+    v1 = y[0, 0, :, :]
+    v2 = Vu[0, 0, :, :].array
+    v3 = Vd[0, 0, :, :].array
+    v4 = Vgt[0, 0, :, :].array
 
-        # Encode
-        encode_block1 = self.conv_encode1(x)
-        x = self.conv_maxpool1(encode_block1)
-        encode_block2 = self.conv_encode2(x)
-        x = self.conv_maxpool2(encode_block2)
-        encode_block3 = self.conv_encode3(x)
-        x = self.conv_maxpool3(encode_block3)
-
-        # Bottleneck
-        x = self.bottleneck(x)
-
-        # Decode
-        x = self.conv_decode4(x)
-        x = self.concat(x, encode_block3)
-        x = self.conv_decode3(x)
-        x = self.concat(x, encode_block2)
-        x = self.conv_decode2(x)
-        x = self.concat(x, encode_block1)
-        x = self.final_layer(x)
-        return x
+    plt.figure("image", (18, 6))
+    plt.subplot(1, 5, 1)
+    plt.title("pytorch")
+    plt.imshow(v1, cmap="gray")
+    plt.subplot(1, 5, 2)
+    plt.title("matlab")
+    plt.imshow(v2, cmap="gray")
+    plt.subplot(1, 5, 3)
+    plt.title("ori")
+    plt.imshow(v3, cmap="gray")
+    plt.subplot(1, 5, 4)
+    plt.title("gt")
+    plt.imshow(v4, cmap="gray")
+    plt.subplot(1, 5, 5)
+    plt.title("residue")
+    plt.imshow(v1 - v4, cmap="gray")
+    plt.show()

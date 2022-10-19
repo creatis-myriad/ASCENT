@@ -4,52 +4,34 @@ from scipy.sparse import csr_matrix
 
 
 class SpyritNet(nn.Module):
-    def __init__(self, F_O, DC_layer, Denoi):
+    def __init__(self, Fwd_OP, DC_layer, Denoi):
         super().__init__()
-        self.F_O = F_O
+        self.Fwd_OP = Fwd_OP
         self.DC_layer = DC_layer  # must be Tikhonov solve
         self.Denoi = Denoi
 
-    @staticmethod
-    def wrap(x, n: int):
-        return ((x + n) % (2 * n)) - n
-
-    def forward(self, x, DPower):
-        _, c, h, w = x.shape
-        A1, A2 = self.F_O.get_diff_matrix()
-        # W =
-        # x = A1.transpose().dot(csr_matrix()
-        x = self.foward_tikh(x)
-        x = self.Denoi(x)  # shape stays the same
-        x = rearrange(x, "(b c) () (h w) -> b c h w", c=c, h=h)
-
+    def forward(self, x, W):
+        x = self.foward_tikh(x, W)
+        x = self.Denoi(x)
         return x
 
-    def forward_tikh(self, x, DPower):
-        # x - of shape [b,c,h,w]
-        _, c, h, w = x.shape
-        x = rearrange(x, "b c h w ->  (b c) (h w)")
+    def forward_tikh(self, x, W):
         # Acquisition
-        x = self.F_O(x)  # shape x = [b*c,h*w]
-        x = self.reconstruct_tick(x, h)
-
+        x = self.Fwd_OP(x)  # shape x = [b*c,h*w]
+        x = self.reconstruct_tick(x, W)
         return x
 
-    def reconstruct_tick(self, x, DPower, h):
-        # Data consistency layer
-        # measurements to the image domain
-        x = self.DC_layer(x, torch.zeros_like(x), self.F_O)  # shape x = [b*c, N]
-
+    def reconstruct(self, x, W):
+        x = self.reconstruct_tick(x, W)
         # Image-to-image mapping via convolutional networks
         # Image domain denoising
-        x = rearrange(x, "(b c) (h w) -> (b c) () h w", h=h)
-
+        x = self.Denoi(x)  # shape stays the same
         return x
 
-    def reconstruct(self, x, DPower, c, h):
-        x = self.reconstruct_tick(x, h)
-        x = self.Denoi(x)  # shape stays the same
-        x = rearrange(x, "(b c) () (h w) -> b c h w", c=c, h=h)
+    def reconstruct_tick(self, x, W):
+        # Data consistency layer
+        # measurements to the image domain
+        x = self.DC_layer(x, torch.zeros_like(x), W, self.Fwd_OP)
         return x
 
 
