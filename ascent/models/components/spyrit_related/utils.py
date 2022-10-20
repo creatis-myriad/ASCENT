@@ -21,6 +21,15 @@ def reshape_fortran(x: Union[MetaTensor, Tensor], shape: Union[tuple, list]):
     return x.reshape(*reversed(shape)).permute(*reversed(range(len(shape))))
 
 
+def round_differentiable(x):
+    # This is equivalent to replacing round function (non-differentiable) with
+    # an identity function (differentiable) only when backward.
+    forward_value = torch.round(x)
+    out = x.clone()
+    out.data = forward_value.data
+    return out
+
+
 class Doppler_operator(nn.Module):
     """Forward operator for phase unwrapping. Instead of solving the linear inverse problem using
     the usual matrix multiplication, the A matrix (Forward Operator) is expressed in the form of
@@ -82,12 +91,12 @@ class Doppler_operator(nn.Module):
         self.Ws.setdiag(W.array.flatten(order="F"))
 
         # build A matrix: A = A1' @ Ws @ A1 + A2' @ Ws @ A2 + I
-        A = self.eta * torch.from_numpy(
+        A = torch.from_numpy(
             (
                 self.A1.transpose().dot(self.Ws.tocsr()).dot(self.A1)
                 + self.A2.transpose().dot(self.Ws.tocsr()).dot(self.A2)
             ).toarray()
-        ).to(W.device.index) + torch.from_numpy(
+        ).to(W.device.index) + self.eta * torch.from_numpy(
             identity(self.M * self.N, format="csr").toarray()
         ).to(
             W.device.index
@@ -144,7 +153,6 @@ class Doppler_operator(nn.Module):
 
         # Fortran-style flatten
         d1y = np.reshape(d1y.toarray(), (self.M * self.N, b * c), order="F")
-        # d1y = rearrange(d1y.toarray(), 'm (n b c) -> (m n) (b c)', b=b, c=c, m=m)
 
         # finite difference matrix along horizontal axis
         d1x = csr_matrix(
@@ -159,9 +167,8 @@ class Doppler_operator(nn.Module):
             )
         )
         d1x = np.reshape(d1x.toarray(), (self.M * self.N, b * c), order="F")
-        # d1x = rearrange(d1x.toarray(), '(b c m) n -> (m n) (b c)', b=b, c=c, m=m)
 
-        return self.eta * rearrange(
+        return rearrange(
             torch.from_numpy(
                 self.A1.transpose().dot(self.Ws.tocsr()).dot(d1y)
                 + self.A2.transpose().dot(self.Ws.tocsr()).dot(d1x)
@@ -172,9 +179,7 @@ class Doppler_operator(nn.Module):
             b=b,
             c=c,
             m=m,
-        ) + reshape_fortran(
-            x, (b * c, m * n)
-        )  # rearrange(x, 'b c m n -> (b c) (m n)')
+        ) + self.eta * reshape_fortran(x, (b * c, m * n))
 
     @staticmethod
     def differentiation_matrix(k: int):
@@ -222,13 +227,13 @@ class Doppler_operator(nn.Module):
         if tuple([self.M, self.N]) != W.shape[2:]:
             raise ValueError(f"Weight must have size ({self.M}, {self.N}), got {W.shape} instead.")
         self.update_weight_matrix(W)
-        b, _, m, _ = x.shape
+        b, c, m, n = x.shape
         # x = (b*c, m*n)
         x = self.preprocess(x, wrap_param, normalize)
         # x = (b*c, m*n)
         x = self.A(x)
         # x = (b, c, m, n)
-        x = rearrange(x, "(b c) (m n) -> b c m n", b=b, m=m)
+        x = reshape_fortran(x, (b, c, m, n))
         return x
 
     def direct(
@@ -237,10 +242,10 @@ class Doppler_operator(nn.Module):
         if tuple([self.M, self.N]) != W.shape[2:]:
             raise ValueError(f"Weight must have size ({self.M}, {self.N}), got {W.shape} instead.")
         self.update_weight_matrix(W)
-        b, _, m, _ = x.shape
+        b, c, m, n = x.shape
         x = self.preprocess(x, wrap_param, normalize)
         x = self.A(x)
-        x = rearrange(x, "(b c) (m n) -> b c m n", b=b, m=m)
+        x = reshape_fortran(x, (b, c, m, n))
         return x
 
     def adjoint(
@@ -273,10 +278,10 @@ class Doppler_operator(nn.Module):
         if tuple([self.M, self.N]) != W.shape[2:]:
             raise ValueError(f"Weight must have size ({self.M}, {self.N}), got {W.shape} instead.")
         self.update_weight_matrix(W)
-        b, _, m, _ = x.shape
+        b, c, m, n = x.shape
         x = self.preprocess(x, wrap_param, normalize)
         x = self.A_t(x)
-        x = rearrange(x, "(b c) (m n) -> b c m n", b=b, m=m)
+        x = reshape_fortran(x, (b, c, m, n))
         return x
 
     def mat(self):
@@ -318,17 +323,20 @@ class Tikhonov_solve(nn.Module):
 
         # x = (b*c, m*n)
         x = FwdOperator.preprocess(x)
+        # x = FwdOperator(x, W)
 
         # Fortran-style flatten
         # x = (m*n, b*c)
         x = reshape_fortran(x, (m * n, b * c))
 
         # A = (m*n, m*n) @ (m*n, m*n) = (m*n, m*n)
-        # A = FwdOperator.mat() @ rearrange(FwdOperator.mat(), 'h w -> w h') # + self.mu * torch.eye(FwdOperator.M * FwdOperator.N);
+        # A = FwdOperator.mat() @ rearrange(FwdOperator.mat(), 'h w -> w h') + self.mu * torch.eye(FwdOperator.M * FwdOperator.N);
 
         # x = (m*n, b*c)
         # x = torch.linalg.solve(A, x)
         x = torch.linalg.solve(FwdOperator.mat(), x)
+        # x = torch.linalg.lstsq(FwdOperator.mat(), x, rcond=1e-35)
+        # x = x[0]
 
         # Fortran-style reshape
         x = reshape_fortran(x, (b, c, m, n))
@@ -347,6 +355,7 @@ if __name__ == "__main__":
     from monai.transforms import Compose, EnsureChannelFirstd, SpatialCropd, SpatialPadd
 
     from ascent.datamodules.components.transforms import LoadNpyd, MayBeSqueezed
+    from ascent.utils.visualization import dopplermap, imagesc
 
     root = pyrootutils.setup_root(
         search_from=__file__,
@@ -371,38 +380,37 @@ if __name__ == "__main__":
     Vgt = transforms({"data": data_path})["label"][:, :, :, 5]
     Vgt = rearrange(Vgt, "c h w -> () c w h")
 
-    Fwd_OP = Doppler_operator(Vd.shape[-2], Vd.shape[-1], 1e6)
-    x = Vd
-    # x = Fwd_OP(Vd, Pd)
+    Fwd_OP = Doppler_operator(Vd.shape[-2], Vd.shape[-1], 1e-6)
     DC_layer = Tikhonov_solve(mu=0.1)
 
     # %%
+    x = Vd
+    # A @ x
+    # x = Fwd_OP(Vd, Pd)
     y = DC_layer(x, torch.zeros_like(x), Pd, Fwd_OP)
-    n = np.round((y.array - Vd.array) / 2.0)
+    n = round_differentiable((y - Vd) / 2.0)
     y = Vd + 2 * n
 
     # %%
     from matplotlib import pyplot as plt
+    from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-    v1 = y[0, 0, :, :]
+    v1 = y[0, 0, :, :].array
     v2 = Vu[0, 0, :, :].array
     v3 = Vd[0, 0, :, :].array
     v4 = Vgt[0, 0, :, :].array
 
     plt.figure("image", (18, 6))
-    plt.subplot(1, 5, 1)
-    plt.title("pytorch")
-    plt.imshow(v1, cmap="gray")
-    plt.subplot(1, 5, 2)
-    plt.title("matlab")
-    plt.imshow(v2, cmap="gray")
-    plt.subplot(1, 5, 3)
-    plt.title("ori")
-    plt.imshow(v3, cmap="gray")
-    plt.subplot(1, 5, 4)
-    plt.title("gt")
-    plt.imshow(v4, cmap="gray")
-    plt.subplot(1, 5, 5)
-    plt.title("residue")
-    plt.imshow(v1 - v4, cmap="gray")
+    ax = plt.subplot(1, 5, 1)
+    imagesc(ax, v1, "pytorch", dopplermap(), list(np.array([-1, 1]) * np.max(np.abs(v1))))
+    ax = plt.subplot(1, 5, 2)
+    imagesc(ax, v2, "matlab", dopplermap(), list(np.array([-1, 1]) * np.max(np.abs(v2))))
+    ax = plt.subplot(1, 5, 3)
+    imagesc(ax, v3, "ori", dopplermap(), [-1, 1])
+    ax = plt.subplot(1, 5, 4)
+    imagesc(ax, v4, "gt", dopplermap(), list(np.array([-1, 1]) * np.max(np.abs(v4))))
+    ax = plt.subplot(1, 5, 5)
+    imagesc(
+        ax, v1 - v4, "residue", dopplermap(), list(np.array([-1, 1]) * np.max(np.abs(v1 - v4)))
+    )
     plt.show()

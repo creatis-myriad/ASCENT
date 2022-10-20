@@ -17,7 +17,6 @@ class SpyritNet(nn.Module):
 
     def forward_tikh(self, x, W):
         # Acquisition
-        x = self.Fwd_OP(x)  # shape x = [b*c,h*w]
         x = self.reconstruct_tick(x, W)
         return x
 
