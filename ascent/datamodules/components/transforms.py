@@ -218,7 +218,7 @@ class LoadNpyd(MapTransform):
             keys: Keys of the corresponding items to be transformed.
             test: Set to true to return image meta properties during test.
             allow_missing_keys: Don't raise exception if key is missing.
-            seg_label: Set to true if the label is segmentation
+            seg_label: Set to true if the label is segmentation.
         """
 
         super().__init__(keys, allow_missing_keys)
@@ -256,6 +256,89 @@ class LoadNpyd(MapTransform):
                     raise ValueError("Image should be (c, w, h, d)")
                 if not len(d["label"].shape) == 4:
                     raise ValueError("Label should be (c, w, h, d)")
+            elif d[key].endswith(".pkl"):
+                if self.test:
+                    image_meta_dict = load_pickle(d["image_meta_dict"])
+                    d["image_meta_dict"] = {}
+                    d["image_meta_dict"]["case_identifier"] = image_meta_dict["case_identifier"]
+                    d["image_meta_dict"]["original_shape"] = image_meta_dict["original_shape"]
+                    d["image_meta_dict"]["original_spacing"] = image_meta_dict["original_spacing"]
+                    d["image_meta_dict"]["shape_after_cropping"] = image_meta_dict[
+                        "shape_after_cropping"
+                    ]
+                    d["image_meta_dict"]["crop_bbox"] = image_meta_dict["crop_bbox"]
+                    d["image_meta_dict"]["resampling_flag"] = image_meta_dict["resampling_flag"]
+                    if d["image_meta_dict"]["resampling_flag"]:
+                        d["image_meta_dict"]["shape_after_resampling"] = image_meta_dict[
+                            "shape_after_resampling"
+                        ]
+                        d["image_meta_dict"]["anisotropy_flag"] = image_meta_dict[
+                            "anisotropy_flag"
+                        ]
+            else:
+                raise NotImplementedError
+        return d
+
+
+class DealiasLoadNpyd(MapTransform):
+    """Load numpy array from .npz/.npy files. (Specific to deep unfolding for dealiasing).
+
+    nnUNet's preprocessing concatenates image and label files before saving them to .npz files.
+    The .npz files will be unpacked to .npy before training.
+
+    data: .npy file containing an array of shape (c, w, h, d)
+    data[:-2]: image
+    data[-2:-1]: label (Ground truth velocity)
+    data[-1:]: label (Ground truth segmentation)
+    """
+
+    def __init__(
+        self,
+        keys: KeysCollection,
+        test: bool = False,
+        allow_missing_keys: bool = False,
+    ) -> None:
+        """
+        Args:
+            keys: Keys of the corresponding items to be transformed.
+            test: Set to true to return image meta properties during test.
+            allow_missing_keys: Don't raise exception if key is missing.
+        """
+
+        super().__init__(keys, allow_missing_keys)
+        self.test = test
+
+    def __call__(self, data):
+        """
+        Args:
+            data: Dict to transform.
+
+        Returns:
+            d: Dict containing either two {"image":, "label":} or three {"image":, "label":,
+                "image_meta_dict":} keys
+
+        Raises:
+            ValueError: Error when image or label is not 4D (c, w, h, d)
+            NotImplementedError: Error when data contains a path that is not a numpy file or a pkl
+                file.
+        """
+
+        d = dict(data)
+        for key in self.keys:
+            if d[key].endswith(".npy"):
+                case_all_data = LoadImage(image_only=True, channel_dim=0)(d[key])
+                meta = case_all_data._meta
+                d.pop(key, None)
+                d["image"] = MetaTensor(case_all_data.array[:-2].astype(np.float32), meta=meta)
+                d["label"] = MetaTensor(case_all_data.array[-2:-1].astype(np.float32), meta=meta)
+                d["seg"] = MetaTensor(case_all_data.array[-1:].astype(np.uint8), meta=meta)
+                del case_all_data
+                if not len(d["image"].shape) == 4:
+                    raise ValueError("Image should be (c, w, h, d)")
+                if not len(d["label"].shape) == 4:
+                    raise ValueError("Label should be (c, w, h, d)")
+                if not len(d["seg"].shape) == 4:
+                    raise ValueError("Segmentation should be (c, w, h, d)")
             elif d[key].endswith(".pkl"):
                 if self.test:
                     image_meta_dict = load_pickle(d["image_meta_dict"])

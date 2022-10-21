@@ -1,6 +1,7 @@
 import numpy as np
 from monai.transforms import (
     Compose,
+    ConcatItemsd,
     EnsureChannelFirstd,
     RandAdjustContrastd,
     RandCropByPosNegLabeld,
@@ -9,21 +10,22 @@ from monai.transforms import (
     RandGaussianSmoothd,
     RandRotated,
     RandScaleIntensityd,
-    RandSpatialCropd,
     RandZoomd,
+    SelectItemsd,
     SpatialPadd,
+    SplitDimd,
 )
 
 from ascent.datamodules.components.transforms import (
     Convert2Dto3Dd,
     Convert3Dto2Dd,
-    LoadNpyd,
+    DealiasLoadNpyd,
     MayBeSqueezed,
 )
 from ascent.datamodules.nnunet_datamodule import nnUNetDataModule
 
 
-class nnUNetRegDataModule(nnUNetDataModule):
+class DealiasDataModule(nnUNetDataModule):
     def setup_transforms(self) -> None:
         """Define the data augmentations used by nnUNet including the data reading using
         monai.transforms libraries.
@@ -48,33 +50,36 @@ class nnUNetRegDataModule(nnUNetDataModule):
                 range_x = [-15.0 / 180 * np.pi, 15.0 / 180 * np.pi]
 
         shared_train_val_transforms = [
-            LoadNpyd(keys=["data"], seg_label=self.hparams.seg_label),
-            EnsureChannelFirstd(keys=["image", "label"]),
+            DealiasLoadNpyd(keys=["data"]),
+            EnsureChannelFirstd(keys=["image", "label", "seg"]),
             SpatialPadd(
-                keys=["image", "label"],
+                keys=["image", "label", "seg"],
                 spatial_size=self.crop_patch_size,
                 mode="constant",
                 value=0,
             ),
-            RandSpatialCropd(
-                keys=["image", "label"],
-                roi_size=self.crop_patch_size,
-                random_size=False,
+            RandCropByPosNegLabeld(
+                keys=["image", "label", "seg"],
+                label_key="seg",
+                spatial_size=self.crop_patch_size,
+                pos=0.33,
+                neg=0.67,
+                num_samples=1,
             ),
         ]
 
         other_transforms = []
 
         if not self.threeD:
-            other_transforms.append(MayBeSqueezed(keys=["image", "label"], dim=-1))
+            other_transforms.append(MayBeSqueezed(keys=["image", "label", "seg"], dim=-1))
 
         if self.hparams.do_dummy_2D_data_aug and self.threeD:
-            other_transforms.append(Convert3Dto2Dd(keys=["image", "label"]))
+            other_transforms.append(Convert3Dto2Dd(keys=["image", "label", "seg"]))
 
         other_transforms.extend(
             [
                 RandRotated(
-                    keys=["image", "label"],
+                    keys=["image", "label", "seg"],
                     range_x=range_x,
                     range_y=range_y,
                     range_z=range_z,
@@ -83,7 +88,7 @@ class nnUNetRegDataModule(nnUNetDataModule):
                     prob=0.2,
                 ),
                 RandZoomd(
-                    keys=["image", "label"],
+                    keys=["image", "label", "seg"],
                     min_zoom=0.7,
                     max_zoom=1.4,
                     mode=zoom_inter_mode,
@@ -95,19 +100,32 @@ class nnUNetRegDataModule(nnUNetDataModule):
         )
 
         if self.hparams.do_dummy_2D_data_aug and self.threeD:
-            other_transforms.append(
-                Convert2Dto3Dd(keys=["image", "label"], in_channels=self.hparams.in_channels)
-            )
+            other_transforms.append(Convert2Dto3Dd(keys=["image", "label", "seg"], in_channels=2))
 
         other_transforms.extend(
             [
-                RandFlipd(["image", "label"], spatial_axis=[0], prob=0.5),
-                RandFlipd(["image", "label"], spatial_axis=[1], prob=0.5),
+                SplitDimd(keys=["image"], dim=0),
+                RandGaussianNoised(keys=["image_0", "label"], std=0.01, prob=0.15),
+                RandGaussianSmoothd(
+                    keys=["image_0", "label"],
+                    sigma_x=(0.5, 1.15),
+                    sigma_y=(0.5, 1.15),
+                    prob=0.15,
+                ),
+                RandScaleIntensityd(keys=["image_0", "label"], factors=0.3, prob=0.15),
+                RandAdjustContrastd(keys=["image_0", "label"], gamma=(0.7, 1.5), prob=0.3),
+                SelectItemsd(keys=["image_0", "image_1", "label", "seg"]),
+                ConcatItemsd(keys=["image_0", "image_1"], name="image"),
+                SelectItemsd(keys=["image", "label", "seg"]),
+                RandFlipd(keys=["image", "label", "seg"], spatial_axis=[0], prob=0.5),
+                RandFlipd(keys=["image", "label", "seg"], spatial_axis=[1], prob=0.5),
             ]
         )
 
         if self.threeD:
-            other_transforms.append(RandFlipd(["image", "label"], spatial_axis=[2], prob=0.5))
+            other_transforms.append(
+                RandFlipd(keys=["image", "label", "seg"], spatial_axis=[2], prob=0.5)
+            )
 
         val_transforms = shared_train_val_transforms
 
@@ -115,16 +133,15 @@ class nnUNetRegDataModule(nnUNetDataModule):
             val_transforms.append(MayBeSqueezed(keys=["image", "label"], dim=-1))
 
         test_transforms = [
-            LoadNpyd(
+            DealiasLoadNpyd(
                 keys=["data", "image_meta_dict"],
                 test=True,
-                seg_label=self.hparams.seg_label,
             ),
-            EnsureChannelFirstd(keys=["image", "label"]),
+            EnsureChannelFirstd(keys=["image", "label", "seg"]),
         ]
 
         if not self.threeD:
-            test_transforms.append(MayBeSqueezed(keys=["image", "label"], dim=-1))
+            test_transforms.append(MayBeSqueezed(keys=["image", "label", "seg"], dim=-1))
 
         self.train_transforms = Compose(shared_train_val_transforms + other_transforms)
         self.val_transforms = Compose(val_transforms)
@@ -146,49 +163,37 @@ if __name__ == "__main__":
     initialize_config_dir(
         config_dir=str(root / "configs" / "datamodule"), job_name="test", version_base="1.2"
     )
-    cfg = compose(config_name="unwrap_2d.yaml")
-    print(OmegaConf.to_yaml(cfg))
+    cfg = compose(config_name="unwrapV2_2d.yaml")
 
     cfg.data_dir = str(root / "data")
-    # cfg.patch_size = [128, 128]
     cfg.in_channels = 3
     cfg.patch_size = [40, 192]
-    # cfg.patch_size = [128, 128, 12]
     cfg.batch_size = 1
     cfg.fold = 0
-    camus_datamodule = hydra.utils.instantiate(cfg)
-    camus_datamodule.prepare_data()
-    camus_datamodule.setup(stage=TrainerFn.FITTING)
-    train_dl = camus_datamodule.train_dataloader()
-    # camus_datamodule.setup(stage=TrainerFn.TESTING)
-    # test_dl = camus_datamodule.test_dataloader()
+    print(OmegaConf.to_yaml(cfg))
 
-    # predict_files = [
-    #     {
-    #         "image_0": "C:/Users/ling/Desktop/nnUNet/nnUNet_raw/nnUNet_raw_data/Task129_DealiasingConcat/imagesTr/Dealias_0001_0000.nii.gz",
-    #         "image_1": "C:/Users/ling/Desktop/nnUNet/nnUNet_raw/nnUNet_raw_data/Task129_DealiasingConcat/imagesTr/Dealias_0001_0001.nii.gz",
-    #     }
-    # ]
+    datamodule = hydra.utils.instantiate(cfg)
+    datamodule.prepare_data()
+    datamodule.setup(stage=TrainerFn.FITTING)
+    train_dl = datamodule.train_dataloader()
 
-    # camus_datamodule.prepare_for_prediction(predict_files)
-    # camus_datamodule.setup(stage=TrainerFn.PREDICTING)
-    # predict_dl = camus_datamodule.predict_dataloader()
     gen = iter(train_dl)
     batch = next(gen)
-    # batch = next(iter(test_dl))
-    # batch = next(iter(predict_dl))
 
     cmap = dopplermap()
 
     img = batch["image"][0]
     label = batch["label"][0]
+    seg = batch["seg"][0]
     img_shape = img.shape
     label_shape = label.shape
     print(f"image shape: {img_shape}, label shape: {label_shape}")
     print(img._meta["filename_or_obj"])
     plt.figure("image", (18, 6))
-    ax = plt.subplot(1, 2, 1)
+    ax = plt.subplot(1, 3, 1)
     imagesc(ax, img[0, :, :], "image", cmap, clim=[-1, 1])
-    ax = plt.subplot(1, 2, 2)
+    ax = plt.subplot(1, 3, 2)
     imagesc(ax, label[0, :, :], "label", cmap, clim=[-1, 1])
+    ax = plt.subplot(1, 3, 3)
+    imagesc(ax, seg[0, :, :], "seg", cmap)
     plt.show()

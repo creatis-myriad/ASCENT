@@ -868,6 +868,8 @@ class SegPreprocessor:
 
 
 class RegPreprocessor(SegPreprocessor):
+    """Preprocessor for regression."""
+
     def _get_intensities(
         self,
         data: dict[str, Union[Path, str]],
@@ -1068,7 +1070,7 @@ class RegPreprocessor(SegPreprocessor):
         log.info(f"Preprocessed folder: {self.preprocessed_folder}")
         # get target spacing
         self.target_spacing = self._get_target_spacing(datalist, transforms)
-        log.info("Target spacing: {np.array(self.target_spacing)}.")
+        log.info(f"Target spacing: {np.array(self.target_spacing)}.")
 
         # get intensity properties if input contains CT data
         if "CT" in self.modalities.values():
@@ -1094,6 +1096,144 @@ class RegPreprocessor(SegPreprocessor):
             self.preprocessed_npz_folder, True, None, ".npz", True
         )
         self._save_dataset_properties(list_of_preprocessed_npz_files)
+
+
+class DealiasPreprocessor(RegPreprocessor):
+    """Preprocessor for deep unfolding dealiasing."""
+
+    def _create_datalist(self) -> tuple[list[dict[str, str]], list[str], dict[int, str]]:
+        """Read the dataset.json in 'raw' directory and extract useful information.
+
+        Returns:
+            - List of dictionaries containing the paths to the image and its label.
+            - Image keys in datalist.
+            - Dictionary containing the modalities indicated in dataset.json.
+        """
+
+        datalist = []
+
+        json_file = os.path.join(self.dataset_path, "dataset.json")
+
+        d = load_json(json_file)
+        training_files = d["training"]
+        num_modalities = len(d["modality"].keys())
+        for tr in training_files:
+            cur_pat = OrderedDict()
+            image_paths = []
+            label_paths = []
+            for mod in range(num_modalities):
+                image_paths.append(
+                    os.path.join(
+                        self.dataset_path,
+                        "imagesTr",
+                        tr["image"].split("/")[-1][:-7] + "_%04.0d.nii.gz" % mod,
+                    )
+                )
+
+            for i in range(0, 2):
+                label_paths.append(
+                    os.path.join(
+                        self.dataset_path,
+                        "labelsTr",
+                        tr["image"].split("/")[-1][:-7] + "_%04.0d.nii.gz" % i,
+                    )
+                )
+            cur_pat["image"] = image_paths
+            cur_pat["label"] = label_paths
+            datalist.append(cur_pat)
+            modalities = {int(i): d["modality"][str(i)] for i in d["modality"].keys()}
+
+        return datalist, modalities
+
+    def _load_cropped(self, case_identifier) -> tuple[np.array, np.array, dict]:
+        """Load image, label and properties of a cropped data.
+
+        Args:
+            case_identifier: Case identifier of a data.
+
+        Returns:
+            - Image numpy array
+            - Label numpy array
+            - Data properties
+        """
+
+        all_data = np.load(os.path.join(self.cropped_folder, "%s.npz" % case_identifier))["data"]
+        data = all_data[:-2].astype(np.float32)
+        seg = all_data[-2:].astype(np.float32)
+        properties = self._load_properties_of_cropped(case_identifier)
+        return data, seg, properties
+
+    def _resample_and_normalize(self, case_identifier: str) -> None:
+        """Resample and normalize a data.
+
+        Resample, normalize and save the data to the preprocessed folder
+        (~/data/DATASET_NAME/preprocessed/data_and_properties).
+
+        Args:
+            case_identifier: Case identifier of a data.
+        """
+
+        # seg is now a double-channel array, seg[0] contains the dealiased velocity while seg[1]
+        # contains the segmentation of aliased pixels
+        data, seg, properties = self._load_cropped(case_identifier)
+        if not self.do_resample:
+            print("\n", "Skip resampling...")
+            properties["resampling_flag"] = False
+            properties["shape_after_resampling"] = np.array(data[0].shape)
+            properties["spacing_after_resampling"] = properties["original_spacing"]
+        else:
+            properties["resampling_flag"] = True
+
+            before = {"spacing": properties["original_spacing"], "data.shape": data.shape}
+
+            anisotropy_flag = bool(self._check_anisotropy(properties["original_spacing"]))
+            new_shape = self._calculate_new_shape(
+                properties["original_spacing"], properties["shape_after_cropping"]
+            )
+            data = resample_image(data, new_shape, anisotropy_flag)
+            seg[:-1] = resample_image(seg[:-1].astype(np.float32), new_shape, anisotropy_flag)
+            seg[-1:] = resample_label(seg[-1:].astype(np.uint32), new_shape, anisotropy_flag)
+
+            properties["anisotropy_flag"] = anisotropy_flag
+            properties["shape_after_resampling"] = np.array(data[0].shape)
+            properties["spacing_after_resampling"] = np.array(self.target_spacing)
+
+            after = {
+                "spacing": properties["spacing_after_resampling"],
+                "data.shape (data is resampled)": data.shape,
+            }
+
+            print("before:", before, "\nafter: ", after, "\n")
+
+        if not self.do_normalize:
+            print("\nSkip normalization...")
+            properties["normalization_flag"] = False
+        else:
+            properties["normalization_flag"] = True
+            properties["use_nonzero_mask_for_norm"] = self.use_nonzero_mask
+            data, seg = self._normalize(data, seg)
+
+        all_data = np.vstack((data, seg)).astype(np.float32)
+        print(
+            "Saving: ",
+            os.path.join(
+                self.preprocessed_folder, "data_and_properties", "%s.npz" % case_identifier
+            ),
+            "\n",
+        )
+        np.savez_compressed(
+            os.path.join(
+                self.preprocessed_folder, "data_and_properties", "%s.npz" % case_identifier
+            ),
+            data=all_data.astype(np.float32),
+        )
+        with open(
+            os.path.join(
+                self.preprocessed_folder, "data_and_properties", "%s.pkl" % case_identifier
+            ),
+            "wb",
+        ) as f:
+            pickle.dump(properties, f)  # nosec B301
 
 
 if __name__ == "__main__":

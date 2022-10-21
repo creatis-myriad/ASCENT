@@ -9,13 +9,13 @@ def rename_case(case_folder, imagesTr, labelsTr, case_identifier):
     case = os.path.basename(case_folder)
     velocity = sitk.ReadImage(os.path.join(case_folder, f"{case}_3CH.nii.gz"))
     power = sitk.ReadImage(os.path.join(case_folder, f"{case}_3CH_power.nii.gz"))
-    unwrapped = sitk.ReadImage(os.path.join(case_folder, f"{case}_3CH_unwrapped.nii.gz"))
     gt = sitk.ReadImage(os.path.join(case_folder, f"{case}_3CH_gt.nii.gz"))
+    gt_seg = sitk.ReadImage(os.path.join(case_folder, f"{case}_3CH_seg.nii.gz"))
 
     sitk.WriteImage(velocity, os.path.join(imagesTr, f"{case_identifier}_0000.nii.gz"))
     sitk.WriteImage(power, os.path.join(imagesTr, f"{case_identifier}_0001.nii.gz"))
-    sitk.WriteImage(unwrapped, os.path.join(imagesTr, f"{case_identifier}_0002.nii.gz"))
-    sitk.WriteImage(gt, os.path.join(labelsTr, f"{case_identifier}.nii.gz"))
+    sitk.WriteImage(gt, os.path.join(labelsTr, f"{case_identifier}_0000.nii.gz"))
+    sitk.WriteImage(gt_seg, os.path.join(labelsTr, f"{case_identifier}_0001.nii.gz"))
 
 
 def convert_to_nnUNet(data_dir, dataset_name, output_dir):
@@ -28,7 +28,7 @@ def convert_to_nnUNet(data_dir, dataset_name, output_dir):
 
 if __name__ == "__main__":
     base = "C:/Users/ling/Desktop/unwrap2"
-    data_path = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/UNWRAP/raw"
+    data_path = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/UNWRAPV2/raw"
     os.makedirs(data_path, exist_ok=True)
 
     dataset_name = "Dealias"
@@ -48,7 +48,7 @@ if __name__ == "__main__":
         os.path.join(data_path, "dataset.json"),
         imagesTr,
         imagesTs,
-        ("noNorm", "noNorm", "noNorm"),
+        ("noNorm", "noNorm"),
         {0: "background", 1: "Doppler_Velocity"},
         dataset_name,
     )
