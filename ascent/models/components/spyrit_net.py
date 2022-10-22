@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 from monai.data import MetaTensor
 
@@ -46,7 +47,6 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     import numpy as np
     import pyrootutils
-    import torch
     from monai.data import DataLoader
     from mpl_toolkits.axes_grid1 import make_axes_locatable
     from torchvision import datasets, transforms
