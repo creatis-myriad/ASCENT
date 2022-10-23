@@ -21,7 +21,7 @@ def reshape_fortran(x: Union[MetaTensor, Tensor], shape: Union[tuple, list]):
     return x.reshape(*reversed(shape)).permute(*reversed(range(len(shape))))
 
 
-def round_differentiable(x):
+def round_differentiable(x: Union[Tensor, MetaTensor]):
     # This is equivalent to replacing round function (non-differentiable) with
     # an identity function (differentiable) only when backward.
     forward_value = torch.round(x)
@@ -74,7 +74,7 @@ class Doppler_operator(nn.Module):
         self.A_t = nn.Linear(self.M * self.N, self.M * self.N, False)
         self.A_t.weight.requires_grad = False
 
-    def update_weight_matrix(self, W: MetaTensor):
+    def update_weight_matrix(self, W: Union[Tensor, MetaTensor]):
         """Update the diagonal elements of the sparse weight matrix, Ws, with the flattened given.
 
         weight and construct the A matrix (A = A1' @ Ws @ A1 + A2' @ Ws @ A2 + I). In Doppler
@@ -88,7 +88,7 @@ class Doppler_operator(nn.Module):
         W = torch.nan_to_num(W)
         W = W / torch.max(W)
         W[W == 0] = 1e-6
-        self.Ws.setdiag(W.array.flatten(order="F"))
+        self.Ws.setdiag(W.cpu().detach().numpy().flatten(order="F"))
 
         # build A matrix: A = A1' @ Ws @ A1 + A2' @ Ws @ A2 + I
         A = torch.from_numpy(
@@ -107,7 +107,7 @@ class Doppler_operator(nn.Module):
         self.A_t.weight.data = torch.t(A.float())
 
     @staticmethod
-    def wrap(x: MetaTensor, wrap_param: float = 1.0, normalize: bool = False):
+    def wrap(x: Union[Tensor, MetaTensor], wrap_param: float = 1.0, normalize: bool = False):
         """Wrap any element with its absolute value surpassing the wrapping parameter.
 
         Args:
@@ -144,7 +144,7 @@ class Doppler_operator(nn.Module):
         d1y = csr_matrix(
             self.wrap(
                 self.differentiation_matrix(self.M).dot(
-                    rearrange(x.array, "b c m n -> m (n b c)")
+                    rearrange(x.cpu().detach().numpy(), "b c m n -> m (n b c)")
                 ),
                 wrap_param,
                 normalize,
@@ -158,7 +158,7 @@ class Doppler_operator(nn.Module):
         d1x = csr_matrix(
             self.wrap(
                 (
-                    csr_matrix(rearrange(x.array, "b c m n -> (b c m) n")).dot(
+                    csr_matrix(rearrange(x.cpu().detach().numpy(), "b c m n -> (b c m) n")).dot(
                         self.differentiation_matrix(self.N).transpose()
                     )
                 ).toarray(),
@@ -198,7 +198,11 @@ class Doppler_operator(nn.Module):
         return csr_matrix(m)
 
     def forward(
-        self, x: MetaTensor, W: MetaTensor, wrap_param: float = 1.0, normalize: bool = False
+        self,
+        x: Union[Tensor, MetaTensor],
+        W: Union[Tensor, MetaTensor],
+        wrap_param: float = 1.0,
+        normalize: bool = False,
     ):
         """Forward propagate x through fully connected layer.
 
@@ -237,7 +241,11 @@ class Doppler_operator(nn.Module):
         return x
 
     def direct(
-        self, x: MetaTensor, W: MetaTensor, wrap_param: float = 1.0, normalize: bool = False
+        self,
+        x: Union[Tensor, MetaTensor],
+        W: Union[Tensor, MetaTensor],
+        wrap_param: float = 1.0,
+        normalize: bool = False,
     ):
         if tuple([self.M, self.N]) != W.shape[2:]:
             raise ValueError(f"Weight must have size ({self.M}, {self.N}), got {W.shape} instead.")
@@ -249,7 +257,11 @@ class Doppler_operator(nn.Module):
         return x
 
     def adjoint(
-        self, x: MetaTensor, W: MetaTensor, wrap_param: float = 1.0, normalize: bool = False
+        self,
+        x: Union[Tensor, MetaTensor],
+        W: Union[Tensor, MetaTensor],
+        wrap_param: float = 1.0,
+        normalize: bool = False,
     ):
         """Back propagate x through fully connected layer.
 
@@ -353,7 +365,7 @@ class Doppler_operatorV2(nn.Module):
         del A
 
     @staticmethod
-    def wrap(x: MetaTensor, wrap_param: float = 1.0, normalize: bool = False):
+    def wrap(x: Union[Tensor, MetaTensor], wrap_param: float = 1.0, normalize: bool = False):
         """Wrap any element with its absolute value surpassing the wrapping parameter.
 
         Args:
@@ -371,7 +383,7 @@ class Doppler_operatorV2(nn.Module):
         else:
             return x
 
-    def preprocess(self, x: MetaTensor):
+    def preprocess(self, x: Union[Tensor, MetaTensor]):
         """Preprocess the input tensor by calculating its differentiation along the horizontal and
         vertical axes.
 
@@ -390,7 +402,7 @@ class Doppler_operatorV2(nn.Module):
         d1y = csr_matrix(
             self.wrap(
                 self.differentiation_matrix(self.M).dot(
-                    rearrange(x.array, "b c m n -> m (n b c)")
+                    rearrange(x.cpu().detach().numpy(), "b c m n -> m (n b c)")
                 ),
                 self.wrap_param,
                 self.normalize,
@@ -404,7 +416,7 @@ class Doppler_operatorV2(nn.Module):
         d1x = csr_matrix(
             self.wrap(
                 (
-                    csr_matrix(rearrange(x.array, "b c m n -> (b c m) n")).dot(
+                    csr_matrix(rearrange(x.cpu().detach().numpy(), "b c m n -> (b c m) n")).dot(
                         self.differentiation_matrix(self.N).transpose()
                     )
                 ).toarray(),
@@ -440,7 +452,7 @@ class Doppler_operatorV2(nn.Module):
         m[-1, -2] = -1
         return csr_matrix(m)
 
-    def forward(self, x: MetaTensor):
+    def forward(self, x: Union[Tensor, MetaTensor]):
         """Forward propagate x through fully connected layer.
 
         Args:
@@ -476,7 +488,7 @@ class Doppler_operatorV2(nn.Module):
         x = reshape_fortran(x, (b, c, self.M, self.N))
         return x
 
-    def direct(self, x: MetaTensor):
+    def direct(self, x: Union[Tensor, MetaTensor]):
         if tuple([self.M, self.N]) != x.shape[2:]:
             raise ValueError(f"Input must have size ({self.M}, {self.N}), got {x.shape} instead.")
         b, c, m, n = x.shape
@@ -485,7 +497,7 @@ class Doppler_operatorV2(nn.Module):
         x = reshape_fortran(x, (b, c, self.M, self.N))
         return x
 
-    def adjoint(self, x: MetaTensor):
+    def adjoint(self, x: Union[Tensor, MetaTensor]):
         """Back propagate x through fully connected layer.
 
         Args:
@@ -550,7 +562,9 @@ class Tikhonov_solve(nn.Module):
         super().__init__()
         self.mu = nn.Parameter(torch.tensor([float(mu)], requires_grad=True))
 
-    def solve(self, x: MetaTensor, W: MetaTensor, FwdOperator: nn.Module):
+    def solve(
+        self, x: Union[Tensor, MetaTensor], W: Union[Tensor, MetaTensor], FwdOperator: nn.Module
+    ):
         """Solve linear inverse problem using torch.linalg.solve.
 
         Args:
@@ -585,7 +599,13 @@ class Tikhonov_solve(nn.Module):
         x = reshape_fortran(x, (b, c, m, n))
         return x
 
-    def forward(self, x, x_0, W, FwdOperator):  # noqa: D102
+    def forward(
+        self,
+        x: Union[Tensor, MetaTensor],
+        x_0: Union[Tensor, MetaTensor],
+        W: Union[Tensor, MetaTensor],
+        FwdOperator: nn.Module,
+    ):  # noqa: D102
         # uses torch.linalg.solve [As of Pytorch 1.9 autograd supports solve!!]
         # x = x - FwdOperator.direct(x_0, W)
         x = self.solve(x, W, FwdOperator)
@@ -606,7 +626,7 @@ class Tikhonov_solveV2(nn.Module):
         super().__init__()
         self.mu = nn.Parameter(torch.tensor([float(mu)], requires_grad=True))
 
-    def solve(self, x: MetaTensor, FwdOperator: nn.Module):
+    def solve(self, x: Union[Tensor, MetaTensor], FwdOperator: Union[Tensor, MetaTensor]):
         """Solve linear inverse problem using torch.linalg.solve.
 
         Args:
@@ -636,7 +656,7 @@ class Tikhonov_solveV2(nn.Module):
         x = reshape_fortran(x, (b, c, m, n))
         return x
 
-    def forward(self, x, FwdOperator):  # noqa: D102
+    def forward(self, x: Union[Tensor, MetaTensor], FwdOperator: nn.Module):  # noqa: D102
         # uses torch.linalg.solve [As of Pytorch 1.9 autograd supports solve!!]
         x = self.solve(x, FwdOperator)
         # x = FwdOperator.adjoint(x)

@@ -175,9 +175,13 @@ if __name__ == "__main__":
     datamodule = hydra.utils.instantiate(cfg)
     datamodule.prepare_data()
     datamodule.setup(stage=TrainerFn.FITTING)
-    train_dl = datamodule.train_dataloader()
+    # train_dl = datamodule.train_dataloader()
+    # gen = iter(train_dl)
+    # batch = next(gen)
 
-    gen = iter(train_dl)
+    datamodule.setup(stage=TrainerFn.TESTING)
+    test_dl = datamodule.test_dataloader()
+    gen = iter(test_dl)
     batch = next(gen)
 
     cmap = dopplermap()
