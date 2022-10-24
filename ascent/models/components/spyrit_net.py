@@ -1,6 +1,9 @@
+from typing import Union
+
 import torch
 import torch.nn as nn
 from monai.data import MetaTensor
+from torch import Tensor
 
 from ascent.models.components.spyrit_related.utils import round_differentiable
 
@@ -12,28 +15,35 @@ class SpyritNet(nn.Module):
         self.dc_layer = dc_layer  # must be Tikhonov solve
         self.denoiser = denoiser
 
-    def postprocess(self, x: MetaTensor, z_hat: MetaTensor, W: MetaTensor):
-        n = round_differentiable((z_hat - W * x) / 2.0)
+    def postprocess(
+        self,
+        x: Union[Tensor, MetaTensor],
+        z_hat: Union[Tensor, MetaTensor],
+        W: Union[Tensor, MetaTensor],
+    ):
+        if W is not None:
+            n = round_differentiable((z_hat - W * x) / 2.0)
+        else:
+            n = round_differentiable((z_hat - x) / 2.0)
         # only single aliasing is considered
         n[torch.abs(n) > 1] = 0
         return x + 2 * n
 
-    def forward(self, x: MetaTensor):
+    def forward(self, x: Union[Tensor, MetaTensor]):
         y = self.forward_tikh(x)
         y = self.denoiser(torch.concat([x[:, :-1], x[:, -1:], y], dim=1))
-        y = self.postprocess(x[:, :-1], y, x[:, -1:])
+        y = self.postprocess(x[:, :-1], y, None)
         return y
 
-    def forward_tikh(self, x: MetaTensor):
+    def forward_tikh(self, x: Union[Tensor, MetaTensor]):
         y = self.reconstruct_tick(x)
-        y = self.postprocess(x[:, :-1], y, x[:, -1:])
         return y
 
-    def reconstruct(self, x: MetaTensor):
+    def reconstruct(self, x: Union[Tensor, MetaTensor]):
         y = self.reconstruct_tick(x)
         # Image domain denoising
         y = self.denoiser(torch.concat([x[:, :-1], x[:, -1:], y], dim=1))
-        y = self.postprocess(x[:, :-1], y, x[:, -1:])
+        y = self.postprocess(x[:, :-1], y, None)
         return x
 
     def reconstruct_tick(self, x: MetaTensor):
