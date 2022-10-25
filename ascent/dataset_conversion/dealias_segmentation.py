@@ -9,13 +9,11 @@ def rename_case(case_folder, imagesTr, labelsTr, case_identifier):
     case = os.path.basename(case_folder)
     velocity = sitk.ReadImage(os.path.join(case_folder, f"{case}_3CH.nii.gz"))
     power = sitk.ReadImage(os.path.join(case_folder, f"{case}_3CH_power.nii.gz"))
-    gt = sitk.ReadImage(os.path.join(case_folder, f"{case}_3CH_gt.nii.gz"))
     gt_seg = sitk.ReadImage(os.path.join(case_folder, f"{case}_3CH_seg.nii.gz"))
 
     sitk.WriteImage(velocity, os.path.join(imagesTr, f"{case_identifier}_0000.nii.gz"))
     sitk.WriteImage(power, os.path.join(imagesTr, f"{case_identifier}_0001.nii.gz"))
-    sitk.WriteImage(gt, os.path.join(labelsTr, f"{case_identifier}_0000.nii.gz"))
-    sitk.WriteImage(gt_seg, os.path.join(labelsTr, f"{case_identifier}_0001.nii.gz"))
+    sitk.WriteImage(gt_seg, os.path.join(labelsTr, f"{case_identifier}_0000.nii.gz"))
 
 
 def convert_to_nnUNet(data_dir, dataset_name, output_dir):
@@ -28,7 +26,7 @@ def convert_to_nnUNet(data_dir, dataset_name, output_dir):
 
 if __name__ == "__main__":
     base = "C:/Users/ling/Desktop/Dataset/Doppler/A3C"
-    data_path = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/UNWRAPV2/raw"
+    data_path = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/DEALIAS/raw"
     os.makedirs(data_path, exist_ok=True)
 
     dataset_name = "Dealias"
@@ -49,6 +47,6 @@ if __name__ == "__main__":
         imagesTr,
         imagesTs,
         ("noNorm", "noNorm"),
-        {0: "background", 1: "Doppler_Velocity"},
+        {0: "background", 1: "V + 2", 2: "V - 2"},
         dataset_name,
     )

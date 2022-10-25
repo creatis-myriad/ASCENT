@@ -416,21 +416,24 @@ if __name__ == "__main__":
     import hydra
     import pyrootutils
     from hydra import compose, initialize_config_dir
+    from matplotlib import pyplot as plt
     from omegaconf import OmegaConf
+
+    from ascent.utils.visualization import dopplermap, imagesc
 
     root = pyrootutils.setup_root(__file__, pythonpath=True)
 
     initialize_config_dir(config_dir=str(root / "configs" / "datamodule"), job_name="test")
-    cfg = compose(config_name="unwrap_2d.yaml")
-    print(OmegaConf.to_yaml(cfg))
+    cfg = compose(config_name="dealias_2d.yaml")
 
     cfg.data_dir = str(root / "data")
     # cfg.patch_size = [128, 128]
-    cfg.in_channels = 3
+    cfg.in_channels = 2
     cfg.patch_size = [40, 192]
     # cfg.patch_size = [128, 128, 12]
     cfg.batch_size = 1
     cfg.fold = 0
+    print(OmegaConf.to_yaml(cfg))
     camus_datamodule = hydra.utils.instantiate(cfg)
     camus_datamodule.prepare_data()
     camus_datamodule.setup(stage=TrainerFn.FITTING)
@@ -453,18 +456,18 @@ if __name__ == "__main__":
     # batch = next(iter(test_dl))
     # batch = next(iter(predict_dl))
 
-    from matplotlib import pyplot as plt
+    cmap = dopplermap()
 
-    img = batch["image"][0]
-    label = batch["label"][0]
+    img = batch["image"][0].array
+    label = batch["label"][0].array
     img_shape = img.shape
     label_shape = label.shape
     print(f"image shape: {img_shape}, label shape: {label_shape}")
+    print(batch["image"][0]._meta["filename_or_obj"])
     plt.figure("image", (18, 6))
-    plt.subplot(1, 2, 1)
-    plt.title("image")
-    plt.imshow(img[0, :, :], cmap="gray")
-    plt.subplot(1, 2, 2)
-    plt.title("label")
-    plt.imshow(label[0, :, :])
+    ax = plt.subplot(1, 2, 1)
+    imagesc(ax, img[0, :, :].transpose(), "image", cmap, clim=[-1, 1])
+    ax = plt.subplot(1, 2, 2)
+    imagesc(ax, label[0, :, :].transpose(), "label", cmap)
+    print("max of seg: ", np.max(label[0, :, :]))
     plt.show()

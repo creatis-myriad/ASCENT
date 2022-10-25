@@ -17,6 +17,7 @@ from monai.transforms import (
 )
 
 from ascent.datamodules.components.transforms import (
+    ArtfclAliasingd,
     Convert2Dto3Dd,
     Convert3Dto2Dd,
     DealiasLoadNpyd,
@@ -76,6 +77,8 @@ class DealiasDataModule(nnUNetDataModule):
         if self.hparams.do_dummy_2D_data_aug and self.threeD:
             other_transforms.append(Convert3Dto2Dd(keys=["image", "label", "seg"]))
 
+        other_transforms.append(ArtfclAliasingd(keys=["image", "label", "seg"], prob=0.5))
+
         other_transforms.extend(
             [
                 RandRotated(
@@ -83,7 +86,7 @@ class DealiasDataModule(nnUNetDataModule):
                     range_x=range_x,
                     range_y=range_y,
                     range_z=range_z,
-                    mode=rot_inter_mode,
+                    mode=[rot_inter_mode, rot_inter_mode, "nearest"],
                     padding_mode="zeros",
                     prob=0.2,
                 ),
@@ -91,9 +94,9 @@ class DealiasDataModule(nnUNetDataModule):
                     keys=["image", "label", "seg"],
                     min_zoom=0.7,
                     max_zoom=1.4,
-                    mode=zoom_inter_mode,
+                    mode=[zoom_inter_mode, zoom_inter_mode, "nearest"],
                     padding_mode="constant",
-                    align_corners=True,
+                    align_corners=(True, True, None),
                     prob=0.2,
                 ),
             ]
@@ -175,29 +178,30 @@ if __name__ == "__main__":
     datamodule = hydra.utils.instantiate(cfg)
     datamodule.prepare_data()
     datamodule.setup(stage=TrainerFn.FITTING)
-    # train_dl = datamodule.train_dataloader()
-    # gen = iter(train_dl)
-    # batch = next(gen)
-
-    datamodule.setup(stage=TrainerFn.TESTING)
-    test_dl = datamodule.test_dataloader()
-    gen = iter(test_dl)
+    train_dl = datamodule.train_dataloader()
+    gen = iter(train_dl)
     batch = next(gen)
+
+    # datamodule.setup(stage=TrainerFn.TESTING)
+    # test_dl = datamodule.test_dataloader()
+    # gen = iter(test_dl)
+    # batch = next(gen)
 
     cmap = dopplermap()
 
-    img = batch["image"][0]
-    label = batch["label"][0]
-    seg = batch["seg"][0]
+    img = batch["image"][0].array
+    label = batch["label"][0].array
+    seg = batch["seg"][0].array
     img_shape = img.shape
     label_shape = label.shape
     print(f"image shape: {img_shape}, label shape: {label_shape}")
-    print(img._meta["filename_or_obj"])
+    print(batch["image"][0]._meta["filename_or_obj"])
     plt.figure("image", (18, 6))
     ax = plt.subplot(1, 3, 1)
-    imagesc(ax, img[0, :, :], "image", cmap, clim=[-1, 1])
+    imagesc(ax, img[0, :, :].transpose(), "image", cmap, clim=[-1, 1])
     ax = plt.subplot(1, 3, 2)
-    imagesc(ax, label[0, :, :], "label", cmap, clim=[-1, 1])
+    imagesc(ax, label[0, :, :].transpose(), "label", cmap, clim=[-1, 1])
     ax = plt.subplot(1, 3, 3)
-    imagesc(ax, seg[0, :, :], "seg", cmap)
+    imagesc(ax, seg[0, :, :].transpose(), "seg", cmap)
+    print("max of seg: ", np.max(seg[0, :, :]))
     plt.show()

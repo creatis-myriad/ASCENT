@@ -1,15 +1,250 @@
 import os
+from typing import Hashable, Mapping, Optional, Union
 
 import numpy as np
+import torch
 from einops.einops import rearrange
 from monai.config import KeysCollection
+from monai.config.type_definitions import NdarrayOrTensor
 from monai.data import MetaTensor
-from monai.transforms import LoadImage, SpatialCrop, SqueezeDim, ToTensor
-from monai.transforms.transform import MapTransform
+from monai.data.meta_obj import get_track_meta
+from monai.transforms import (
+    LoadImage,
+    MapTransform,
+    RandomizableTransform,
+    SpatialCrop,
+    SqueezeDim,
+)
 from monai.transforms.utils import generate_spatial_bounding_box
+from monai.utils import convert_to_dst_type, convert_to_tensor
+from torch import Tensor
 
 from ascent.preprocessing.preprocessing import resample_image, resample_label
 from ascent.utils.file_and_folder_operations import load_pickle
+
+
+class ArtfclAliasing(RandomizableTransform):
+    """Create realistic artificial aliasing by randomly wrapping Doppler velocities.
+
+    Detailed steps:
+        1. Pick a random wrapping parameter between the wrap_range.
+        2. Dealias the Doppler velocities, Vd, based on the ground truth segmentation if they were
+        aliased.
+        3. Wrap any Vd > wrap_param.
+        4. Normalize Vd.
+        5. Create new ground truth segmentation and velocities.
+    """
+
+    def __init__(self, prob: float = 0.5, wrap_range: tuple[float, float] = (0.6, 0.9)) -> None:
+        """Define the probability and the wrapping range.
+
+        Args:
+            prob: Probability to perform the transform.
+            wrap_range: Velocity wrapping range, between 0 and 1.
+        """
+
+        RandomizableTransform.__init__(self, prob)
+        self.wrap_range = wrap_range
+
+    def randomize(self) -> None:
+        if self.R.random() < self.prob:
+            self._do_transform = True
+            self.wrap_param = self.R.uniform(low=self.wrap_range[0], high=self.wrap_range[1])
+        else:
+            self._do_transform = False
+
+    def alias(self, img: Tensor, label: Tensor) -> tuple[Tensor, Tensor]:
+        """Create artificial aliasing, the corresponding ground truth segmentation and velocities.
+
+        Args:
+            img: Doppler velocity tensor.
+            label: Segmentation of aliased pixels, 1: V + 2; 2: V - 2.
+
+        Returns:
+            Wrapped velocities, ground truth segmentation, ground truth velocities.
+        """
+
+        vel = img[:-1].detach().cpu().numpy()
+        power = None
+        if img.shape[0] == 2:
+            power = img[-1:].detach().cpu().numpy()
+
+        v = vel.copy()
+        ori_seg = label.detach().cpu().numpy()
+        seg = ori_seg.copy()
+
+        # check whether the frame contains any aliasing and dealias it if the frame is aliased
+        if np.max(seg) > 0:
+            v = self.dealias(v, seg)
+            # since the velocity is dealiased, the ground truth segmentation is now zero
+            seg[seg > 0] = 0
+
+        gt_v = v.copy()
+
+        # specify a ROI (v > 0.3 and power > 0.4) to create more realistic aliasing
+        if power is not None:
+            roi = np.logical_and((np.abs(v) > 0.3), (power > 0.4))
+        else:
+            roi = np.abs(v) > (0.3 * 0.4)
+
+        # create artificial aliasing if ROI is not empty
+        if not (np.all(roi == False)):  # noqa: E712
+            self.wrap_param = self.wrap_param * np.max(np.abs(v[roi]))
+            aliased_v = v.copy()
+            aliased_v[roi] = self.wrap(aliased_v[roi], self.wrap_param, True)
+
+            # recompute the ground truth labels based on the artificially aliased frame
+            gt_seg = self.recompute_seg(v, aliased_v)
+            v = aliased_v
+
+            # clip the artificially aliased velocities
+            v[v >= 1] = 0.9999
+            v[v <= -1] = -0.9999
+
+            # recompute ground truth velocities
+            gt_v = v.copy()
+            gt_v[gt_seg == 1] += 2
+            gt_v[gt_seg == 2] -= 2
+        else:
+            v = vel
+            gt_seg = ori_seg.astype(np.uint8)
+
+        print("max seg:", np.max(gt_seg))
+
+        del aliased_v
+        del vel
+
+        # concatenate the velocity with Doppler power if given
+        if power is not None:
+            v = np.concatenate((v, power))
+
+        # convert the numpy arrays  back to tensors
+        v = torch.as_tensor(v)
+        gt_seg = torch.as_tensor(gt_seg)
+        if isinstance(img, MetaTensor):
+            v = convert_to_dst_type(v, dst=img, dtype=torch.float32)[0]
+            gt_v = convert_to_dst_type(gt_v, dst=img, dtype=torch.float32)[0]
+        if isinstance(label, MetaTensor):
+            gt_seg = convert_to_dst_type(gt_seg, dst=label, dtype=torch.uint8)[0]
+        return v, gt_seg, gt_v
+
+    @staticmethod
+    def recompute_seg(dealiased_vel: np.array, aliased_vel: np.array) -> np.array:
+        """Compute new ground truth segmentation for the wrapped Doppler velocities.
+
+        Args:
+            dealiased_vel: Dealiased Doppler velocities array.
+            aliased_vel: Artificially aliased Doppler velocities array.
+
+        Returns:
+            Ground truth segmentation for the Artificially aliased Doppler velocities array
+        """
+
+        gt_seg = np.zeros(dealiased_vel.shape)
+        diff = np.logical_and(
+            (dealiased_vel != aliased_vel), (np.sign(dealiased_vel) != np.sign(aliased_vel))
+        )
+        plus_two = np.logical_and(diff, np.sign(aliased_vel) == -1)
+        minus_two = np.logical_and(diff, np.sign(aliased_vel) == 1)
+        if not (np.all(plus_two == False)):  # noqa: E712
+            gt_seg[plus_two] = 1
+        if not (np.all(minus_two == False)):  # noqa: E712
+            gt_seg[minus_two] = 2
+
+        return gt_seg.astype(np.uint8)
+
+    @staticmethod
+    def dealias(
+        img: Union[np.array, Tensor], seg: Union[np.array, Tensor]
+    ) -> Union[np.array, Tensor]:
+        """Apply dealiasing based on the ground truth segmentations.
+
+        Args:
+            img: Aliased Doppler velocities.
+            seg: Ground truth segmentation.
+
+        Returns:
+            Dealiased Doppler velocities.
+        """
+
+        img[seg == 1] += 2
+        img[seg == 2] -= 2
+
+        return img
+
+    @staticmethod
+    def wrap(img: np.array, wrap_param: float = 0.65, normalize: bool = False) -> np.array:
+        """Wrap any element with its absolute value surpassing the wrapping parameter.
+
+        Args:
+            img: Dealiased Doppler velocities array.
+            wrap_param: Wrapping parameter.
+            normalize: Whether to normalize the wrapped tensor between -1 and 1.
+
+        Returns:
+            Wrapped Doppler velocities array.
+        """
+
+        img = (img + wrap_param) % (2 * wrap_param) - wrap_param
+        if normalize:
+            return img / wrap_param
+        else:
+            return img
+
+    def __call__(self, img: Tensor, seg: Tensor) -> Tensor:
+        self.randomize()
+        if self._do_transform:
+            return self.alias(img, seg)
+        else:
+            return img, seg, self.dealias(img, seg)
+
+
+class ArtfclAliasingd(RandomizableTransform, MapTransform):
+    """Dictionary-based version of ArtfclAliasing."""
+
+    def __init__(
+        self,
+        keys: KeysCollection,
+        prob: float = 0.1,
+        wrap_range: tuple[float, float] = (0.6, 0.9),
+        allow_missing_keys: bool = False,
+    ) -> None:
+        """Initialize ArtfclAliasingd transform.
+
+        Args:
+            keys: List containing all the keys in data.
+            prob: Probability to perform the transform.
+            wrap_range: Doppler velocity wrapping range, between 0 and 1.
+            allow_missing_keys: Don't raise exception if key is missing.
+        """
+
+        MapTransform.__init__(self, keys, allow_missing_keys)
+        RandomizableTransform.__init__(self, prob)
+        self.artfcl_aliasing = ArtfclAliasing(prob=1.0, wrap_range=wrap_range)
+
+    def set_random_state(
+        self, seed: Optional[int] = None, state: Optional[np.random.RandomState] = None
+    ) -> "ArtfclAliasingd":
+        super().set_random_state(seed, state)
+        self.artfcl_aliasing.set_random_state(seed, state)
+        return self
+
+    def __call__(
+        self, data: Mapping[Hashable, NdarrayOrTensor]
+    ) -> dict[Hashable, NdarrayOrTensor]:
+        d = dict(data)
+        self.randomize(None)
+        if not self._do_transform:
+            for key in self.key_iterator(d):
+                d[key] = convert_to_tensor(d[key], track_meta=get_track_meta())
+            return d
+
+        if "seg" in d.keys():
+            d["image"], d["seg"], d["label"] = self.artfcl_aliasing(d["image"], d["seg"])
+        else:
+            d["image"], d["label"], _ = self.artfcl_aliasing(d["image"], d["label"])
+
+        return d
 
 
 class Convert3Dto2Dd(MapTransform):
@@ -364,16 +599,38 @@ class DealiasLoadNpyd(MapTransform):
 
 
 if __name__ == "__main__":
+    from matplotlib import pyplot as plt
+
+    from ascent.utils.visualization import dopplermap, imagesc
+
     # image_path = [
     #     "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/DEALIAS/raw/imagesTr/Dealias_0001_0000.nii.gz",
     #     "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/DEALIAS/raw/imagesTr/Dealias_0001_0001.nii.gz",
     # ]
-
     # load = Preprocessd(
     #     "images", np.array([0.5, 0.5, 1]), None, True, True, {0: "noNorm", 1: "noNorm"}
     # )
     # batch = load({"image": LoadImage(image_path)})
-    data_path = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/UNWRAP/preprocessed/data_and_properties/Dealias_0026.npy"
+    data_path = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/DEALIAS/preprocessed/data_and_properties/Dealias_0035.npy"
     # data_path = "C:/Users/ling/Desktop/Thesis/REPO/ascent/data/CAMUS/cropped/NewCamus_0001.npz"
     # prop = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/CAMUS/preprocessed/data_and_properties/NewCamus_0001.pkl"
-    data = LoadNpyd(["data"], test=False)({"data": data_path})
+    data = LoadNpyd(["data"], test=False, seg_label=False)({"data": data_path})
+    aliased, gt_seg, gt_v = ArtfclAliasing(prob=1)(data["image"][..., 61], data["label"][..., 61])
+
+    ori_vel = data["image"][0, :, :, 61].array.transpose()
+    ori_gt = data["label"][0, :, :, 61].array.transpose()
+    aliased_vel = aliased[0, ...].array.transpose()
+    new_gt = gt_seg[0, ...].array.transpose()
+    # gt_vel = batch["label"][0, :, :, 52].array.transpose()
+    plt.figure("image", (18, 6))
+    ax = plt.subplot(1, 5, 1)
+    imagesc(ax, ori_vel, "ori", dopplermap(), [-1, 1])
+    ax = plt.subplot(1, 5, 2)
+    imagesc(ax, ori_gt, "ori_gt", dopplermap(), [0, 2])
+    ax = plt.subplot(1, 5, 3)
+    imagesc(ax, aliased_vel, "aliased", dopplermap(), [-1, 1])
+    ax = plt.subplot(1, 5, 4)
+    imagesc(ax, new_gt, "new_gt", dopplermap(), [0, 2])
+    # ax = plt.subplot(1, 5, 5)
+    # imagesc(ax, gt_vel, "gt_vel", dopplermap(), list(np.array([-1, 1]) * np.max(np.abs(gt_vel))))
+    plt.show()
