@@ -8,7 +8,7 @@ defaults:
   - override /trainer: nnunet
   - override /hydra: nnunet
 
-tags: ["unwrapv2", "nnUNet_2D"]
+tags: ["DA", "200_epochs"]
 task_name: "UNWRAPV2"
 fold: 0
 train: True

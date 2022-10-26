@@ -102,13 +102,15 @@ class ArtfclAliasing(RandomizableTransform):
             gt_v = v.copy()
             gt_v[gt_seg == 1] += 2
             gt_v[gt_seg == 2] -= 2
+
+            # delete useless array
+            del aliased_v
         else:
             # if ROI is empty, simply use the initial Doppler velocities and segmentation
             v = vel
             gt_seg = ori_seg.astype(np.uint8)
 
         # delete useless array
-        del aliased_v
         del vel
 
         # concatenate the velocity with Doppler power if given
