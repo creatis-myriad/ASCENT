@@ -71,13 +71,10 @@ class ArtfclAliasing(RandomizableTransform):
 
         v = vel.copy()
         ori_seg = label.detach().cpu().numpy()
-        seg = ori_seg.copy()
 
         # check whether the frame contains any aliasing and dealias it if the frame is aliased
-        if np.max(seg) > 0:
-            v = self.dealias(v, seg)
-            # since the velocity is dealiased, the ground truth segmentation is now zero
-            seg[seg > 0] = 0
+        if np.max(ori_seg) > 0:
+            v = self.dealias(v, ori_seg)
 
         gt_v = v.copy()
 
@@ -88,7 +85,7 @@ class ArtfclAliasing(RandomizableTransform):
             roi = np.abs(v) > (0.3 * 0.4)
 
         # create artificial aliasing if ROI is not empty
-        if not (np.all(roi == False)):  # noqa: E712
+        if not (np.all(~roi)):
             self.wrap_param = self.wrap_param * np.max(np.abs(v[roi]))
             aliased_v = v.copy()
             aliased_v[roi] = self.wrap(aliased_v[roi], self.wrap_param, True)
@@ -106,11 +103,11 @@ class ArtfclAliasing(RandomizableTransform):
             gt_v[gt_seg == 1] += 2
             gt_v[gt_seg == 2] -= 2
         else:
+            # if ROI is empty, simply use the initial Doppler velocities and segmentation
             v = vel
             gt_seg = ori_seg.astype(np.uint8)
 
-        print("max seg:", np.max(gt_seg))
-
+        # delete useless array
         del aliased_v
         del vel
 
@@ -137,7 +134,7 @@ class ArtfclAliasing(RandomizableTransform):
             aliased_vel: Artificially aliased Doppler velocities array.
 
         Returns:
-            Ground truth segmentation for the Artificially aliased Doppler velocities array
+            Ground truth segmentation for the artificially aliased Doppler velocities array
         """
 
         gt_seg = np.zeros(dealiased_vel.shape)
@@ -146,9 +143,9 @@ class ArtfclAliasing(RandomizableTransform):
         )
         plus_two = np.logical_and(diff, np.sign(aliased_vel) == -1)
         minus_two = np.logical_and(diff, np.sign(aliased_vel) == 1)
-        if not (np.all(plus_two == False)):  # noqa: E712
+        if not (np.all(~plus_two)):
             gt_seg[plus_two] = 1
-        if not (np.all(minus_two == False)):  # noqa: E712
+        if not (np.all(~minus_two)):
             gt_seg[minus_two] = 2
 
         return gt_seg.astype(np.uint8)
@@ -263,7 +260,7 @@ class Convert3Dto2Dd(MapTransform):
 
         super().__init__(keys, allow_missing_keys)
 
-    def __call__(self, data):
+    def __call__(self, data: dict[str, Tensor]):
         d = dict(data)
         for key in self.keys:
             d[key] = rearrange(d[key], "c w h d -> (c d) w h")
@@ -289,7 +286,7 @@ class Convert2Dto3Dd(MapTransform):
         super().__init__(keys, allow_missing_keys)
         self.num_channel = num_channel
 
-    def __call__(self, data):
+    def __call__(self, data: dict[str, Tensor]):
         d = dict(data)
         for key in self.keys:
             d[key] = rearrange(d[key], "(c d) w h -> c w h d", c=self.num_channel)
@@ -322,7 +319,7 @@ class MayBeSqueezed(MapTransform):
         self.squeeze = SqueezeDim(dim=dim)
         self.dim = dim
 
-    def __call__(self, data):
+    def __call__(self, data: dict[str, Tensor]):
         d = dict(data)
         for key in self.keys:
             if len(d[key].shape) == 4 and d[key].shape[self.dim] == 1:
@@ -365,7 +362,7 @@ class Preprocessd(MapTransform):
 
         return bool(check(spacing) or check(self.target_spacing))
 
-    def __call__(self, data):
+    def __call__(self, data: dict[str, str]):
         # load data
         d = dict(data)
         image = d["image"]
@@ -460,7 +457,7 @@ class LoadNpyd(MapTransform):
         self.test = test
         self.seg_label = seg_label
 
-    def __call__(self, data):
+    def __call__(self, data: dict[str, str]):
         """
         Args:
             data: Dict to transform.

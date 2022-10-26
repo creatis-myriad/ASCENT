@@ -27,6 +27,8 @@ from ascent.datamodules.nnunet_datamodule import nnUNetDataModule
 
 
 class DealiasDataModule(nnUNetDataModule):
+    """DataModule for UNWRAPV2 data using deep unfolding."""
+
     def setup_transforms(self) -> None:
         """Define the data augmentations used by nnUNet including the data reading using
         monai.transforms libraries.
