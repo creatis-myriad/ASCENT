@@ -44,6 +44,7 @@ def sliding_window_inference(
     Each output in the tuple or dict value is allowed to have different resolutions with respect to the input.
     e.g., the input patch spatial size is [128,128,128], the output (a tuple of two patches) patch sizes
     could be ([128,64,256], [64,32,128]).
+
     In this case, the parameter `overlap` and `roi_size` need to be carefully chosen to ensure the output ROI is still
     an integer. If the predictor's input and output spatial sizes are not equal, we recommend choosing the parameters
     so that `overlap*roi_size*output_size/input_size` is an integer (for each spatial dimension).
@@ -72,10 +73,8 @@ def sliding_window_inference(
         overlap: Amount of overlap between scans.
         mode: {``"constant"``, ``"gaussian"``}
             How to blend output of overlapping windows. Defaults to ``"constant"``.
-
             - ``"constant``": gives equal weight to all predictions.
             - ``"gaussian``": gives less weight to predictions on edges of windows.
-
         sigma_scale: the standard deviation coefficient of the Gaussian window when `mode` is ``"gaussian"``.
             Default: 0.125. Actual window sigma is ``sigma_scale`` * ``dim_size``.
             When sigma_scale is a sequence of floats, the values denote sigma_scale at the corresponding
@@ -126,7 +125,7 @@ def sliding_window_inference(
         inputs, pad=pad_size, mode=look_up_option(padding_mode, PytorchPadMode), value=cval
     )
 
-    steps = _compute_steps_for_sliding_window(roi_size, image_size, overlap)
+    steps = compute_steps_for_sliding_window(roi_size, image_size, overlap)
     # Store all slices in list
     slices = dense_patch_slices(steps, roi_size)
     num_win = len(slices)  # number of windows per image
@@ -289,8 +288,7 @@ def sliding_window_inference(
     return final_output
 
 
-@staticmethod
-def _compute_steps_for_sliding_window(
+def compute_steps_for_sliding_window(
     patch_size: Tuple[int, ...], image_size: Tuple[int, ...], step_size: float
 ) -> List[List[int]]:
     assert [
@@ -333,7 +331,6 @@ def dense_patch_slices(
         image_size: dimensions of image to iterate over
         patch_size: size of patches to generate slices
         scan_interval: dense patch sampling interval
-
     Returns:
         a list of slice objects defining each patch
     """
@@ -345,5 +342,5 @@ if __name__ == "__main__":
     image_size = [1040, 840]
     roi_size = [128, 128]
     overlap = 0.5
-    interval_2 = _compute_steps_for_sliding_window(roi_size, image_size, overlap)
+    interval_2 = compute_steps_for_sliding_window(roi_size, image_size, overlap)
     slices = dense_patch_slices(interval_2, roi_size)
