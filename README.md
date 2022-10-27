@@ -49,6 +49,8 @@ For now, ASCENT provides only nnUNet 2D and 3D_fullres architectures (similar to
 
 ASCENT has been tested on Linux (Ubuntu 20, Red Hat 7.6), macOS and Windows 10.
 
+> Automatic Mixed Precision (AMP) is buggy on Windows devices, e.g. Nan in loss computation. For Windows users, it is recommended to disable it during the run by adding trainer.precision=32 to the train/evaluate/predict command to avoid errors.
+
 ## Install
 
 1. Download the repository:
