@@ -1,7 +1,7 @@
 # @package _global_
 
 defaults:
-  - override /datamodule: unwrap_2d
+  - override /datamodule: dealiasreg_2d
   - override /model: dealiasreg_2d
   - override /callbacks: nnunet
   - override /logger: comet
