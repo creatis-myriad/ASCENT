@@ -2,6 +2,6 @@ defaults:
   - nnunet
 
 batch_size: 4
-dataset_name: DEALIAS
+dataset_name: DEALIASC
 do_dummy_2D_data_aug: False
 num_workers: 12

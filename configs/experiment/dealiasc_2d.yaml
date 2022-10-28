@@ -1,20 +1,20 @@
 # @package _global_
 
 defaults:
-  - override /datamodule: dealias_2d
-  - override /model: dealias_2d
+  - override /datamodule: dealiasc_2d
+  - override /model: dealiasc_2d
   - override /callbacks: nnunet
   - override /logger: comet
   - override /trainer: nnunet
   - override /hydra: nnunet
 
 tags: ["dealias", "nnUNet_2D"]
-task_name: "DEALIAS"
+task_name: "DEALIASC"
 fold: 0
 train: True
 test: True
 nnUNet_variant: 2D
 logger:
   comet:
-    project_name: "DEALIAS"
+    project_name: "DEALIASC"
     experiment_name: "2D_Fold${fold}"
