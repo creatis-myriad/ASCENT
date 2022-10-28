@@ -1,4 +1,4 @@
-_target_: ascent.models.nnunet_dealias_module.nnUNetDealiasLitModule
+_target_: ascent.models.nnunet_reg_module.nnUNetRegLitModule
 
 optimizer:
   _target_: torch.optim.SGD
