@@ -28,7 +28,7 @@ class SpyritNet(nn.Module):
         super().__init__()
         self.unwrap = unwrap
         self.denoiser = denoiser
-        self.postprocess = postprocess
+        self.do_postprocess = postprocess
 
     def postprocess(
         self,
@@ -68,7 +68,7 @@ class SpyritNet(nn.Module):
         """
 
         y = self.unwrap(x[:, :-1] * x[:, -1:])
-        if self.postprocess:
+        if self.do_postprocess:
             y = self.postprocess(x[:, :-1], y, x[:, -1:])
         y = self.denoiser(torch.concat([x[:, :-1], x[:, -1:], y], dim=1))
         y = self.postprocess(x[:, :-1], y, None)
