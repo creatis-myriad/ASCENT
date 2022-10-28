@@ -7,8 +7,6 @@ from monai.data import MetaTensor
 from scipy.sparse import csr_matrix, identity, kron
 from torch import Tensor, nn
 
-from ascent.models.components.unet_related.layers import get_conv
-
 
 def reshape_fortran(x: Union[MetaTensor, Tensor], shape: Union[tuple, list]):
     """Reshape tensor/array in Fortran-like style.
