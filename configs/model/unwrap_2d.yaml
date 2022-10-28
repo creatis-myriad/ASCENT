@@ -15,7 +15,7 @@ scheduler:
   max_decay_steps: ${trainer.max_epochs}
 
 net:
-  _target_: ascent.models.components.spyrit_net.SpyritNetV2
+  _target_: ascent.models.components.spyrit_net.SpyritNet
   unwrap:
     _target_: ascent.models.components.spyrit_related.utils.Robust2DUnwrap
     shape: [40, 192]
