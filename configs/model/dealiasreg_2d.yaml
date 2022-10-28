@@ -1,0 +1,41 @@
+_target_: ascent.models.nnunet_dealias_module.nnUNetDealiasLitModule
+
+optimizer:
+  _target_: torch.optim.SGD
+  _partial_: true
+  lr: 0.01
+  dampening: 0
+  momentum: 0.99
+  nesterov: True
+  weight_decay: 3e-05
+
+scheduler:
+  _target_: ascent.models.components.unet_related.poly_lr.PolynomialLR
+  _partial_: true
+  max_decay_steps: ${trainer.max_epochs}
+
+net:
+  _target_: ascent.models.components.unet.UNet
+  in_channels: 2
+  num_classes: 1
+  patch_size: [40, 192]
+  kernels: [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
+  strides: [[1, 1], [2, 2], [2, 2], [2, 2], [1, 2]]
+  normalization_layer: "instance"
+  negative_slope: 1e-2
+  deep_supervision: False
+  attention: False
+  drop_block: False
+  residual: False
+  out_seg_bias: True
+
+loss:
+  _target_: torch.nn.SmoothL1Loss
+  reduction: "mean"
+  beta: 1.0
+
+tta: True
+
+save_predictions: True
+
+save_npz: False

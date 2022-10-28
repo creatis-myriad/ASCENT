@@ -16,15 +16,14 @@ from torch import Tensor
 from torchmetrics.functional import mean_squared_error
 
 from ascent.datamodules.components.inferers import sliding_window_inference
-from ascent.models.components.unet_related.utils import softmax_helper, sum_tensor
 from ascent.utils.file_and_folder_operations import save_pickle
 
 
 class nnUNetRegLitModule(LightningModule):
-    """nnUNet training, evaluation and test strategy converted to PyTorch Lightning.
+    """Lightning module for regression.
 
-    nnUNetLitModule includes all nnUNet key features, including the test time augmentation, sliding
-    window inference etc. Currently only 2D and 3D_fullres nnUNet are supported.
+    nnUNetRegLitModule is similar to nnUNetLitModule except for the choice of loss and evaluation
+    metrics.
     """
 
     def __init__(
@@ -114,9 +113,6 @@ class nnUNetRegLitModule(LightningModule):
         # Only the highest resolution output is returned during the validation
         pred = self.forward(img)
         loss = self.loss(pred, label)
-
-        # Compute the stats that will be used to compute the final dice metric during the end of
-        # epoch
 
         val_metric = mean_squared_error(pred, label)
 
@@ -227,7 +223,6 @@ class nnUNetRegLitModule(LightningModule):
 
         properties_dict = self.get_properties(image_meta_dict)
 
-        preds = softmax_helper(preds)
         preds = preds.squeeze(0).cpu().detach().numpy()
         original_shape = properties_dict.get("original_shape")
         if len(preds.shape[1:]) == len(original_shape) - 1:
