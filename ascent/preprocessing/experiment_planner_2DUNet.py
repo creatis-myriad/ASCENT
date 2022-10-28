@@ -305,6 +305,7 @@ class nnUNetPlanner2D:
             "train": True,
             "test": True,
             "nnUNet_variant": f"{dim}D",
+            "best_model": False,
             "logger": {
                 "comet": {
                     "project_name": DoubleQuote(dataset_name),

@@ -50,6 +50,9 @@ test: True
 # simply provide checkpoint path to resume training
 ckpt_path: null
 
+# set True to use best weight for testing
+best_model: True
+
 # set True to enable transfer training
 transfer_training: False
 
