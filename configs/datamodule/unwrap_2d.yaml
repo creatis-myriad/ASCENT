@@ -1,9 +1,11 @@
 defaults:
   - nnunet
 
-_target_: ascent.datamodules.nnunet_reg_datamodule.nnUNetRegDataModule
+_target_: ascent.datamodules.dealias_datamodule.DealiasDataModule
 batch_size: 4
-dataset_name: UNWRAP
+dataset_name: UNWRAPV2
 do_dummy_2D_data_aug: False
 num_workers: 12
 seg_label: False
+in_channels: ${model.net.denoiser.in_channels}
+patch_size: ${model.net.denoiser.patch_size}s
