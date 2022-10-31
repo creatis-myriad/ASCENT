@@ -71,5 +71,5 @@ class SpyritNet(nn.Module):
         if self.do_postprocess:
             y = self.postprocess(x[:, :-1], y, x[:, -1:])
         y = self.denoiser(torch.concat([x[:, :-1], x[:, -1:], y], dim=1))
-        y = self.postprocess(x[:, :-1], y, None)
+        # y = self.postprocess(x[:, :-1], y, None)
         return y
