@@ -5,28 +5,37 @@ from tqdm import tqdm
 from utils import generate_dataset_json
 
 
-def rename_case(case_folder, imagesTr, labelsTr, case_identifier):
+def rename_case(case_folder, imagesTr, labelsTr, case_identifier, multiply=False):
     case = os.path.basename(case_folder)
     velocity = sitk.ReadImage(os.path.join(case_folder, f"{case}_3CH.nii.gz"))
     power = sitk.ReadImage(os.path.join(case_folder, f"{case}_3CH_power.nii.gz"))
     gt_seg = sitk.ReadImage(os.path.join(case_folder, f"{case}_3CH_seg.nii.gz"))
 
-    sitk.WriteImage(velocity, os.path.join(imagesTr, f"{case_identifier}_0000.nii.gz"))
-    sitk.WriteImage(power, os.path.join(imagesTr, f"{case_identifier}_0001.nii.gz"))
-    sitk.WriteImage(gt_seg, os.path.join(labelsTr, f"{case_identifier}_0000.nii.gz"))
+    if multiply:
+        vel_array = sitk.GetArrayFromImage(velocity)
+        power_array = sitk.GetArrayFromImage(power)
+        spacing = velocity.GetSpacing()
+        mult = vel_array * power_array
+        mult_itk = sitk.GetImageFromArray(mult)
+        mult_itk.SetSpacing(spacing)
+        sitk.WriteImage(mult_itk, os.path.join(imagesTr, f"{case_identifier}_0000.nii.gz"))
+    else:
+        sitk.WriteImage(velocity, os.path.join(imagesTr, f"{case_identifier}_0000.nii.gz"))
+        sitk.WriteImage(power, os.path.join(imagesTr, f"{case_identifier}_0001.nii.gz"))
+    sitk.WriteImage(gt_seg, os.path.join(labelsTr, f"{case_identifier}.nii.gz"))
 
 
-def convert_to_nnUNet(data_dir, dataset_name, output_dir):
+def convert_to_nnUNet(data_dir, dataset_name, output_dir, multiply):
     id = 1
     for case in tqdm(os.listdir(data_dir)):
         case_identifier = dataset_name + "_%04.0d" % id
-        rename_case(os.path.join(data_dir, case), imagesTr, labelsTr, case_identifier)
+        rename_case(os.path.join(data_dir, case), imagesTr, labelsTr, case_identifier, multiply)
         id += 1
 
 
 if __name__ == "__main__":
     base = "C:/Users/ling/Desktop/Dataset/Doppler/A3C"
-    data_path = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/DEALIAS/raw"
+    data_path = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/DEALIASC/raw"
     os.makedirs(data_path, exist_ok=True)
 
     dataset_name = "Dealias"
@@ -41,7 +50,7 @@ if __name__ == "__main__":
     os.makedirs(imagesTs, exist_ok=True)
     os.makedirs(labelsTs, exist_ok=True)
 
-    convert_to_nnUNet(base, dataset_name, data_path)
+    convert_to_nnUNet(base, dataset_name, data_path, False)
     generate_dataset_json(
         os.path.join(data_path, "dataset.json"),
         imagesTr,

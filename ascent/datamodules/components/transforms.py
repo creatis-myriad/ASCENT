@@ -62,12 +62,21 @@ class ArtfclAliasing(RandomizableTransform):
 
         Returns:
             Wrapped velocities, ground truth segmentation, ground truth velocities.
+
+        Raises:
+            NotImplementedError: When input contains more than two channel dimensions.
         """
 
-        vel = img[:-1].detach().cpu().numpy()
-        power = None
-        if img.shape[0] == 2:
+        if img.shape[0] == 1:
+            vel = img.detach().cpu().numpy()
+            power = None
+        elif img.shape[0] == 2:
+            vel = img[:-1].detach().cpu().numpy()
             power = img[-1:].detach().cpu().numpy()
+        else:
+            raise NotImplementedError(
+                "Input more than two channel dimensions is currently not supported!"
+            )
 
         v = vel.copy()
         ori_seg = label.detach().cpu().numpy()
