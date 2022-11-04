@@ -29,6 +29,15 @@ from ascent.datamodules.nnunet_datamodule import nnUNetDataModule
 class DealiasDataModule(nnUNetDataModule):
     """DataModule for UNWRAPV2 data using deep unfolding."""
 
+    def __init__(self, alias_transform: bool = True, **kwargs):
+        """Initializes class instance.
+
+        Args:
+            alias_transform: Whether to apply artificial aliasing augmentation.
+        """
+
+        super().__init__(**kwargs)
+
     def setup_transforms(self) -> None:
         """Define the data augmentations used by nnUNet including the data reading using
         monai.transforms libraries.
@@ -79,7 +88,8 @@ class DealiasDataModule(nnUNetDataModule):
         if self.hparams.do_dummy_2D_data_aug and self.threeD:
             other_transforms.append(Convert3Dto2Dd(keys=["image", "label", "seg"]))
 
-        other_transforms.append(ArtfclAliasingd(keys=["image", "label", "seg"], prob=0.5))
+        if self.hparams.alias_transform:
+            other_transforms.append(ArtfclAliasingd(keys=["image", "label", "seg"], prob=0.5))
 
         other_transforms.extend(
             [
