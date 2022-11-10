@@ -8,14 +8,18 @@ from scipy.sparse import csr_matrix, identity, kron
 from torch import Tensor, nn
 
 
-def reshape_fortran(x: Union[MetaTensor, Tensor], shape: Union[tuple, list]):
+def reshape_fortran(
+    x: Union[np.ndarray, MetaTensor, Tensor], shape: Union[tuple, list]
+) -> Union[np.ndarray, MetaTensor, Tensor]:
     """Reshape tensor/array in Fortran-like style.
 
     Args:
         x: Tensor/array to reshape.
         shape: Desired shape for reshapping.
-    """
 
+    Returns:
+        Reshaped tensor/array.
+    """
     if isinstance(x, (Tensor, MetaTensor)):
         x = x.permute(*reversed(range(len(x.shape))))
         return x.reshape(*reversed(shape)).permute(*reversed(range(len(shape))))
@@ -23,7 +27,15 @@ def reshape_fortran(x: Union[MetaTensor, Tensor], shape: Union[tuple, list]):
         return np.reshape(x, shape, order="F")
 
 
-def round_differentiable(x: Union[Tensor, MetaTensor]):
+def round_differentiable(x: Union[Tensor, MetaTensor]) -> Union[Tensor, MetaTensor]:
+    """A differentiable version of round that returns identity tensor when backward is called.
+
+    Args:
+        x: Tensor to be rounded.
+
+    Returns:
+        Rounded tensor that is also differentiable.
+    """
     # This is equivalent to replacing round function (non-differentiable) with
     # an identity function (differentiable) only when backward.
     forward_value = torch.round(x)
@@ -61,7 +73,6 @@ class Robust2DUnwrap(nn.Module):
                 wrap_param: Wrapping parameter.
                 normalize: Whether to normalize the wrapped tensor between -1 and 1.
         """
-
         # learnable weight for regularization
         self.mu = nn.Parameter(torch.tensor([float(mu)], requires_grad=True))
 
@@ -107,7 +118,6 @@ class Robust2DUnwrap(nn.Module):
         Returns:
             Wrapped tensor.
         """
-
         x = (x + wrap_param) % (2 * wrap_param) - wrap_param
         if normalize:
             return x / wrap_param
@@ -126,7 +136,6 @@ class Robust2DUnwrap(nn.Module):
         Returns:
             Preprocessed input tensor.
         """
-
         b, c, m, n = x.shape
 
         # finite difference matrix along vertical axis
@@ -157,7 +166,7 @@ class Robust2DUnwrap(nn.Module):
         )
         d1x = reshape_fortran(d1x.toarray(), (self.M * self.N, b * c))
 
-        # A1' @ d1y + A2' @ d1x + mu * x
+        # compute A1' @ d1y + A2' @ d1x + mu * x
         return rearrange(
             torch.from_numpy(self.A1.transpose().dot(d1y) + self.A2.transpose().dot(d1x))
             .float()
@@ -170,15 +179,14 @@ class Robust2DUnwrap(nn.Module):
 
     @staticmethod
     def differentiation_matrix(k: int) -> csr_matrix:
-        """Build a finite difference matrix with -1 and 1.
+        """Build a sparse finite difference matrix with -1 and 1.
 
         Args:
             k: Dimension of square matrix to create.
 
         Returns:
-            Sparse finite difference matrix.
+            CSR sparse finite difference matrix.
         """
-
         m = -np.eye(k) + np.eye(k, k, 1)
         m[-1, -1] = 1
         m[-1, -2] = -1
@@ -193,7 +201,6 @@ class Robust2DUnwrap(nn.Module):
         Returns:
             Unwrapped tensor (b, c, m, n).
         """
-
         b, c, m, n = x.shape
 
         # preprocess x
@@ -217,7 +224,6 @@ class Robust2DUnwrap(nn.Module):
         Returns:
             Weight of the fully connected layers A.
         """
-
         return self.A.weight.data
 
 
@@ -257,7 +263,7 @@ if __name__ == "__main__":
     Vgt = transforms({"data": data_path})["label"][:, :, :, 15]
     Vgt = rearrange(Vgt, "c h w -> () c w h")
 
-    # load dataloader
+    # setup dataloader
     # initialize_config_dir(
     #     config_dir=str(root / "configs" / "datamodule"), job_name="test", version_base="1.2"
     # )
@@ -280,7 +286,7 @@ if __name__ == "__main__":
     # Pd = batch["image"][:, -1:]
     # Vgt = batch["label"]
 
-    unwrap = Robust2DUnwrap(Vd.shape[-2:], 0.8385)
+    unwrap = Robust2DUnwrap(Vd.shape[-2:], 1e-6)
     x = Vd * Pd
     y = unwrap(x)
     n = round_differentiable((y - Pd * Vd) / 2.0)

@@ -24,7 +24,6 @@ class SpyritNet(nn.Module):
             denoiser: Denoiser.
             postprocess: Whether to run postprocessing before feeding data to the denoiser.
         """
-
         super().__init__()
         self.unwrap = unwrap
         self.denoiser = denoiser
@@ -47,7 +46,6 @@ class SpyritNet(nn.Module):
         Returns:
             Postprocessed output Doppler velocities with the computed Nyquist numbers.
         """
-
         if W is not None:
             n = round_differentiable((z_hat - W * x) / 2.0)
         else:
@@ -66,7 +64,6 @@ class SpyritNet(nn.Module):
         Returns:
             Dealiased tensor. (b, c, w, h)
         """
-
         y = self.unwrap(x[:, :-1] * x[:, -1:])
         if self.do_postprocess:
             y = self.postprocess(x[:, :-1], y, x[:, -1:])

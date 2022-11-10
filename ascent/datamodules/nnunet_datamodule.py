@@ -76,7 +76,6 @@ class nnUNetDataModule(LightningDataModule):
             test_splits: Whether to split data into train/val/test (0.8/0.1/0.1).
             seg_label: Whether the labels are segmentations.
         """
-
         super().__init__()
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
@@ -106,7 +105,6 @@ class nnUNetDataModule(LightningDataModule):
 
         Unpacking .npz data to .npy for faster data loading during training.
         """
-
         print("\nUnpacking dataset...")
         self.unpack_dataset()
         print("Done")
@@ -114,7 +112,6 @@ class nnUNetDataModule(LightningDataModule):
     @staticmethod
     def do_splits(splits_file: Union[Path, str], preprocessed_path: Union[Path, str], test_splits):
         """Create 5-fold train/validation/test splits."""
-
         if not os.path.isfile(splits_file):
             print("Creating new split...")
             splits = []
@@ -154,7 +151,6 @@ class nnUNetDataModule(LightningDataModule):
         This method is called by lightning with both `trainer.fit()` and `trainer.test()`, so be
         careful not to execute things like random split twice!
         """
-
         if stage == TrainerFn.FITTING or stage == TrainerFn.TESTING:
             splits_file = os.path.join(self.preprocessed_folder, "splits_final.pkl")
             self.do_splits(splits_file, self.full_data_dir, self.hparams.test_splits)

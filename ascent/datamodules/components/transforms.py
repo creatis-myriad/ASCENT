@@ -42,7 +42,6 @@ class ArtfclAliasing(RandomizableTransform):
             prob: Probability to perform the transform.
             wrap_range: Velocity wrapping range, between 0 and 1.
         """
-
         RandomizableTransform.__init__(self, prob)
         self.wrap_range = wrap_range
 
@@ -66,7 +65,6 @@ class ArtfclAliasing(RandomizableTransform):
         Raises:
             NotImplementedError: When input contains more than two channel dimensions.
         """
-
         if img.shape[0] == 1:
             vel = img.detach().cpu().numpy()
             power = None
@@ -147,7 +145,6 @@ class ArtfclAliasing(RandomizableTransform):
         Returns:
             Ground truth segmentation for the artificially aliased Doppler velocities array
         """
-
         gt_seg = np.zeros(dealiased_vel.shape)
         diff = np.logical_and(
             (dealiased_vel != aliased_vel), (np.sign(dealiased_vel) != np.sign(aliased_vel))
@@ -174,7 +171,6 @@ class ArtfclAliasing(RandomizableTransform):
         Returns:
             Dealiased Doppler velocities.
         """
-
         img[seg == 1] += 2
         img[seg == 2] -= 2
 
@@ -192,14 +188,22 @@ class ArtfclAliasing(RandomizableTransform):
         Returns:
             Wrapped Doppler velocities array.
         """
-
         img = (img + wrap_param) % (2 * wrap_param) - wrap_param
         if normalize:
             return img / wrap_param
         else:
             return img
 
-    def __call__(self, img: Tensor, seg: Tensor) -> Tensor:
+    def __call__(self, img: Tensor, seg: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+        """Create random artificial aliasing.
+
+        Args:
+            img: Color Doppler image.
+            seg: Segmented aliased pixels.
+
+        Returns:
+            (Artificially) aliased image, (modified) ground truth segmentation, (modified) ground truth velocity.
+        """
         self.randomize()
         if self._do_transform:
             return self.alias(img, seg)
@@ -217,7 +221,7 @@ class ArtfclAliasingd(RandomizableTransform, MapTransform):
         wrap_range: tuple[float, float] = (0.6, 0.9),
         allow_missing_keys: bool = False,
     ) -> None:
-        """Initialize ArtfclAliasingd transform.
+        """Initialize class instance.
 
         Args:
             keys: List containing all the keys in data.
@@ -225,7 +229,6 @@ class ArtfclAliasingd(RandomizableTransform, MapTransform):
             wrap_range: Doppler velocity wrapping range, between 0 and 1.
             allow_missing_keys: Don't raise exception if key is missing.
         """
-
         MapTransform.__init__(self, keys, allow_missing_keys)
         RandomizableTransform.__init__(self, prob)
         self.artfcl_aliasing = ArtfclAliasing(prob=1.0, wrap_range=wrap_range)
@@ -263,12 +266,12 @@ class Convert3Dto2Dd(MapTransform):
         keys: KeysCollection,
         allow_missing_keys: bool = False,
     ) -> None:
-        """
+        """Initialize class instance.
+
         Args:
             keys: Keys of the corresponding items to be transformed.
             allow_missing_keys: Don't raise exception if key is missing.
         """
-
         super().__init__(keys, allow_missing_keys)
 
     def __call__(self, data: dict[str, Tensor]):
@@ -287,13 +290,13 @@ class Convert2Dto3Dd(MapTransform):
         num_channel: int,
         allow_missing_keys: bool = False,
     ) -> None:
-        """
+        """Initialize class instance.
+
         Args:
             keys: Keys of the corresponding items to be transformed.
             num_channel: Number of channels of the converted 3D volume.
             allow_missing_keys: Don't raise exception if key is missing.
         """
-
         super().__init__(keys, allow_missing_keys)
         self.num_channel = num_channel
 
@@ -319,13 +322,13 @@ class MayBeSqueezed(MapTransform):
         dim: int,
         allow_missing_keys: bool = False,
     ) -> None:
-        """
+        """Initialize class instance.
+
         Args:
             keys: Keys of the corresponding items to be transformed.
             dim: Dimension to squeeze.
             allow_missing_keys: Don't raise exception if key is missing.
         """
-
         super().__init__(keys, allow_missing_keys)
         self.squeeze = SqueezeDim(dim=dim)
         self.dim = dim
@@ -347,13 +350,13 @@ class Preprocessd(MapTransform):
     def __init__(
         self, keys, target_spacing, intensity_properties, do_resample, do_normalize, modalities
     ) -> None:
-        """
+        """Initialize class instance.
+
         Args:
             keys: Keys of the corresponding items to be transformed.
             target_spacing: Target spacing to resample the data.
             intensity_properties: Global properties required to normalize CT data (mean, std, 0.5% )
         """
-
         super().__init__(keys)
         self.keys = keys
         self.target_spacing = target_spacing
@@ -439,7 +442,7 @@ class Preprocessd(MapTransform):
 
 
 class LoadNpyd(MapTransform):
-    """Load numpy array from .npz/.npy files.
+    """Load numpy array from .npy files.
 
     nnUNet's preprocessing concatenates image and label files before saving them to .npz files.
     The .npz files will be unpacked to .npy before training.
@@ -456,7 +459,8 @@ class LoadNpyd(MapTransform):
         allow_missing_keys: bool = False,
         seg_label: bool = True,
     ) -> None:
-        """
+        """Initialize class instance.
+
         Args:
             keys: Keys of the corresponding items to be transformed.
             test: Set to true to return image meta properties during test.
@@ -469,7 +473,8 @@ class LoadNpyd(MapTransform):
         self.seg_label = seg_label
 
     def __call__(self, data: dict[str, str]):
-        """
+        """Load .npy image file.
+
         Args:
             data: Dict to transform.
 
@@ -482,7 +487,6 @@ class LoadNpyd(MapTransform):
             NotImplementedError: Error when data contains a path that is not a numpy file or a pkl
                 file.
         """
-
         d = dict(data)
         for key in self.keys:
             if d[key].endswith(".npy"):
@@ -524,7 +528,7 @@ class LoadNpyd(MapTransform):
 
 
 class DealiasLoadNpyd(MapTransform):
-    """Load numpy array from .npz/.npy files. (Specific to deep unfolding for dealiasing).
+    """Load numpy array from .npy files. (Specific to deep unfolding for dealiasing)
 
     nnUNet's preprocessing concatenates image and label files before saving them to .npz files.
     The .npz files will be unpacked to .npy before training.
@@ -541,18 +545,18 @@ class DealiasLoadNpyd(MapTransform):
         test: bool = False,
         allow_missing_keys: bool = False,
     ) -> None:
-        """
+        """Initialize class instance.
+
         Args:
             keys: Keys of the corresponding items to be transformed.
             test: Set to true to return image meta properties during test.
             allow_missing_keys: Don't raise exception if key is missing.
         """
-
         super().__init__(keys, allow_missing_keys)
         self.test = test
 
     def __call__(self, data):
-        """
+        """Load .npy image file. (Specific to deep unfolding for dealiasing)
         Args:
             data: Dict to transform.
 
@@ -565,7 +569,6 @@ class DealiasLoadNpyd(MapTransform):
             NotImplementedError: Error when data contains a path that is not a numpy file or a pkl
                 file.
         """
-
         d = dict(data)
         for key in self.keys:
             if d[key].endswith(".npy"):

@@ -2,8 +2,8 @@ from typing import Union
 
 import numpy as np
 import torch
-import torch.nn as nn
 from monai.data import MetaTensor
+from torch import Tensor, nn
 
 from ascent.models.components.unet_related.layers import (
     ConvBlock,
@@ -47,7 +47,8 @@ class UNet(nn.Module):
         residual: bool = False,
         out_seg_bias: bool = False,
     ) -> None:
-        """
+        """Initialize class instance.
+
         Args:
             in_channels: Number of input channels.
             num_classes: Total number of classes in the dataset including background.
@@ -68,7 +69,6 @@ class UNet(nn.Module):
         Raises:
             NotImplementedError: Error when input patch size is neither 2D nor 3D.
         """
-
         super().__init__()
         if not len(patch_size) in [2, 3]:
             raise NotImplementedError("Only 2D and 3D patches are supported right now!")
@@ -123,8 +123,8 @@ class UNet(nn.Module):
         self.apply(self.initialize_weights)
 
     def forward(
-        self, input_data: Union[torch.Tensor, MetaTensor]
-    ) -> Union[torch.Tensor, MetaTensor]:  # noqa: D102
+        self, input_data: Union[Tensor, MetaTensor]
+    ) -> Union[Tensor, MetaTensor]:  # noqa: D102
         out = self.input_block(input_data)
         encoder_outputs = [out]
         for downsample in self.downsamples:
@@ -167,7 +167,6 @@ class UNet(nn.Module):
         Returns:
             Double convolutions block.
         """
-
         return conv_block(
             dim=self.dim,
             stride=stride,
@@ -189,7 +188,6 @@ class UNet(nn.Module):
         Returns:
             Output convolution layer.
         """
-
         return OutputBlock(
             in_channels=self.filters[decoder_level],
             out_channels=self.num_classes,
@@ -204,7 +202,6 @@ class UNet(nn.Module):
         Returns:
             ModuleList of all deep supervision heads.
         """
-
         return nn.ModuleList(
             [self.get_output_block(i + 1) for i in range(len(self.upsamples) - 1)]
         )
@@ -233,7 +230,6 @@ class UNet(nn.Module):
         Returns:
             ModuleList of chained convolution blocks.
         """
-
         layers = []
         for i, (in_channel, out_channel, kernel, stride) in enumerate(
             zip(in_channels, out_channels, kernels, strides)
@@ -289,7 +285,6 @@ class UNet(nn.Module):
         Ref:
             https://github.com/MIC-DKFZ/nnUNet/blob/master/nnunet/network_architecture/generic_UNet.py
         """
-
         if not isinstance(num_pool_per_axis, np.ndarray):
             num_pool_per_axis = np.array(num_pool_per_axis)
 
@@ -319,8 +314,6 @@ class UNet(nn.Module):
 
 
 if __name__ == "__main__":
-    import torch
-
     kernels = [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
     strides = [[1, 1], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2]]
     unet = UNet(1, 3, [640, 512], kernels, strides)

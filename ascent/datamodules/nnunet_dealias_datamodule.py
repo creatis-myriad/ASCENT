@@ -35,15 +35,11 @@ class nnUNetDealiasDataModule(nnUNetDataModule):
         Args:
             alias_transform: Whether to apply artificial aliasing augmentation.
         """
-
         super().__init__(**kwargs)
 
     def setup_transforms(self) -> None:
         """Define the data augmentations used by nnUNet including the data reading using
-        monai.transforms libraries.
-
-        The only difference with nnUNet framework is the patch creation.
-        """
+        monai.transforms libraries."""
         if self.threeD:
             rot_inter_mode = "bilinear"
             zoom_inter_mode = "trilinear"
