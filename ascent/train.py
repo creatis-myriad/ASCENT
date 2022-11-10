@@ -99,13 +99,13 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
 
     if cfg.get("train"):
         log.info("Starting training!")
-        if not cfg.transfer_training:
+        if not cfg.get("transfer_training"):
             trainer.fit(model=model, datamodule=datamodule, ckpt_path=cfg.get("ckpt_path"))
         else:
             trainer.fit(model=model, datamodule=datamodule)
 
         if isinstance(trainer.logger, CometLogger) and cfg.comet_save_model:
-            if cfg.nnUNet_variant:
+            if cfg.get("nnUNet_variant"):
                 trainer.logger.experiment.log_model(
                     "model", trainer.checkpoint_callback.last_model_path
                 )

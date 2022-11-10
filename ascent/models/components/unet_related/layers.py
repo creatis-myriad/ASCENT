@@ -1,3 +1,5 @@
+from typing import Literal
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -22,7 +24,7 @@ dropouts = {
 }
 
 
-def get_norm(name, out_channels):
+def get_norm(name, out_channels: int):
     if "groupnorm" in name:
         return nn.GroupNorm(32, out_channels, affine=True)
     return normalizations[name](out_channels, affine=True)

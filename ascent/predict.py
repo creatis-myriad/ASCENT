@@ -66,6 +66,9 @@ def check_input_folder_and_return_datalist(
 
     Returns:
         Datalist. [{"image": ././path"},]
+
+    Raises:
+        ValueError: Error when the input folder is empty.
     """
 
     log.info(f"This model expects {expected_num_modalities} input modalities for each image.")
@@ -76,9 +79,10 @@ def check_input_folder_and_return_datalist(
     remaining = deepcopy(files)
     missing = []
 
-    assert (
-        len(files) > 0
-    ), "input folder did not contain any images (expected to find .nii.gz file endings)"
+    if not len(files) > 0:
+        raise ValueError(
+            "Input folder did not contain any images (expected to find .nii.gz file endings)"
+        )
 
     # now check if all required files are present and that no unexpected files are remaining
     for c in maybe_case_ids:
@@ -144,7 +148,6 @@ def get_predict_transforms(dataset_properties: dict) -> Callable:
     Returns:
         Monai Compose(transforms)
     """
-
     load_transforms = [
         LoadImaged(keys="image", image_only=True),
         EnsureChannelFirstd(keys="image"),
@@ -176,17 +179,21 @@ def predict(cfg: DictConfig) -> Tuple[dict, dict]:
 
     Args:
         cfg (DictConfig): Configuration composed by Hydra.
+
     Returns:
         Tuple[dict, dict]: Dict with metrics and dict with all instantiated objects.
-    """
 
-    assert cfg.ckpt_path
+    Raises:
+        ValueError: Error when checkpoint path is not provided.
+    """
+    if not cfg.get("ckpt_path"):
+        raise ValueError("ckpt_path must not be empty!")
 
     log.info(f"Instantiating model <{cfg.model._target_}>")
-    model: LightningModule = hydra.utils.instantiate(cfg.model)
+    model: LightningModule = hydra.utils.instantiate(cfg.get("model"))
 
     log.info(f"Instantiating trainer <{cfg.trainer._target_}>")
-    trainer: Trainer = hydra.utils.instantiate(cfg.trainer)
+    trainer: Trainer = hydra.utils.instantiate(cfg.get("trainer"))
 
     object_dict = {
         "cfg": cfg,
@@ -195,13 +202,18 @@ def predict(cfg: DictConfig) -> Tuple[dict, dict]:
     }
 
     dataset_properties = load_pickle(
-        os.path.join(cfg.paths.data_dir, cfg.dataset, "preprocessed", "dataset_properties.pkl")
+        os.path.join(
+            cfg.get("paths").get("data_dir"),
+            cfg.get("dataset"),
+            "preprocessed",
+            "dataset_properties.pkl",
+        )
     )
     transforms = get_predict_transforms(dataset_properties)
     datalist = check_input_folder_and_return_datalist(
-        cfg.input_folder,
-        cfg.output_folder,
-        cfg.overwrite_existing,
+        cfg.get("input_folder"),
+        cfg.get("output_folder"),
+        cfg.get("overwrite_existing"),
         len(dataset_properties["modalities"].keys()),
     )
 
@@ -210,14 +222,14 @@ def predict(cfg: DictConfig) -> Tuple[dict, dict]:
     dataloader = DataLoader(
         dataset=dataset,
         batch_size=1,
-        num_workers=cfg.num_workers,
-        pin_memory=cfg.pin_memory,
+        num_workers=cfg.get("num_workers"),
+        pin_memory=cfg.get("pin_memory"),
         shuffle=False,
     )
 
     log.info("Starting predicting!")
-    log.info(f"Using checkpoint: {cfg.ckpt_path}")
-    trainer.predict(model=model, dataloaders=dataloader, ckpt_path=cfg.ckpt_path)
+    log.info(f"Using checkpoint: {cfg.get('ckpt_path')}")
+    trainer.predict(model=model, dataloaders=dataloader, ckpt_path=cfg.get("ckpt_path"))
 
     metric_dict = trainer.callback_metrics
 

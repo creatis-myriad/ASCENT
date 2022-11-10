@@ -21,7 +21,6 @@ from monai.transforms import (
     RandGaussianSmoothd,
     RandRotated,
     RandScaleIntensityd,
-    RandSpatialCropd,
     RandZoomd,
     SpatialPadd,
 )
@@ -29,6 +28,7 @@ from pytorch_lightning import LightningDataModule
 from pytorch_lightning.trainer.states import TrainerFn
 from sklearn.model_selection import KFold, train_test_split
 
+from ascent import utils
 from ascent.datamodules.components.data_loading import (
     get_case_identifiers_from_npz_folders,
 )
@@ -40,6 +40,8 @@ from ascent.datamodules.components.transforms import (
     MayBeSqueezed,
 )
 from ascent.utils.file_and_folder_operations import load_pickle, save_pickle, subfiles
+
+log = utils.get_pylogger(__name__)
 
 
 class nnUNetDataModule(LightningDataModule):
@@ -75,6 +77,9 @@ class nnUNetDataModule(LightningDataModule):
             pin_memory: Whether to pin memory to GPU.
             test_splits: Whether to split data into train/val/test (0.8/0.1/0.1).
             seg_label: Whether the labels are segmentations.
+
+        Raises:
+            NotImplementedError: Error when patch shape is not 2D nor 3D.
         """
         super().__init__()
         # this line allows to access init params with 'self.hparams' attribute
@@ -85,7 +90,8 @@ class nnUNetDataModule(LightningDataModule):
             data_dir, dataset_name, "preprocessed", "data_and_properties"
         )
 
-        assert len(patch_size) in [2, 3], "Only 2D and 3D patches are supported right now!"
+        if not len(patch_size) in [2, 3]:
+            raise NotImplementedError("Only 2D and 3D patches are supported right now!")
 
         self.crop_patch_size = patch_size
         self.threeD = len(patch_size) == 3
@@ -105,15 +111,15 @@ class nnUNetDataModule(LightningDataModule):
 
         Unpacking .npz data to .npy for faster data loading during training.
         """
-        print("\nUnpacking dataset...")
+        log.info("Unpacking dataset...")
         self.unpack_dataset()
-        print("Done")
+        log.info("Done")
 
     @staticmethod
     def do_splits(splits_file: Union[Path, str], preprocessed_path: Union[Path, str], test_splits):
         """Create 5-fold train/validation/test splits."""
         if not os.path.isfile(splits_file):
-            print("Creating new split...")
+            log.info("Creating new split...")
             splits = []
             all_keys_sorted = np.sort(
                 list(get_case_identifiers_from_npz_folders(preprocessed_path))
@@ -137,7 +143,7 @@ class nnUNetDataModule(LightningDataModule):
                     splits[-1]["test"] = test_keys
             save_pickle(splits, splits_file)
         else:
-            print("Using splits from existing split file:", splits_file)
+            log.info(f"Using splits from existing split file: {splits_file}")
 
     def setup(self, stage: Optional[str] = None):
         """Load data.
@@ -156,26 +162,24 @@ class nnUNetDataModule(LightningDataModule):
             self.do_splits(splits_file, self.full_data_dir, self.hparams.test_splits)
             splits = load_pickle(splits_file)
             if self.hparams.fold < len(splits):
-                print("Desired fold for training: %d" % self.hparams.fold)
+                log.info(f"Desired fold for training or testing: {self.hparams.fold}")
                 train_keys = splits[self.hparams.fold]["train"]
                 val_keys = splits[self.hparams.fold]["val"]
 
                 if self.hparams.test_splits:
                     test_keys = splits[self.hparams.fold]["test"]
-                    print(
-                        "This split has %d training, %d validation, and %d testing cases."
-                        % (len(train_keys), len(val_keys), len(test_keys))
+                    log.info(
+                        f"This split has {len(train_keys)} training, {len(val_keys)} validation, and {len(test_keys)} testing cases."
                     )
                 else:
-                    print(
-                        "This split has %d training and %d validation cases."
-                        % (len(train_keys), len(val_keys))
+                    log.info(
+                        f"This split has {len(train_keys)} training and {len(val_keys)} validation cases."
                     )
             else:
-                print(
-                    "INFO: You requested fold %d for training but splits "
-                    "contain only %d folds. I am now creating a "
-                    "random (but seeded) 80:10:10 split!" % (self.hparams.fold, len(splits))
+                log.warning(
+                    f"You requested fold {self.hparams.fold} for training but splits "
+                    "contain only {len(splits)} folds. I am now creating a "
+                    "random (but seeded) 80:10:10 split!"
                 )
                 # if we request a fold that is not in the split file, create a random 80:10:10 split
                 keys = np.sort(list(get_case_identifiers_from_npz_folders(self.full_data_dir)))
@@ -186,15 +190,13 @@ class nnUNetDataModule(LightningDataModule):
                     val_keys, test_keys = train_test_split(
                         val_and_test_keys, test_size=0.5, random_state=(12345 + self.hparams.fold)
                     )
-                    print(
-                        "This random 80:10:10 split has %d training, %d validation, and %d testing cases."
-                        % (len(train_keys), len(val_keys), len(test_keys))
+                    log.info(
+                        f"This random 80:10:10 split has {len(train_keys)} training, {len(val_keys)} validation, and {len(test_keys)} testing cases."
                     )
                 else:
                     val_keys = val_and_test_keys
-                    print(
-                        "This random 80:20 split has %d training and %d validation cases."
-                        % (len(train_keys), len(val_keys))
+                    log.info(
+                        f"This random 80:20 split has {len(train_keys)} training and {len(val_keys)} validation cases."
                     )
 
             self.train_files = [

@@ -225,7 +225,7 @@ class nnUNetLitModule(LightningModule):
 
         start_time = time.time()
         preds = self.tta_predict(img) if self.hparams.tta else self.predict(img)
-        log.info(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
+        log.info(f"Prediction took {round(time.time() - start_time, 4)} (s).")
 
         num_classes = preds.shape[1]
         preds = softmax_helper(preds)
@@ -317,7 +317,7 @@ class nnUNetLitModule(LightningModule):
 
         start_time = time.time()
         preds = self.tta_predict(img) if self.hparams.tta else self.predict(img)
-        log.info(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
+        log.info(f"Prediction took {round(time.time() - start_time, 4)} (s).")
 
         properties_dict = self.get_properties(image_meta_dict)
 
