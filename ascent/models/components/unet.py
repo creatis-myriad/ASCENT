@@ -243,7 +243,6 @@ class UNet(nn.Module):
 
     def initialize_weights(self, module: nn.Module) -> None:
         """Initialize the weights of all nn Modules using Kaimimg normal initialization."""
-
         if isinstance(module, (nn.Conv3d, nn.Conv2d, nn.ConvTranspose3d, nn.ConvTranspose2d)):
             module.weight = nn.init.kaiming_normal_(module.weight, a=self.negative_slope)
             if module.bias is not None:
