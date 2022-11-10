@@ -74,7 +74,7 @@ class UNet(nn.Module):
             raise NotImplementedError("Only 2D and 3D patches are supported right now!")
 
         self.patch_size = patch_size
-        self.dim = str(len(patch_size))
+        self.dim = len(patch_size)
         self.in_channels = in_channels
         self.num_classes = num_classes
         self.attention = attention
