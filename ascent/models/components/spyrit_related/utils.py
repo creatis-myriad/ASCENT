@@ -242,7 +242,7 @@ if __name__ == "__main__":
 
     # load specific file
     data_path = str(
-        root / "data" / "UNWRAP" / "preprocessed" / "data_and_properties" / "Dealias_0022.npy"
+        root / "data" / "UNWRAPV2" / "preprocessed" / "data_and_properties" / "Dealias_0022.npy"
     )
     transforms = Compose(
         [
@@ -261,7 +261,7 @@ if __name__ == "__main__":
     # initialize_config_dir(
     #     config_dir=str(root / "configs" / "datamodule"), job_name="test", version_base="1.2"
     # )
-    # cfg = compose(config_name="unwrapV2_2d.yaml")
+    # cfg = compose(config_name="unwrap_2d.yaml")
     # print(OmegaConf.to_yaml(cfg))
 
     # cfg.data_dir = str(root / "data")
@@ -280,7 +280,7 @@ if __name__ == "__main__":
     # Pd = batch["image"][:, -1:]
     # Vgt = batch["label"]
 
-    unwrap = Robust2DUnwrap(Vd.shape[-2:], 1e-6)
+    unwrap = Robust2DUnwrap(Vd.shape[-2:], 0.8385)
     x = Vd * Pd
     y = unwrap(x)
     n = round_differentiable((y - Pd * Vd) / 2.0)

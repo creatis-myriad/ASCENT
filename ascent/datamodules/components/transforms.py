@@ -137,7 +137,7 @@ class ArtfclAliasing(RandomizableTransform):
         return v, gt_seg, gt_v
 
     @staticmethod
-    def recompute_seg(dealiased_vel: np.array, aliased_vel: np.array) -> np.array:
+    def recompute_seg(dealiased_vel: np.ndarray, aliased_vel: np.ndarray) -> np.ndarray:
         """Compute new ground truth segmentation for the wrapped Doppler velocities.
 
         Args:
@@ -163,8 +163,8 @@ class ArtfclAliasing(RandomizableTransform):
 
     @staticmethod
     def dealias(
-        img: Union[np.array, Tensor], seg: Union[np.array, Tensor]
-    ) -> Union[np.array, Tensor]:
+        img: Union[np.ndarray, Tensor], seg: Union[np.ndarray, Tensor]
+    ) -> Union[np.ndarray, Tensor]:
         """Apply dealiasing based on the ground truth segmentations.
 
         Args:
@@ -181,7 +181,7 @@ class ArtfclAliasing(RandomizableTransform):
         return img
 
     @staticmethod
-    def wrap(img: np.array, wrap_param: float = 0.65, normalize: bool = False) -> np.array:
+    def wrap(img: np.ndarray, wrap_param: float = 0.65, normalize: bool = False) -> np.ndarray:
         """Wrap any element with its absolute value surpassing the wrapping parameter.
 
         Args:
