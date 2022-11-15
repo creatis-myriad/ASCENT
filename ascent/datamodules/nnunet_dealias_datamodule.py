@@ -39,7 +39,11 @@ class nnUNetDealiasDataModule(nnUNetDataModule):
 
     def setup_transforms(self) -> None:
         """Define the data augmentations used by nnUNet including the data reading using
-        monai.transforms libraries."""
+        monai.transforms libraries.
+
+        An additional artificial aliasing augmentation is added on top of the data augmentations
+        defined in nnUNetDataModule.
+        """
         if self.threeD:
             rot_inter_mode = "bilinear"
             zoom_inter_mode = "trilinear"

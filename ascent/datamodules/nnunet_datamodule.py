@@ -79,7 +79,7 @@ class nnUNetDataModule(LightningDataModule):
             seg_label: Whether the labels are segmentations.
 
         Raises:
-            NotImplementedError: Error when patch shape is not 2D nor 3D.
+            NotImplementedError: If the patch shape is not 2D nor 3D.
         """
         super().__init__()
         # this line allows to access init params with 'self.hparams' attribute

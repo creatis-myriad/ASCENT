@@ -2,7 +2,7 @@ import errno
 import os
 from copy import deepcopy
 from pathlib import Path
-from typing import Union
+from typing import Sequential, Union
 
 import numpy as np
 import pyrootutils
@@ -33,7 +33,6 @@ class nnUNetPlanner2D:
         Raises:
             FileNotFoundError: If dataset_properties.pkl is not found in preprocessed_folder.
         """
-
         if not os.path.isfile(os.path.join(preprocessed_folder, "dataset_properties.pkl")):
             raise FileNotFoundError(
                 errno.ENOENT,
@@ -63,7 +62,7 @@ class nnUNetPlanner2D:
         num_cases: int,
         num_classes: int,
         num_modalities: int,
-    ) -> dict:
+    ) -> dict[str, Union[int, bool, list[Sequential[int]], list[list[Sequential[int]]]]]:
         """Compute training and model parameters based on nnUNet's heuristic rules.
 
         Args:
@@ -83,7 +82,6 @@ class nnUNetPlanner2D:
                 - Convolution kernels size
                 - Dummy 2D augmentation flag.
         """
-
         dataset_num_voxels = np.prod(median_shape, dtype=np.int64) * num_cases
         input_patch_size = median_shape[:-1]
 
@@ -186,7 +184,6 @@ class nnUNetPlanner2D:
 
     def plan_experiment(self):
         """Plan experiment."""
-
         log.info("Planning experiment for 2D U-Net...")
         all_shapes_after_resampling = self.dataset_properties["all_shapes_after_resampling"]
         current_spacing = self.dataset_properties["spacing_after_resampling"]
@@ -215,7 +212,15 @@ class nnUNetPlanner2D:
 
         self.write_plans_to_yaml(plan)
 
-    def write_plans_to_yaml(self, plan):
+    def write_plans_to_yaml(
+        self, plan: dict[str, Union[int, bool, list[Sequential[int]], list[list[Sequential[int]]]]]
+    ) -> None:
+        """Write plans to yaml file.
+
+        Args:
+            plan: Plan dictionary.
+        """
+
         def flist(x):
             retval = ruamel.yaml.comments.CommentedSeq(x)
             retval.fa.set_flow_style()  # fa -> format attribute

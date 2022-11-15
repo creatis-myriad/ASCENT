@@ -63,7 +63,7 @@ class ArtfclAliasing(RandomizableTransform):
             Wrapped velocities, ground truth segmentation, ground truth velocities.
 
         Raises:
-            NotImplementedError: When input contains more than two channel dimensions.
+            NotImplementedError: If the input contains more than two channel dimensions.
         """
         if img.shape[0] == 1:
             vel = img.detach().cpu().numpy()
@@ -143,7 +143,7 @@ class ArtfclAliasing(RandomizableTransform):
             aliased_vel: Artificially aliased Doppler velocities array.
 
         Returns:
-            Ground truth segmentation for the artificially aliased Doppler velocities array
+            Ground truth segmentation for the artificially aliased Doppler velocities array.
         """
         gt_seg = np.zeros(dealiased_vel.shape)
         diff = np.logical_and(
@@ -483,9 +483,8 @@ class LoadNpyd(MapTransform):
                 "image_meta_dict":} keys
 
         Raises:
-            ValueError: Error when image or label is not 4D (c, w, h, d)
-            NotImplementedError: Error when data contains a path that is not a numpy file or a pkl
-                file.
+            ValueError: If the image or label is not 4D (c, w, h, d)
+            NotImplementedError: If the data contains a path that is not a .npy file or a pkl file.
         """
         d = dict(data)
         for key in self.keys:
@@ -565,9 +564,8 @@ class DealiasLoadNpyd(MapTransform):
                 "image_meta_dict":} keys
 
         Raises:
-            ValueError: Error when image or label is not 4D (c, w, h, d)
-            NotImplementedError: Error when data contains a path that is not a numpy file or a pkl
-                file.
+            ValueError: If the image or label is not 4D (c, w, h, d)
+            NotImplementedError: If the data contains a path that is not a .npy file or a pkl file.
         """
         d = dict(data)
         for key in self.keys:

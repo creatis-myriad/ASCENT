@@ -1,12 +1,20 @@
 import os
-from typing import Tuple
+from typing import Optional
 
 import numpy as np
 
 from ascent.utils.file_and_folder_operations import save_json, subfiles
 
 
-def get_identifiers_from_splitted_files(folder: str):
+def get_identifiers_from_split_files(folder: str) -> np.ndarray:
+    """Get unique case identifiers from split imagesTr or imagesTs folders.
+
+    Args:
+        folder: Path to folder containing train or test images.
+
+    Returns:
+        Sorted unique case identifiers array.
+    """
     uniques = np.unique([i[:-12] for i in subfiles(folder, suffix=".nii.gz", join=False)])
     return uniques
 
@@ -14,38 +22,40 @@ def get_identifiers_from_splitted_files(folder: str):
 def generate_dataset_json(
     output_file: str,
     imagesTr_dir: str,
-    imagesTs_dir: str,
-    modalities: Tuple,
-    labels: dict,
+    imagesTs_dir: Optional[str],
+    modalities: tuple[
+        str,
+    ],
+    labels: dict[int, str],
     dataset_name: str,
-    sort_keys=True,
-    license: str = "hands off!",
-    dataset_description: str = "",
-    dataset_reference="",
-    dataset_release="0.0",
-):
+    sort_keys: bool = True,
+    license: Optional[str] = "hands off!",
+    dataset_description: Optional[str] = "",
+    dataset_reference: Optional[str] = "",
+    dataset_release: Optional[str] = "0.0",
+) -> None:
+    """Generate dataset.json file.
+
+    Args:
+        output_file: Full path to the dataset.json you intend to write, so output_file='DATASET_PATH/dataset.json'
+            where the folder DATASET_PATH points to is the one with the imagesTr and labelsTr subfolders.
+        imagesTr_dir: Path to the imagesTr folder of that dataset.
+        imagesTs_dir: Path to the imagesTs folder of that dataset. Can be None
+        modalities: Tuple of strings with modality names. Must be in the same order as the images
+            (first entry corresponds to _0000.nii.gz, etc). Example: ('T1', 'T2', 'FLAIR').
+        labels: Dict mapping the label IDs to label names. Note that 0 is always supposed to be background!
+            Example: {0: 'background', 1: 'edema', 2: 'enhancing tumor'}.
+        dataset_name: Name of the dataset.
+        sort_keys: Whether to sort the keys in dataset.json.
+        license: License of the dataset.
+        dataset_description: Quick description of the dataset.
+        dataset_reference: Website of the dataset, if available.
+        dataset_release: Version of the dataset.
     """
-    :param output_file: This needs to be the full path to the dataset.json you intend to write, so
-    output_file='DATASET_PATH/dataset.json' where the folder DATASET_PATH points to is the one with the
-    imagesTr and labelsTr subfolders
-    :param imagesTr_dir: path to the imagesTr folder of that dataset
-    :param imagesTs_dir: path to the imagesTs folder of that dataset. Can be None
-    :param modalities: tuple of strings with modality names. must be in the same order as the images (first entry
-    corresponds to _0000.nii.gz, etc). Example: ('T1', 'T2', 'FLAIR').
-    :param labels: dict with int->str (key->value) mapping the label IDs to label names. Note that 0 is always
-    supposed to be background! Example: {0: 'background', 1: 'edema', 2: 'enhancing tumor'}
-    :param dataset_name: The name of the dataset. Can be anything you want
-    :param sort_keys: In order to sort or not, the keys in dataset.json
-    :param license:
-    :param dataset_description:
-    :param dataset_reference: website of the dataset, if available
-    :param dataset_release:
-    :return:
-    """
-    train_identifiers = get_identifiers_from_splitted_files(imagesTr_dir)
+    train_identifiers = get_identifiers_from_split_files(imagesTr_dir)
 
     if imagesTs_dir is not None:
-        test_identifiers = get_identifiers_from_splitted_files(imagesTs_dir)
+        test_identifiers = get_identifiers_from_split_files(imagesTs_dir)
     else:
         test_identifiers = []
 

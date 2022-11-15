@@ -38,7 +38,10 @@ def sliding_window_inference(
     *args: Any,
     **kwargs: Any,
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, ...], Dict[Any, torch.Tensor]]:
-    """Sliding window inference on `inputs` with `predictor`.
+    """Modified sliding window inference on `inputs` with `predictor` of monai to generate dynamic
+    sliding window intervals based on the inputs' shape.
+
+    The minimum overlap is given by the 'overlap' argument.
 
     The outputs of `predictor` could be a tensor, a tuple, or a dictionary of tensors.
     Each output in the tuple or dict value is allowed to have different resolutions with respect to the input.

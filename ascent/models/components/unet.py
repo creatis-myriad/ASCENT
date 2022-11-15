@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Sequence, Union
 
 import numpy as np
 import torch
@@ -37,8 +37,8 @@ class UNet(nn.Module):
         in_channels: int,
         num_classes: int,
         patch_size: list,
-        kernels: list[list],
-        strides: list[list],
+        kernels: list[list[Sequence[int]]],
+        strides: list[list[Sequence[int]]],
         normalization_layer: str = "instance",
         negative_slope: float = 1e-2,
         deep_supervision: bool = True,

@@ -21,8 +21,8 @@ log = utils.get_pylogger(__name__)
 
 
 def resample_image(
-    image: np.array, new_shape: Union[list, tuple], anisotropy_flag: bool
-) -> np.array:
+    image: np.ndarray, new_shape: Union[list, tuple], anisotropy_flag: bool
+) -> np.ndarray:
     """Resample an image.
 
     Args:
@@ -85,8 +85,8 @@ def resample_image(
 
 
 def resample_label(
-    label: np.array, new_shape: Union[list, tuple], anisotropy_flag: bool
-) -> np.array:
+    label: np.ndarray, new_shape: Union[list, tuple], anisotropy_flag: bool
+) -> np.ndarray:
     """Resample a label.
 
     Args:
@@ -542,7 +542,7 @@ class SegPreprocessor:
         properties = self._load_properties_of_cropped(case_identifier)
         return properties["cropping_size_reduction"]
 
-    def _load_cropped(self, case_identifier) -> tuple[np.array, np.array, dict]:
+    def _load_cropped(self, case_identifier) -> tuple[np.ndarray, np.ndarray, dict]:
         """Load image, label and properties of a cropped data.
 
         Args:
@@ -686,7 +686,7 @@ class SegPreprocessor:
         ) as f:
             pickle.dump(properties, f)  # nosec B301
 
-    def _normalize(self, data: np.array, seg: np.array) -> tuple[np.array, np.array]:
+    def _normalize(self, data: np.ndarray, seg: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Normalize data.
 
         Args:
@@ -1145,7 +1145,7 @@ class DealiasPreprocessor(RegPreprocessor):
 
         return datalist, modalities
 
-    def _load_cropped(self, case_identifier) -> tuple[np.array, np.array, dict]:
+    def _load_cropped(self, case_identifier) -> tuple[np.ndarray, np.ndarray, dict]:
         """Load image, label and properties of a cropped data.
 
         Args:

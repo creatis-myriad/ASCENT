@@ -20,8 +20,8 @@ class SpyritNet(nn.Module):
         """Initialize SpyritNet.
 
         Args:
-            unwrap: Phase unwrapping algorithm.
-            denoiser: Denoiser.
+            unwrap: Analytical phase unwrapping algorithm.
+            denoiser: Deep-learning-based denoiser.
             postprocess: Whether to run postprocessing before feeding data to the denoiser.
         """
         super().__init__()
@@ -69,4 +69,19 @@ class SpyritNet(nn.Module):
             y = self.postprocess(x[:, :-1], y, x[:, -1:])
         y = self.denoiser(torch.concat([x[:, :-1], x[:, -1:], y], dim=1))
         # y = self.postprocess(x[:, :-1], y, None)
+        return y
+
+    def dc_layer(self, x: Union[Tensor, MetaTensor]) -> Union[Tensor, MetaTensor]:
+        """Data consistency layer to forward propagate the aliased input, x, through the analytical
+        phase unwrapping algorithm.
+
+        Args:
+            x: Input aliased tensor. (b, c, w, h)
+
+        Returns:
+            Dealiased tensor by the analytical phase unwrapping algorithm. (b, c, w, h)
+        """
+        y = self.unwrap(x[:, :-1] * x[:, -1:])
+        if self.do_postprocess:
+            y = self.postprocess(x[:, :-1], y, x[:, -1:])
         return y
