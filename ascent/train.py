@@ -69,7 +69,7 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
     log.info(f"Instantiating model <{cfg.model._target_}>")
     model: LightningModule = hydra.utils.instantiate(cfg.model)
 
-    if cfg.get("transfer_training") and cfg.get("ckpt_path") != "null":
+    if cfg.get("transfer_training") and cfg.get("ckpt_path"):
         log.info(f"Loading weights from {cfg.ckpt_path}")
         model.load_state_dict(
             torch.load(cfg.get("ckpt_path"), map_location=model.device)["state_dict"]
@@ -99,26 +99,26 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
 
     if cfg.get("train"):
         log.info("Starting training!")
-        if not cfg.get("transfer_training"):
+        if not cfg.transfer_training:
             trainer.fit(model=model, datamodule=datamodule, ckpt_path=cfg.get("ckpt_path"))
         else:
             trainer.fit(model=model, datamodule=datamodule)
 
         if isinstance(trainer.logger, CometLogger) and cfg.comet_save_model:
-            if cfg.get("nnUNet_variant"):
+            if cfg.get("best_model"):
                 trainer.logger.experiment.log_model(
-                    "model", trainer.checkpoint_callback.last_model_path
+                    "model", trainer.checkpoint_callback.best_model_path
                 )
             else:
                 trainer.logger.experiment.log_model(
-                    "model", trainer.checkpoint_callback.best_model_path
+                    "model", trainer.checkpoint_callback.last_model_path
                 )
 
     train_metrics = trainer.callback_metrics
 
     if cfg.get("test"):
         log.info("Starting testing!")
-        if cfg.best_model:
+        if cfg.get("best_model"):
             ckpt_path = trainer.checkpoint_callback.best_model_path
             if ckpt_path == "":
                 log.warning("Best ckpt not found! Using current weights for testing...")

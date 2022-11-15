@@ -186,14 +186,14 @@ def predict(cfg: DictConfig) -> Tuple[dict, dict]:
     Raises:
         ValueError: Error when checkpoint path is not provided.
     """
-    if not cfg.get("ckpt_path"):
+    if not cfg.ckpt_path:
         raise ValueError("ckpt_path must not be empty!")
 
     log.info(f"Instantiating model <{cfg.model._target_}>")
-    model: LightningModule = hydra.utils.instantiate(cfg.get("model"))
+    model: LightningModule = hydra.utils.instantiate(cfg.model)
 
     log.info(f"Instantiating trainer <{cfg.trainer._target_}>")
-    trainer: Trainer = hydra.utils.instantiate(cfg.get("trainer"))
+    trainer: Trainer = hydra.utils.instantiate(cfg.trainer)
 
     object_dict = {
         "cfg": cfg,
@@ -203,17 +203,17 @@ def predict(cfg: DictConfig) -> Tuple[dict, dict]:
 
     dataset_properties = load_pickle(
         os.path.join(
-            cfg.get("paths").get("data_dir"),
-            cfg.get("dataset"),
+            cfg.paths.data_dir,
+            cfg.dataset,
             "preprocessed",
             "dataset_properties.pkl",
         )
     )
     transforms = get_predict_transforms(dataset_properties)
     datalist = check_input_folder_and_return_datalist(
-        cfg.get("input_folder"),
-        cfg.get("output_folder"),
-        cfg.get("overwrite_existing"),
+        cfg.input_folder,
+        cfg.output_folder,
+        cfg.overwrite_existing,
         len(dataset_properties["modalities"].keys()),
     )
 
@@ -222,14 +222,14 @@ def predict(cfg: DictConfig) -> Tuple[dict, dict]:
     dataloader = DataLoader(
         dataset=dataset,
         batch_size=1,
-        num_workers=cfg.get("num_workers"),
-        pin_memory=cfg.get("pin_memory"),
+        num_workers=cfg.num_workers,
+        pin_memory=cfg.pin_memory,
         shuffle=False,
     )
 
     log.info("Starting predicting!")
-    log.info(f"Using checkpoint: {cfg.get('ckpt_path')}")
-    trainer.predict(model=model, dataloaders=dataloader, ckpt_path=cfg.get("ckpt_path"))
+    log.info(f"Using checkpoint: {cfg.ckpt_path}")
+    trainer.predict(model=model, dataloaders=dataloader, ckpt_path=cfg.ckpt_path)
 
     metric_dict = trainer.callback_metrics
 

@@ -59,20 +59,20 @@ def evaluate(cfg: DictConfig) -> Tuple[dict, dict]:
     Raises:
         ValueError: Error when checkpoint path is not provided.
     """
-    if not cfg.get("ckpt_path"):
-        raise ValueError("ckpt_path must not be empty!")
+    if not cfg.ckpt_path:
+        raise ValueError("ckpt_path must not be provided!")
 
     log.info(f"Instantiating datamodule <{cfg.datamodule._target_}>")
-    datamodule: LightningDataModule = hydra.utils.instantiate(cfg.get("datamodule"))
+    datamodule: LightningDataModule = hydra.utils.instantiate(cfg.datamodule)
 
     log.info(f"Instantiating model <{cfg.model._target_}>")
-    model: LightningModule = hydra.utils.instantiate(cfg.get("model"))
+    model: LightningModule = hydra.utils.instantiate(cfg.model)
 
     log.info("Instantiating loggers...")
     logger: List[LightningLoggerBase] = utils.instantiate_loggers(cfg.get("logger"))
 
     log.info(f"Instantiating trainer <{cfg.trainer._target_}>")
-    trainer: Trainer = hydra.utils.instantiate(cfg.get("trainer"), logger=logger)
+    trainer: Trainer = hydra.utils.instantiate(cfg.trainer, logger=logger)
 
     object_dict = {
         "cfg": cfg,
@@ -87,8 +87,8 @@ def evaluate(cfg: DictConfig) -> Tuple[dict, dict]:
         utils.log_hyperparameters(object_dict)
 
     log.info("Starting testing!")
-    log.info(f"Using checkpoint: {cfg.get('ckpt_path')}")
-    trainer.test(model=model, datamodule=datamodule, ckpt_path=cfg.get("ckpt_path"))
+    log.info(f"Using checkpoint: {cfg.ckpt_path}")
+    trainer.test(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
 
     metric_dict = trainer.callback_metrics
 
