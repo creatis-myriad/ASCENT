@@ -2,7 +2,7 @@ import os
 import time
 from collections import OrderedDict
 from pathlib import Path
-from typing import Union
+from typing import Any, Literal, Union
 
 import numpy as np
 import SimpleITK as sitk
@@ -16,14 +16,13 @@ from torch import Tensor
 from torchmetrics.functional import mean_squared_error
 
 from ascent.datamodules.components.inferers import sliding_window_inference
-from ascent.utils.file_and_folder_operations import save_pickle
 
 
 class nnUNetRegLitModule(LightningModule):
-    """Lightning module for regression.
+    """nnUNet lightning module for regression.
 
-    nnUNetRegLitModule is similar to nnUNetLitModule except for the choice of loss and evaluation
-    metrics.
+    nnUNetRegLitModule is similar to nnUNetLitModule except for the loss (smooth L1) and evaluation
+    metrics (MSE).
     """
 
     def __init__(
@@ -42,10 +41,10 @@ class nnUNetRegLitModule(LightningModule):
         validation loop.
 
         Args:
-            net: Network architecture. Defaults to U-Net.
-            optimizer: Optimizer. Defaults to SGD optimizer.
-            loss: Loss function. Defaults to Cross Entropy - Dice
-            scheduler: Scheduler for training. Defaults to Polynomial Decay Scheduler.
+            net: Network architecture.
+            optimizer: Optimizer.
+            loss: Loss function.
+            scheduler: Scheduler for training.
             tta: Whether to use the test time augmentation, i.e. flip.
             sliding_window_overlap: Minimum overlap for sliding window inference.
             sliding_window_importance_map: Importance map used for sliding window inference.
@@ -86,10 +85,12 @@ class nnUNetRegLitModule(LightningModule):
         self.test_idx = 0
         self.test_imgs = []
 
-    def forward(self, img):  # noqa: D102
+    def forward(self, img: Union[Tensor, MetaTensor]) -> Union[Tensor, MetaTensor]:  # noqa: D102
         return self.net(img)
 
-    def training_step(self, batch, batch_idx: int):  # noqa: D102
+    def training_step(
+        self, batch: dict[str, Tensor], batch_idx: int
+    ) -> dict[str, Tensor]:  # noqa: D102
         img, label = batch["image"], batch["label"]
 
         # Need to handle carefully the multi-scale outputs from deep supervision heads
@@ -107,7 +108,9 @@ class nnUNetRegLitModule(LightningModule):
         )
         return {"loss": loss}
 
-    def validation_step(self, batch, batch_idx):  # noqa: D102
+    def validation_step(
+        self, batch: dict[str, Tensor], batch_idx: int
+    ) -> dict[str, Tensor]:  # noqa: D102
         img, label = batch["image"], batch["label"]
 
         # Only the highest resolution output is returned during the validation
@@ -118,7 +121,7 @@ class nnUNetRegLitModule(LightningModule):
 
         return {"val/loss": loss, "val/mse": val_metric}
 
-    def validation_epoch_end(self, validation_step_outputs):  # noqa: D102
+    def validation_epoch_end(self, validation_step_outputs: dict[str, Tensor]):  # noqa: D102
         loss = self.metric_mean("val/loss", validation_step_outputs)
         metric = self.metric_mean("val/mse", validation_step_outputs)
 
@@ -146,7 +149,9 @@ class nnUNetRegLitModule(LightningModule):
             batch_size=self.trainer.datamodule.hparams.batch_size,
         )
 
-    def test_step(self, batch, batch_idx):  # noqa: D102
+    def test_step(
+        self, batch: dict[str, Tensor], batch_idx: int
+    ) -> dict[str, Tensor]:  # noqa: D102
         img, label, image_meta_dict = batch["image"], batch["label"], batch["image_meta_dict"]
 
         start_time = time.time()
@@ -202,7 +207,7 @@ class nnUNetRegLitModule(LightningModule):
 
         return {"test/mse": test_mse}
 
-    def test_epoch_end(self, test_step_outputs):  # noqa: D102
+    def test_epoch_end(self, test_step_outputs: dict[str, Tensor]):  # noqa: D102
         mean_dice = self.metric_mean("test/mse", test_step_outputs)
         self.log(
             "test/average_mse",
@@ -214,7 +219,7 @@ class nnUNetRegLitModule(LightningModule):
             batch_size=self.trainer.datamodule.hparams.batch_size,
         )
 
-    def predict_step(self, batch, batch_idx):  # noqa: D102
+    def predict_step(self, batch: dict[str, Tensor], batch_idx: int):  # noqa: D102
         img, image_meta_dict = batch["image"], batch["image_meta_dict"]
 
         start_time = time.time()
@@ -255,16 +260,34 @@ class nnUNetRegLitModule(LightningModule):
 
         self.save_predictions(final_preds, fname, spacing, save_dir)
 
-    def configure_optimizers(self):  # noqa: D102
-        optimizer = self.hparams.optimizer(params=self.parameters())
-        scheduler = self.hparams.scheduler(optimizer)
+    def configure_optimizers(self) -> dict[Literal["optimizer", "lr_scheduler"], Any]:
+        """Configures optimizers/LR schedulers.
 
-        return [optimizer], [scheduler]
+        Returns:
+            A dict with an `optimizer` key, and an optional `lr_scheduler` if a scheduler is used.
+        """
+        configured_optimizer = {"optimizer": self.hparams.optimizer(params=self.parameters())}
+        if self.hparams.scheduler is not None:
+            configured_optimizer["lr_scheduler"] = self.hparams.scheduler(
+                optimizer=configured_optimizer["optimizer"]
+            )
+        return configured_optimizer
 
-    def on_save_checkpoint(self, checkpoint):  # noqa: D102
+    def on_save_checkpoint(self, checkpoint: dict) -> None:
+        """Save extra information in checkpoint, i.e. the evaluation metrics for all epochs.
+
+        Args:
+            checkpoint: Checkpoint dictionary.
+        """
         checkpoint["all_val_eval_metrics"] = self.all_val_eval_metrics
 
-    def on_load_checkpoint(self, checkpoint):  # noqa: D102
+    def on_load_checkpoint(self, checkpoint: dict) -> None:
+        """Load information from checkpoint to class attribute, i.e. the evaluation metrics for all
+        epochs.
+
+        Args:
+            checkpoint: Checkpoint dictionary.
+        """
         self.all_val_eval_metrics = checkpoint["all_val_eval_metrics"]
 
     def compute_loss(
@@ -279,7 +302,6 @@ class nnUNetRegLitModule(LightningModule):
         Returns:
             Train loss.
         """
-
         if self.net.deep_supervision:
             loss = self.loss(preds[0], label)
             for i, pred in enumerate(preds[1:]):
@@ -297,8 +319,11 @@ class nnUNetRegLitModule(LightningModule):
 
         Returns:
             Logits of prediction.
-        """
 
+        Raises:
+            NotImplementedError: If the patch shape is not 2D nor 3D.
+            ValueError: If 3D patch is requested to predict 2D images.
+        """
         if len(image.shape) == 5:
             if len(self.patch_size) == 3:
                 return self.predict_3D_3Dconv_tiled(image)
@@ -323,7 +348,6 @@ class nnUNetRegLitModule(LightningModule):
         Returns:
             Logits averaged over the number of flips.
         """
-
         preds = self.predict(image)
         for flip_idx in self.tta_flips:
             preds += torch.flip(self.predict(torch.flip(image, flip_idx)), flip_idx)
@@ -340,9 +364,12 @@ class nnUNetRegLitModule(LightningModule):
 
         Returns:
             Logits of prediction.
-        """
 
-        assert len(image.shape) == 4, "data must be b, c, w, h"
+        Raises:
+            ValueError: If image is not 2D.
+        """
+        if not len(image.shape) == 4:
+            raise ValueError("image must be (b, c, w, h)")
         return self.sliding_window_inference(image)
 
     def predict_3D_3Dconv_tiled(
@@ -355,9 +382,12 @@ class nnUNetRegLitModule(LightningModule):
 
         Returns:
             Logits of prediction.
-        """
 
-        assert len(image.shape) == 5, "data must be b, c, w, h, d"
+        Raises:
+            ValueError: If image is not 3D.
+        """
+        if not len(image.shape) == 5:
+            raise ValueError("image must be (b, c, w, h, d)")
         return self.sliding_window_inference(image)
 
     def predict_3D_2Dconv_tiled(
@@ -370,9 +400,12 @@ class nnUNetRegLitModule(LightningModule):
 
         Returns:
             Logits of prediction.
-        """
 
-        assert len(image.shape) == 5, "data must be b, c, w, h, d"
+        Raises:
+            ValueError: If image is not 3D.
+        """
+        if not len(image.shape) == 5:
+            raise ValueError("image must be (b, c, w, h, d)")
         preds_shape = (image.shape[0], self.num_classes, *image.shape[2:])
         preds = torch.zeros(preds_shape, dtype=image.dtype, device=image.device)
         for depth in range(image.shape[-1]):
@@ -395,7 +428,6 @@ class nnUNetRegLitModule(LightningModule):
         Returns:
             (c, W, H, D) Resampled prediction.
         """
-
         shape = np.array(prediction[0].shape)
         if np.any(shape != np.array(new_shape)):
             resized_channels = []
@@ -448,7 +480,6 @@ class nnUNetRegLitModule(LightningModule):
         Returns:
             List of axes to flip an 2D or 3D image.
         """
-
         if self.threeD:
             return [[2], [3], [4], [2, 3], [2, 4], [3, 4], [2, 3, 4]]
         else:
@@ -518,7 +549,7 @@ class nnUNetRegLitModule(LightningModule):
         return properties_dict
 
     def save_predictions(
-        self, preds: np.array, fname: str, spacing: np.array, save_dir: Union[str, Path]
+        self, preds: np.ndarray, fname: str, spacing: np.ndarray, save_dir: Union[str, Path]
     ) -> None:
         """Save segmentation mask to the given save directory.
 
@@ -528,7 +559,6 @@ class nnUNetRegLitModule(LightningModule):
             spacing: Spacing to save the segmentation mask.
             save_dir: Directory to save the segmentation mask.
         """
-
         print(f"Saving prediction for {fname}...\n")
 
         os.makedirs(save_dir, exist_ok=True)
@@ -538,31 +568,8 @@ class nnUNetRegLitModule(LightningModule):
         itk_image.SetSpacing(spacing)
         sitk.WriteImage(itk_image, os.path.join(save_dir, fname + ".nii.gz"))
 
-    def save_npz_and_properties(
-        self, preds: np.array, properties_dict: dict, fname: str, save_dir: Union[str, Path]
-    ) -> None:
-        """Save softmax probabilities to the given save directory.
-
-        Args:
-            preds: Predicted softmax.
-            properties_dict: Dictionary containing properties of predicted data (eg. spacing).
-            fname: Filename to save.
-            spacing: Spacing to save the segmentation mask.
-            save_dir: Directory to save the segmentation mask.
-        """
-
-        print(f"Saving softmax for {fname}...\n")
-
-        os.makedirs(save_dir, exist_ok=True)
-
-        np.savez_compressed(
-            os.path.join(save_dir, fname + ".npz"), softmax=preds.astype(np.float16)
-        )
-        save_pickle(properties_dict, os.path.join(save_dir, fname + ".pkl"))
-
     def update_eval_criterion_MA(self):
         """Update moving average validation loss."""
-
         if self.val_eval_criterion_MA is None:
             self.val_eval_criterion_MA = self.all_val_eval_metrics[-1]
         else:
@@ -573,7 +580,6 @@ class nnUNetRegLitModule(LightningModule):
 
     def maybe_update_best_val_eval_criterion_MA(self):
         """Update moving average validation metrics."""
-
         if self.best_val_eval_criterion_MA is None:
             self.best_val_eval_criterion_MA = self.val_eval_criterion_MA
         if self.val_eval_criterion_MA < self.best_val_eval_criterion_MA:

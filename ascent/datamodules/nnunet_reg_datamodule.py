@@ -24,6 +24,11 @@ from ascent.datamodules.nnunet_datamodule import nnUNetDataModule
 
 
 class nnUNetRegDataModule(nnUNetDataModule):
+    """Data module for nnUnet pipeline.
+
+    Reserved for regression.
+    """
+
     def setup_transforms(self) -> None:
         """Define the data augmentations used by nnUNet including the data reading using
         monai.transforms libraries.

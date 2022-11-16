@@ -27,7 +27,10 @@ from ascent.datamodules.nnunet_datamodule import nnUNetDataModule
 
 
 class DealiasDataModule(nnUNetDataModule):
-    """DataModule for UNWRAPV2 data using deep unfolding."""
+    """Data module for nnUnet pipeline.
+
+    Reserved for dealiasing using deep unfolding.
+    """
 
     def __init__(self, alias_transform: bool = True, **kwargs):
         """Initializes class instance.
@@ -146,7 +149,7 @@ class DealiasDataModule(nnUNetDataModule):
         val_transforms = shared_train_val_transforms
 
         if not self.threeD:
-            val_transforms.append(MayBeSqueezed(keys=["image", "label"], dim=-1))
+            val_transforms.append(MayBeSqueezed(keys=["image", "label", "seg"], dim=-1))
 
         test_transforms = [
             DealiasLoadNpyd(

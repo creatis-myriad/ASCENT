@@ -14,12 +14,9 @@ from pytorch_lightning import LightningModule
 from skimage.transform import resize
 from torch import Tensor
 
-from ascent import utils
 from ascent.datamodules.components.inferers import sliding_window_inference
 from ascent.models.components.unet_related.utils import softmax_helper, sum_tensor
 from ascent.utils.file_and_folder_operations import save_pickle
-
-log = utils.get_pylogger(__name__)
 
 
 class nnUNetLitModule(LightningModule):
@@ -45,10 +42,10 @@ class nnUNetLitModule(LightningModule):
         validation loop.
 
         Args:
-            net: Network architecture. Defaults to U-Net.
-            optimizer: Optimizer. Defaults to SGD optimizer.
-            loss: Loss function. Defaults to Cross Entropy - Dice
-            scheduler: Scheduler for training. Defaults to Polynomial Decay Scheduler.
+            net: Network architecture.
+            optimizer: Optimizer.
+            loss: Loss function.
+            scheduler: Scheduler for training.
             tta: Whether to use the test time augmentation, i.e. flip.
             sliding_window_overlap: Minimum overlap for sliding window inference.
             sliding_window_importance_map: Importance map used for sliding window inference.
@@ -225,7 +222,7 @@ class nnUNetLitModule(LightningModule):
 
         start_time = time.time()
         preds = self.tta_predict(img) if self.hparams.tta else self.predict(img)
-        log.info(f"Prediction took {round(time.time() - start_time, 4)} (s).")
+        print(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
 
         num_classes = preds.shape[1]
         preds = softmax_helper(preds)
@@ -317,7 +314,7 @@ class nnUNetLitModule(LightningModule):
 
         start_time = time.time()
         preds = self.tta_predict(img) if self.hparams.tta else self.predict(img)
-        log.info(f"Prediction took {round(time.time() - start_time, 4)} (s).")
+        print(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
 
         properties_dict = self.get_properties(image_meta_dict)
 
@@ -412,8 +409,8 @@ class nnUNetLitModule(LightningModule):
             Logits of prediction.
 
         Raises:
-            NotImplementedError: When patch shape is not 2D nor 3D.
-            ValueError: When 3D patch is desired to predict 2D images.
+            NotImplementedError: If the patch shape is not 2D nor 3D.
+            ValueError: If 3D patch is requested to predict 2D images.
         """
         if len(image.shape) == 5:
             if len(self.patch_size) == 3:
@@ -457,7 +454,7 @@ class nnUNetLitModule(LightningModule):
             Logits of prediction.
 
         Raises:
-            ValueError: Error when image is not 2D.
+            ValueError: If image is not 2D.
         """
         if not len(image.shape) == 4:
             raise ValueError("image must be (b, c, w, h)")
@@ -475,7 +472,7 @@ class nnUNetLitModule(LightningModule):
             Logits of prediction.
 
         Raises:
-            ValueError: Error when image is not 3D.
+            ValueError: If image is not 3D.
         """
         if not len(image.shape) == 5:
             raise ValueError("image must be (b, c, w, h, d)")
@@ -493,7 +490,7 @@ class nnUNetLitModule(LightningModule):
             Logits of prediction.
 
         Raises:
-            ValueError: Error when image is not 3D.
+            ValueError: If image is not 3D.
         """
         if not len(image.shape) == 5:
             raise ValueError("image must be (b, c, w, h, d)")
@@ -637,7 +634,7 @@ class nnUNetLitModule(LightningModule):
         return properties_dict
 
     def save_mask(
-        self, preds: np.array, fname: str, spacing: np.ndarray, save_dir: Union[str, Path]
+        self, preds: np.ndarray, fname: str, spacing: np.ndarray, save_dir: Union[str, Path]
     ) -> None:
         """Save segmentation mask to the given save directory.
 
@@ -647,7 +644,7 @@ class nnUNetLitModule(LightningModule):
             spacing: Spacing to save the segmentation mask.
             save_dir: Directory to save the segmentation mask.
         """
-        log.info(f"Saving segmentation for {fname}...\n")
+        print(f"Saving segmentation for {fname}...\n")
 
         os.makedirs(save_dir, exist_ok=True)
 
@@ -668,7 +665,7 @@ class nnUNetLitModule(LightningModule):
             spacing: Spacing to save the segmentation mask.
             save_dir: Directory to save the segmentation mask.
         """
-        log.info(f"Saving softmax for {fname}...\n")
+        print(f"Saving softmax for {fname}...\n")
 
         os.makedirs(save_dir, exist_ok=True)
 
