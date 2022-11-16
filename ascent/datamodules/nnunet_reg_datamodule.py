@@ -3,7 +3,6 @@ from monai.transforms import (
     Compose,
     EnsureChannelFirstd,
     RandAdjustContrastd,
-    RandCropByPosNegLabeld,
     RandFlipd,
     RandGaussianNoised,
     RandGaussianSmoothd,
@@ -24,10 +23,7 @@ from ascent.datamodules.nnunet_datamodule import nnUNetDataModule
 
 
 class nnUNetRegDataModule(nnUNetDataModule):
-    """Data module for nnUnet pipeline.
-
-    Reserved for regression.
-    """
+    """Data module for regression."""
 
     def setup_transforms(self) -> None:
         """Define the data augmentations used by nnUNet including the data reading using
@@ -106,6 +102,15 @@ class nnUNetRegDataModule(nnUNetDataModule):
 
         other_transforms.extend(
             [
+                RandGaussianNoised(keys=["image"], std=0.01, prob=0.15),
+                RandGaussianSmoothd(
+                    keys=["image"],
+                    sigma_x=(0.5, 1.15),
+                    sigma_y=(0.5, 1.15),
+                    prob=0.15,
+                ),
+                RandScaleIntensityd(keys=["image"], factors=0.3, prob=0.15),
+                RandAdjustContrastd(keys=["image"], gamma=(0.7, 1.5), prob=0.3),
                 RandFlipd(["image", "label"], spatial_axis=[0], prob=0.5),
                 RandFlipd(["image", "label"], spatial_axis=[1], prob=0.5),
             ]

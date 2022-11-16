@@ -27,10 +27,7 @@ from ascent.datamodules.nnunet_datamodule import nnUNetDataModule
 
 
 class nnUNetDealiasDataModule(nnUNetDataModule):
-    """Data module for nnUnet pipeline.
-
-    Reserved for dealiasing using segmentation.
-    """
+    """Data module for dealiasing using segmentation."""
 
     def __init__(self, alias_transform: bool = True, **kwargs):
         """Initializes class instance.

@@ -2,7 +2,7 @@ import os
 import time
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Literal, Union
+from typing import Any, Literal, Optional, Union
 
 import numpy as np
 import SimpleITK as sitk
@@ -14,7 +14,7 @@ from pytorch_lightning import LightningModule
 from skimage.transform import resize
 from torch import Tensor
 
-from ascent.datamodules.components.inferers import sliding_window_inference
+from ascent.datamodules.components.inferers import SlidingWindowInferer
 from ascent.models.components.unet_related.utils import softmax_helper, sum_tensor
 from ascent.utils.file_and_folder_operations import save_pickle
 
@@ -56,6 +56,11 @@ class nnUNetLitModule(LightningModule):
         self.save_hyperparameters(logger=False, ignore=["net", "loss"])
 
         self.net = net
+
+        # loss function (CE - Dice), min = -1
+        self.loss = loss
+
+    def setup(self, stage: Optional[str] = None) -> None:  # noqa: D102
         self.threeD = len(self.net.patch_size) == 3
         self.patch_size = list(self.net.patch_size)
 
@@ -65,9 +70,6 @@ class nnUNetLitModule(LightningModule):
         self.example_input_array = torch.rand(
             1, self.net.in_channels, *self.patch_size, device=self.device
         )
-
-        # loss function (CE - Dice), min = -1
-        self.loss = loss
 
         # parameter alpha for calculating moving average dice -> alpha * old + (1-alpha) * new
         self.val_eval_criterion_alpha = 0.9
@@ -215,6 +217,21 @@ class nnUNetLitModule(LightningModule):
                 batch_size=self.trainer.datamodule.hparams.batch_size,
             )
 
+    def on_test_start(self) -> None:  # noqa: D102
+        super().on_test_start()
+        if self.trainer.datamodule is None:
+            sw_batch_size = 2
+        else:
+            sw_batch_size = self.trainer.datamodule.hparams.batch_size
+
+        self.inferer = SlidingWindowInferer(
+            roi_size=self.patch_size,
+            sw_batch_size=sw_batch_size,
+            overlap=self.hparams.sliding_window_overlap,
+            mode=self.hparams.sliding_window_importance_map,
+            cache_roi_weight_map=True,
+        )
+
     def test_step(
         self, batch: dict[str, Tensor], batch_idx: int
     ) -> dict[str, Tensor]:  # noqa: D102
@@ -307,6 +324,21 @@ class nnUNetLitModule(LightningModule):
             prog_bar=False,
             logger=True,
             batch_size=self.trainer.datamodule.hparams.batch_size,
+        )
+
+    def on_predict_start(self) -> None:  # noqa: D102
+        super().on_predict_start()
+        if self.trainer.datamodule is None:
+            sw_batch_size = 2
+        else:
+            sw_batch_size = self.trainer.datamodule.hparams.batch_size
+
+        self.inferer = SlidingWindowInferer(
+            roi_size=self.patch_size,
+            sw_batch_size=sw_batch_size,
+            overlap=self.hparams.sliding_window_overlap,
+            mode=self.hparams.sliding_window_importance_map,
+            cache_roi_weight_map=True,
         )
 
     def predict_step(self, batch: dict[str, Tensor], batch_idx: int):  # noqa: D102
@@ -584,17 +616,9 @@ class nnUNetLitModule(LightningModule):
         Returns:
             Predicted logits.
         """
-        if self.trainer.datamodule is None:
-            sw_batch_size = 2
-        else:
-            sw_batch_size = self.trainer.datamodule.hparams.batch_size
-        return sliding_window_inference(
+        return self.inferer(
             inputs=image,
-            roi_size=self.patch_size,
-            sw_batch_size=sw_batch_size,
-            predictor=self.net,
-            overlap=self.hparams.sliding_window_overlap,
-            mode=self.hparams.sliding_window_importance_map,
+            network=self.net,
         )
 
     @staticmethod
@@ -644,7 +668,7 @@ class nnUNetLitModule(LightningModule):
             spacing: Spacing to save the segmentation mask.
             save_dir: Directory to save the segmentation mask.
         """
-        print(f"Saving segmentation for {fname}...\n")
+        print(f"Saving segmentation for {fname}...")
 
         os.makedirs(save_dir, exist_ok=True)
 
@@ -665,7 +689,7 @@ class nnUNetLitModule(LightningModule):
             spacing: Spacing to save the segmentation mask.
             save_dir: Directory to save the segmentation mask.
         """
-        print(f"Saving softmax for {fname}...\n")
+        print(f"Saving softmax for {fname}...")
 
         os.makedirs(save_dir, exist_ok=True)
 

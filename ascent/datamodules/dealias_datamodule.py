@@ -27,10 +27,7 @@ from ascent.datamodules.nnunet_datamodule import nnUNetDataModule
 
 
 class DealiasDataModule(nnUNetDataModule):
-    """Data module for nnUnet pipeline.
-
-    Reserved for dealiasing using deep unfolding.
-    """
+    """Data module for dealiasing using deep unfolding."""
 
     def __init__(self, alias_transform: bool = True, **kwargs):
         """Initializes class instance.

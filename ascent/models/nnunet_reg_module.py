@@ -2,111 +2,31 @@ import os
 import time
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Literal, Union
+from typing import Union
 
 import numpy as np
 import SimpleITK as sitk
-import torch
-import torch.nn as nn
 from einops.einops import rearrange
-from monai.data import MetaTensor
-from pytorch_lightning import LightningModule
-from skimage.transform import resize
 from torch import Tensor
 from torchmetrics.functional import mean_squared_error
 
-from ascent.datamodules.components.inferers import sliding_window_inference
+from ascent.models.nnunet_module import nnUNetLitModule
 
 
-class nnUNetRegLitModule(LightningModule):
+class nnUNetRegLitModule(nnUNetLitModule):
     """nnUNet lightning module for regression.
 
     nnUNetRegLitModule is similar to nnUNetLitModule except for the loss (smooth L1) and evaluation
     metrics (MSE).
     """
 
-    def __init__(
-        self,
-        net: torch.nn.Module,
-        optimizer: torch.optim.Optimizer,
-        loss: torch.nn.Module,
-        scheduler: torch.optim.lr_scheduler._LRScheduler,
-        tta: bool = True,
-        sliding_window_overlap: float = 0.5,
-        sliding_window_importance_map: bool = "gaussian",
-        save_predictions: bool = True,
-        save_npz: bool = False,
-    ):
-        """Saves the system's configuration in `hparams`. Initialize variables for training and
-        validation loop.
+    def __init__(self, **kwargs):
+        """Initialize class instance.
 
         Args:
-            net: Network architecture.
-            optimizer: Optimizer.
-            loss: Loss function.
-            scheduler: Scheduler for training.
-            tta: Whether to use the test time augmentation, i.e. flip.
-            sliding_window_overlap: Minimum overlap for sliding window inference.
-            sliding_window_importance_map: Importance map used for sliding window inference.
-            save_prediction: Whether to save the test predictions.
+            **kwargs: Keyword arguments to pass to the parent's constructor.
         """
-        super().__init__()
-        # ignore net and loss as they are nn.module and will be saved automatically
-        self.save_hyperparameters(logger=False, ignore=["net", "loss"])
-
-        self.net = net
-        self.threeD = len(self.net.patch_size) == 3
-        self.patch_size = list(self.net.patch_size)
-
-        self.num_classes = self.net.num_classes
-
-        # declare a dummy input for display model summary
-        self.example_input_array = torch.rand(
-            1, self.net.in_channels, *self.patch_size, device=self.device
-        )
-
-        # loss function smooth L1
-        self.loss = loss
-
-        # parameter alpha for calculating moving average dice -> alpha * old + (1-alpha) * new
-        self.val_eval_criterion_alpha = 0.9
-
-        # current moving average dice
-        self.val_eval_criterion_MA = None
-
-        # best moving average dice
-        self.best_val_eval_criterion_MA = None
-
-        # list to store all the moving average dice during the training
-        self.all_val_eval_metrics = []
-
-        if self.hparams.tta:
-            self.tta_flips = self.get_tta_flips()
-        self.test_idx = 0
-        self.test_imgs = []
-
-    def forward(self, img: Union[Tensor, MetaTensor]) -> Union[Tensor, MetaTensor]:  # noqa: D102
-        return self.net(img)
-
-    def training_step(
-        self, batch: dict[str, Tensor], batch_idx: int
-    ) -> dict[str, Tensor]:  # noqa: D102
-        img, label = batch["image"], batch["label"]
-
-        # Need to handle carefully the multi-scale outputs from deep supervision heads
-        pred = self.forward(img)
-        loss = self.compute_loss(pred, label)
-
-        self.log(
-            "train/loss",
-            loss,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            batch_size=self.trainer.datamodule.hparams.batch_size,
-        )
-        return {"loss": loss}
+        super().__init__(**kwargs)
 
     def validation_step(
         self, batch: dict[str, Tensor], batch_idx: int
@@ -248,10 +168,7 @@ class nnUNetRegLitModule(LightningModule):
         else:
             final_preds = preds
 
-        if self.trainer.datamodule.hparams.test_splits:
-            save_dir = os.path.join(self.trainer.default_root_dir, "testing_raw")
-        else:
-            save_dir = os.path.join(self.trainer.default_root_dir, "validation_raw")
+        save_dir = os.path.join(self.trainer.default_root_dir, "inference_raw")
 
         fname = properties_dict.get("case_identifier")
         spacing = properties_dict.get("original_spacing")
@@ -259,268 +176,6 @@ class nnUNetRegLitModule(LightningModule):
         final_preds = final_preds.squeeze(0)
 
         self.save_predictions(final_preds, fname, spacing, save_dir)
-
-    def configure_optimizers(self) -> dict[Literal["optimizer", "lr_scheduler"], Any]:
-        """Configures optimizers/LR schedulers.
-
-        Returns:
-            A dict with an `optimizer` key, and an optional `lr_scheduler` if a scheduler is used.
-        """
-        configured_optimizer = {"optimizer": self.hparams.optimizer(params=self.parameters())}
-        if self.hparams.scheduler is not None:
-            configured_optimizer["lr_scheduler"] = self.hparams.scheduler(
-                optimizer=configured_optimizer["optimizer"]
-            )
-        return configured_optimizer
-
-    def on_save_checkpoint(self, checkpoint: dict) -> None:
-        """Save extra information in checkpoint, i.e. the evaluation metrics for all epochs.
-
-        Args:
-            checkpoint: Checkpoint dictionary.
-        """
-        checkpoint["all_val_eval_metrics"] = self.all_val_eval_metrics
-
-    def on_load_checkpoint(self, checkpoint: dict) -> None:
-        """Load information from checkpoint to class attribute, i.e. the evaluation metrics for all
-        epochs.
-
-        Args:
-            checkpoint: Checkpoint dictionary.
-        """
-        self.all_val_eval_metrics = checkpoint["all_val_eval_metrics"]
-
-    def compute_loss(
-        self, preds: Union[Tensor, MetaTensor], label: Union[Tensor, MetaTensor]
-    ) -> float:
-        """Compute the multi-scale loss if deep supervision is set to True.
-
-        Args:
-            preds: Predicted logits.
-            label: Ground truth label.
-
-        Returns:
-            Train loss.
-        """
-        if self.net.deep_supervision:
-            loss = self.loss(preds[0], label)
-            for i, pred in enumerate(preds[1:]):
-                downsampled_label = nn.functional.interpolate(label, pred.shape[2:])
-                loss += 0.5 ** (i + 1) * self.loss(pred, downsampled_label)
-            c_norm = 1 / (2 - 2 ** (-len(preds)))
-            return c_norm * loss
-        return self.loss(preds, label)
-
-    def predict(self, image: Union[Tensor, MetaTensor]) -> Union[Tensor, MetaTensor]:
-        """Predict 2D/3D images with sliding window inference.
-
-        Args:
-            image: Image to predict.
-
-        Returns:
-            Logits of prediction.
-
-        Raises:
-            NotImplementedError: If the patch shape is not 2D nor 3D.
-            ValueError: If 3D patch is requested to predict 2D images.
-        """
-        if len(image.shape) == 5:
-            if len(self.patch_size) == 3:
-                return self.predict_3D_3Dconv_tiled(image)
-            elif len(self.patch_size) == 2:
-                return self.predict_3D_2Dconv_tiled(image)
-            else:
-                raise NotImplementedError
-        if len(image.shape) == 4:
-            if len(self.patch_size) == 2:
-                return self.predict_2D_2Dconv_tiled(image)
-            elif len(self.patch_size) == 3:
-                raise ValueError("You can't predict a 2D image with 3D model. You dummy.")
-            else:
-                raise NotImplementedError
-
-    def tta_predict(self, image: Union[Tensor, MetaTensor]) -> Union[Tensor, MetaTensor]:
-        """Predict with test time augmentation.
-
-        Args:
-            image: Image to predict.
-
-        Returns:
-            Logits averaged over the number of flips.
-        """
-        preds = self.predict(image)
-        for flip_idx in self.tta_flips:
-            preds += torch.flip(self.predict(torch.flip(image, flip_idx)), flip_idx)
-        preds /= len(self.tta_flips) + 1
-        return preds
-
-    def predict_2D_2Dconv_tiled(
-        self, image: Union[Tensor, MetaTensor]
-    ) -> Union[Tensor, MetaTensor]:
-        """Predict 2D image with 2D model.
-
-        Args:
-            image: Image to predict.
-
-        Returns:
-            Logits of prediction.
-
-        Raises:
-            ValueError: If image is not 2D.
-        """
-        if not len(image.shape) == 4:
-            raise ValueError("image must be (b, c, w, h)")
-        return self.sliding_window_inference(image)
-
-    def predict_3D_3Dconv_tiled(
-        self, image: Union[Tensor, MetaTensor]
-    ) -> Union[Tensor, MetaTensor]:
-        """Predict 3D image with 3D model.
-
-        Args:
-            image: Image to predict.
-
-        Returns:
-            Logits of prediction.
-
-        Raises:
-            ValueError: If image is not 3D.
-        """
-        if not len(image.shape) == 5:
-            raise ValueError("image must be (b, c, w, h, d)")
-        return self.sliding_window_inference(image)
-
-    def predict_3D_2Dconv_tiled(
-        self, image: Union[Tensor, MetaTensor]
-    ) -> Union[Tensor, MetaTensor]:
-        """Predict 3D image with 2D model.
-
-        Args:
-            image: Image to predict.
-
-        Returns:
-            Logits of prediction.
-
-        Raises:
-            ValueError: If image is not 3D.
-        """
-        if not len(image.shape) == 5:
-            raise ValueError("image must be (b, c, w, h, d)")
-        preds_shape = (image.shape[0], self.num_classes, *image.shape[2:])
-        preds = torch.zeros(preds_shape, dtype=image.dtype, device=image.device)
-        for depth in range(image.shape[-1]):
-            preds[..., depth] = self.predict_2D_2Dconv_tiled(image[..., depth])
-        return preds
-
-    @staticmethod
-    def recovery_prediction(
-        prediction: np.array,
-        new_shape: Union[tuple, list],
-        anisotropy_flag: bool,
-    ) -> np.array:
-        """Recover prediction to its original shape in case of resampling.
-
-        Args:
-            prediciton: Predicted logits. (c, W, H, D)
-            new_shape: Shape for resampling. (W, H, D)
-            anisotropy_flag: Whether to use anisotropic resampling.
-
-        Returns:
-            (c, W, H, D) Resampled prediction.
-        """
-        shape = np.array(prediction[0].shape)
-        if np.any(shape != np.array(new_shape)):
-            resized_channels = []
-            if anisotropy_flag:
-                for image_c in prediction:
-                    resized_slices = []
-                    for i in range(image_c.shape[-1]):
-                        image_c_2d_slice = image_c[:, :, i]
-                        image_c_2d_slice = resize(
-                            image_c_2d_slice,
-                            new_shape[:-1],
-                            order=1,
-                            mode="edge",
-                            cval=0,
-                            clip=True,
-                            anti_aliasing=False,
-                        )
-                        resized_slices.append(image_c_2d_slice)
-                    resized = np.stack(resized_slices, axis=-1)
-                    resized = resize(
-                        resized,
-                        new_shape,
-                        order=0,
-                        mode="constant",
-                        cval=0,
-                        clip=True,
-                        anti_aliasing=False,
-                    )
-                    resized_channels.append(resized)
-            else:
-                for image_c in prediction:
-                    resized = resize(
-                        image_c,
-                        new_shape,
-                        order=3,
-                        mode="edge",
-                        cval=0,
-                        clip=True,
-                        anti_aliasing=False,
-                    )
-                    resized_channels.append(resized)
-            reshaped = np.stack(resized_channels, axis=0)
-            return reshaped
-        else:
-            return prediction
-
-    def get_tta_flips(self) -> list[list[int]]:
-        """Get the all possible flips for test time augmentation.
-
-        Returns:
-            List of axes to flip an 2D or 3D image.
-        """
-        if self.threeD:
-            return [[2], [3], [4], [2, 3], [2, 4], [3, 4], [2, 3, 4]]
-        else:
-            return [[2], [3], [2, 3]]
-
-    def sliding_window_inference(
-        self, image: Union[Tensor, MetaTensor]
-    ) -> Union[Tensor, MetaTensor]:
-        """Inference using sliding window.
-
-        Args:
-            image: Image to predict.
-
-        Returns:
-            Predicted logits.
-        """
-        if self.trainer.datamodule is None:
-            sw_batch_size = 2
-        else:
-            sw_batch_size = self.trainer.datamodule.hparams.batch_size
-        return sliding_window_inference(
-            inputs=image,
-            roi_size=self.patch_size,
-            sw_batch_size=sw_batch_size,
-            predictor=self.net,
-            overlap=self.hparams.sliding_window_overlap,
-            mode=self.hparams.sliding_window_importance_map,
-        )
-
-    @staticmethod
-    def metric_mean(name: str, outputs: dict) -> Tensor:
-        """Average metrics across batch dimension at epoch end.
-
-        Args:
-            name: Name of metrics to average.
-            outputs: Outputs dictionary returned at step end.
-
-        Returns:
-            Averaged metrics tensor.
-        """
-        return torch.stack([out[name] for out in outputs]).mean(dim=0)
 
     @staticmethod
     def get_properties(image_meta_dict: dict) -> OrderedDict:
@@ -559,7 +214,7 @@ class nnUNetRegLitModule(LightningModule):
             spacing: Spacing to save the segmentation mask.
             save_dir: Directory to save the segmentation mask.
         """
-        print(f"Saving prediction for {fname}...\n")
+        print(f"Saving prediction for {fname}...")
 
         os.makedirs(save_dir, exist_ok=True)
 
@@ -567,23 +222,6 @@ class nnUNetRegLitModule(LightningModule):
         itk_image = sitk.GetImageFromArray(rearrange(preds, "w h d ->  d h w"))
         itk_image.SetSpacing(spacing)
         sitk.WriteImage(itk_image, os.path.join(save_dir, fname + ".nii.gz"))
-
-    def update_eval_criterion_MA(self):
-        """Update moving average validation loss."""
-        if self.val_eval_criterion_MA is None:
-            self.val_eval_criterion_MA = self.all_val_eval_metrics[-1]
-        else:
-            self.val_eval_criterion_MA = (
-                self.val_eval_criterion_alpha * self.val_eval_criterion_MA
-                + (1 - self.val_eval_criterion_alpha) * self.all_val_eval_metrics[-1]
-            )
-
-    def maybe_update_best_val_eval_criterion_MA(self):
-        """Update moving average validation metrics."""
-        if self.best_val_eval_criterion_MA is None:
-            self.best_val_eval_criterion_MA = self.val_eval_criterion_MA
-        if self.val_eval_criterion_MA < self.best_val_eval_criterion_MA:
-            self.best_val_eval_criterion_MA = self.val_eval_criterion_MA
 
 
 if __name__ == "__main__":
