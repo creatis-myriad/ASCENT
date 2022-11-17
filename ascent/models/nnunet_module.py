@@ -60,18 +60,8 @@ class nnUNetLitModule(LightningModule):
         # loss function (CE - Dice), min = -1
         self.loss = loss
 
-    def setup(self, stage: Optional[str] = None) -> None:  # noqa: D102
-        self.threeD = len(self.net.patch_size) == 3
-        self.patch_size = list(self.net.patch_size)
-
-        self.num_classes = self.net.num_classes
-
-        # declare a dummy input for display model summary
-        self.example_input_array = torch.rand(
-            1, self.net.in_channels, *self.patch_size, device=self.device
-        )
-
-        # parameter alpha for calculating moving average dice -> alpha * old + (1-alpha) * new
+        # parameter alpha for calculating moving average eval metrics
+        # MA_metric = alpha * old + (1-alpha) * new
         self.val_eval_criterion_alpha = 0.9
 
         # current moving average dice
@@ -87,15 +77,25 @@ class nnUNetLitModule(LightningModule):
         self.online_eval_foreground_dc = []
 
         # we consider all the evaluation batches as a single element and only compute the global
-        # foreground dice at the end of evaluation epoch
+        # foreground dice at the end of the evaluation epoch
         self.online_eval_tp = []
         self.online_eval_fp = []
         self.online_eval_fn = []
 
+    def setup(self, stage: Optional[str] = None) -> None:  # noqa: D102
+        # to initialize some class variables that depend on the model
+        self.threeD = len(self.net.patch_size) == 3
+        self.patch_size = list(self.net.patch_size)
+        self.num_classes = self.net.num_classes
+
+        # create a dummy input to display model summary
+        self.example_input_array = torch.rand(
+            1, self.net.in_channels, *self.patch_size, device=self.device
+        )
+
+        # get the flipping axes in case of tta
         if self.hparams.tta:
             self.tta_flips = self.get_tta_flips()
-        self.test_idx = 0
-        self.test_imgs = []
 
     def forward(self, img: Union[Tensor, MetaTensor]) -> Union[Tensor, MetaTensor]:  # noqa: D102
         return self.net(img)

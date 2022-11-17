@@ -23,30 +23,17 @@ class nnUNetDealiasLitModule(nnUNetRegLitModule):
         super().__init__(**kwargs)
 
     def setup(self, stage: Optional[str] = None) -> None:  # noqa: D102
+        # to initialize some class variables that depend on the model
         self.threeD = len(self.net.denoiser.patch_size) == 3
         self.patch_size = list(self.net.denoiser.patch_size)
-
         self.num_classes = self.net.denoiser.num_classes
 
-        # declare a dummy input for display model summary
+        # create a dummy input to display model summary
         self.example_input_array = torch.rand(1, 2, *self.patch_size, device=self.device)
 
-        # parameter alpha for calculating moving average dice -> alpha * old + (1-alpha) * new
-        self.val_eval_criterion_alpha = 0.9
-
-        # current moving average dice
-        self.val_eval_criterion_MA = None
-
-        # best moving average dice
-        self.best_val_eval_criterion_MA = None
-
-        # list to store all the moving average dice during the training
-        self.all_val_eval_metrics = []
-
+        # get the flipping axes in case of tta
         if self.hparams.tta:
             self.tta_flips = self.get_tta_flips()
-        self.test_idx = 0
-        self.test_imgs = []
 
     def compute_loss(
         self, preds: Union[Tensor, MetaTensor], label: Union[Tensor, MetaTensor]
