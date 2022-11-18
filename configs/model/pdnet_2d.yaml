@@ -1,0 +1,36 @@
+_target_: ascent.models.nnunet_module.nnUNetLitModule
+
+optimizer:
+  _target_: torch.optim.SGD
+  _partial_: true
+  lr: 0.01
+  dampening: 0
+  momentum: 0.99
+  nesterov: True
+  weight_decay: 3e-05
+
+scheduler:
+  _target_: ascent.models.components.unet_related.poly_lr.PolynomialLR
+  _partial_: true
+  max_decay_steps: ${trainer.max_epochs}
+
+net:
+  _target_: ascent.models.components.pdnet.PDNet
+  iterations: 10
+  n_primal: 5
+  n_dual: 5
+  in_channels: 1
+  num_classes: 3
+  patch_size: [40, 192]
+  negative_slope: 1e-2
+
+loss:
+  _target_: ascent.models.components.unet_related.losses.DC_and_CE_loss
+  soft_dice_kwargs: { "batch_dice": True, "smooth": 1e-5, "do_bg": False }
+  ce_kwargs: {}
+
+tta: True
+
+save_predictions: True
+
+save_npz: False

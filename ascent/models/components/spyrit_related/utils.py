@@ -7,41 +7,7 @@ from monai.data import MetaTensor
 from scipy.sparse import csr_matrix, identity, kron
 from torch import Tensor, nn
 
-
-def reshape_fortran(
-    x: Union[np.ndarray, MetaTensor, Tensor], shape: Union[tuple, list]
-) -> Union[np.ndarray, MetaTensor, Tensor]:
-    """Reshape tensor/array in Fortran-like style.
-
-    Args:
-        x: Tensor/array to reshape.
-        shape: Desired shape for reshapping.
-
-    Returns:
-        Reshaped tensor/array.
-    """
-    if isinstance(x, (Tensor, MetaTensor)):
-        x = x.permute(*reversed(range(len(x.shape))))
-        return x.reshape(*reversed(shape)).permute(*reversed(range(len(shape))))
-    elif isinstance(x, np.ndarray):
-        return np.reshape(x, shape, order="F")
-
-
-def round_differentiable(x: Union[Tensor, MetaTensor]) -> Union[Tensor, MetaTensor]:
-    """A differentiable version of round that returns identity tensor when backward is called.
-
-    Args:
-        x: Tensor to be rounded.
-
-    Returns:
-        Rounded tensor that is also differentiable.
-    """
-    # This is equivalent to replacing round function (non-differentiable) with
-    # an identity function (differentiable) only when backward.
-    forward_value = torch.round(x)
-    out = x.clone()
-    out.data = forward_value.data
-    return out
+from ascent.utils.tensor_utils import reshape_fortran, round_differentiable
 
 
 class Robust2DUnwrap(nn.Module):
