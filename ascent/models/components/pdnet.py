@@ -15,6 +15,7 @@ class PDNet(nn.Module):
             int,
         ],
         negative_slope: float = 1e-2,
+        variant: int = 0,
     ) -> None:
         """Initialize class instance.
 
@@ -26,6 +27,7 @@ class PDNet(nn.Module):
             num_classes: Number of segmentation classes.
             patch_size: Input patch size.
             negative_slope: Negative slope used in LeakyRELU.
+            variant: PDNet variants.
         """
         super().__init__()
         if not len(patch_size) in [2, 3]:
@@ -38,6 +40,7 @@ class PDNet(nn.Module):
         self.num_classes = num_classes
         self.patch_size = patch_size
         self.negative_slope = negative_slope
+        self.variant = variant
 
         self.deep_supervision = False
         self.dim = len(patch_size)
@@ -54,22 +57,25 @@ class PDNet(nn.Module):
             self.padding,
             bias=self.bias,
         )
-        self.conv_dual_2 = Conv2d(
-            32, 32, self.kernel_size, self.stride, self.padding, bias=self.bias
-        )
-        self.conv_dual_3 = Conv2d(
-            32, n_dual, self.kernel_size, self.stride, self.padding, bias=self.bias
-        )
 
         self.conv_primal_1 = Conv2d(
             n_primal + 1, 32, self.kernel_size, self.stride, self.padding, bias=self.bias
         )
-        self.conv_primal_2 = Conv2d(
-            32, 32, self.kernel_size, self.stride, self.padding, bias=self.bias
-        )
-        self.conv_primal_3 = Conv2d(
-            32, n_primal, self.kernel_size, self.stride, self.padding, bias=self.bias
-        )
+
+        if self.variant <= 1:
+            self.conv_dual_2 = Conv2d(
+                32, 32, self.kernel_size, self.stride, self.padding, bias=self.bias
+            )
+            self.conv_dual_3 = Conv2d(
+                32, n_dual, self.kernel_size, self.stride, self.padding, bias=self.bias
+            )
+
+            self.conv_primal_2 = Conv2d(
+                32, 32, self.kernel_size, self.stride, self.padding, bias=self.bias
+            )
+            self.conv_primal_3 = Conv2d(
+                32, n_primal, self.kernel_size, self.stride, self.padding, bias=self.bias
+            )
 
         self.output_conv = Conv2d(
             1, self.num_classes, self.kernel_size, self.stride, self.padding, bias=self.bias
@@ -141,7 +147,12 @@ class PDNet(nn.Module):
             # residual connection
             primal = primal + update
 
-        # convolution to get output having same number of channels as the segmentation class
-        out = self.output_conv(primal[:, 0:1, ...])
+            if self.variant == 1:
+                # convolution to get output having same number of channels as the segmentation class
+                out = self.output_conv(primal[:, 0:1, ...])
+
+        if self.variant == 0:
+            # convolution to get output having same number of channels as the segmentation class
+            out = self.output_conv(primal[:, 0:1, ...])
 
         return out
