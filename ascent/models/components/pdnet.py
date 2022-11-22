@@ -62,7 +62,11 @@ class PDNet(nn.Module):
             n_primal + 1, 32, self.kernel_size, self.stride, self.padding, bias=self.bias
         )
 
-        if self.variant <= 1:
+        if self.variant <= 2:
+            if self.variant == 2:
+                self.conv_primal_1 = Conv2d(
+                    n_primal + 2, 32, self.kernel_size, self.stride, self.padding, bias=self.bias
+                )
             self.conv_dual_2 = Conv2d(
                 32, 32, self.kernel_size, self.stride, self.padding, bias=self.bias
             )
@@ -80,6 +84,29 @@ class PDNet(nn.Module):
         self.output_conv = Conv2d(
             1, self.num_classes, self.kernel_size, self.stride, self.padding, bias=self.bias
         )
+
+        if self.variant == 3:
+            self.conv_primal_1 = Conv2d(
+                n_primal + 2, 32, self.kernel_size, self.stride, self.padding, bias=self.bias
+            )
+
+            self.conv1 = Conv2d(
+                n_primal, 1, self.kernel_size, self.stride, self.padding, bias=self.bias
+            )
+            self.conv2 = Conv2d(
+                n_primal, 1, self.kernel_size, self.stride, self.padding, bias=self.bias
+            )
+            self.conv3 = Conv2d(
+                n_dual, 1, self.kernel_size, self.stride, self.padding, bias=self.bias
+            )
+            self.output_conv = Conv2d(
+                n_primal,
+                self.num_classes,
+                self.kernel_size,
+                self.stride,
+                self.padding,
+                bias=self.bias,
+            )
 
         self.lrelu = nn.LeakyReLU(self.negative_slope, inplace=True)
 
@@ -123,7 +150,10 @@ class PDNet(nn.Module):
             )
 
             # dual iterates
-            eval_pt = primal[:, 1:2, ...]
+            if self.variant <= 2:
+                eval_pt = primal[:, 1:2, ...]
+            if self.variant == 3:
+                eval_pt = self.conv1(primal)
             eval_op = self.wrap(eval_pt)
             update = torch.concat([dual, eval_op, input_data], dim=1)
             update = self.conv_dual_1(update)
@@ -136,8 +166,19 @@ class PDNet(nn.Module):
             dual = dual + update
 
             # primal iterates
-            eval_op = dual[:, 0:1, ...]
-            update = torch.concat([primal, eval_op], dim=1)
+
+            if self.variant <= 1:
+                eval_op = dual[:, 0:1, ...]
+                update = torch.concat([primal, eval_op], dim=1)
+            elif self.variant == 2:
+                eval_op = dual[:, 0:1, ...]
+                eval_pt = primal[:, 0:1, ...]
+                update = torch.concat([primal, eval_pt, eval_op], dim=1)
+            elif self.variant == 3:
+                eval_pt = self.conv2(primal)
+                eval_op = self.conv3(dual)
+                update = torch.concat([primal, eval_pt, eval_op], dim=1)
+
             update = self.conv_primal_1(update)
             update = self.lrelu(update)
             update = self.conv_primal_2(update)
@@ -151,7 +192,11 @@ class PDNet(nn.Module):
                 # convolution to get output having same number of channels as the segmentation class
                 out = self.output_conv(primal[:, 0:1, ...])
 
-        if self.variant == 0:
+            if self.variant == 3:
+                # convolution to get output having same number of channels as the segmentation class
+                out = self.output_conv(primal)
+
+        if self.variant == 0 or self.variant == 2:
             # convolution to get output having same number of channels as the segmentation class
             out = self.output_conv(primal[:, 0:1, ...])
 
