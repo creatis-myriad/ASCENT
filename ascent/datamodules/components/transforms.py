@@ -35,7 +35,7 @@ class ArtfclAliasing(RandomizableTransform):
         5. Create new ground truth segmentation and velocities.
     """
 
-    def __init__(self, prob: float = 0.5, wrap_range: tuple[float, float] = (0.6, 0.9)) -> None:
+    def __init__(self, prob: float = 0.5, wrap_range: tuple[float, float] = (0.65, 0.95)) -> None:
         """Define the probability and the wrapping range.
 
         Args:
@@ -79,54 +79,61 @@ class ArtfclAliasing(RandomizableTransform):
         v = vel.copy()
         ori_seg = label.detach().cpu().numpy()
 
-        # check whether the frame contains any aliasing and dealias it if the frame is aliased
+        # skip artificial aliasing if the data is aliased itself
         if np.max(ori_seg) > 0:
-            v = self.dealias(v, ori_seg)
+            gt_v = self.dealias(v, ori_seg)
 
-        gt_v = v.copy()
+            # convert the numpy arrays back to tensors
+            v = torch.as_tensor(v)
+            gt_seg = torch.as_tensor(ori_seg)
+            gt_v = torch.as_tensor(gt_v)
 
-        # specify a ROI (v > 0.3 and power > 0.4) to create more realistic aliasing
-        if power is not None:
-            roi = np.logical_and((np.abs(v) > 0.3), (power > 0.4))
         else:
-            roi = np.abs(v) > (0.3 * 0.4)
-
-        # create artificial aliasing if ROI is not empty
-        if not (np.all(~roi)):
-            self.wrap_param = self.wrap_param * np.max(np.abs(v[roi]))
-            aliased_v = v.copy()
-            aliased_v[roi] = self.wrap(aliased_v[roi], self.wrap_param, True)
-
-            # recompute the ground truth labels based on the artificially aliased frame
-            gt_seg = self.recompute_seg(v, aliased_v)
-            v = aliased_v
-
-            # clip the artificially aliased velocities
-            v[v >= 1] = 0.9999
-            v[v <= -1] = -0.9999
-
-            # recompute ground truth velocities
             gt_v = v.copy()
-            gt_v[gt_seg == 1] += 2
-            gt_v[gt_seg == 2] -= 2
+
+            # specify a ROI (v > 0.3 and power > 0.4) to create more realistic aliasing
+            if power is not None:
+                roi = np.logical_and((np.abs(v) > 0.3), (power > 0.4))
+            else:
+                roi = np.abs(v) > (0.3 * 0.4)
+
+            # create artificial aliasing if ROI is not empty
+            if not (np.all(~roi)):
+                self.wrap_param = self.wrap_param * np.max(np.abs(v[roi]))
+                aliased_v = v.copy()
+                aliased_v[roi] = self.wrap(aliased_v[roi], self.wrap_param, True)
+
+                # recompute the ground truth labels based on the artificially aliased frame
+                gt_seg = self.recompute_seg(v, aliased_v)
+                v = aliased_v
+
+                # clip the artificially aliased velocities
+                v[v >= 1] = 0.9999
+                v[v <= -1] = -0.9999
+
+                # recompute ground truth velocities
+                gt_v = v.copy()
+                gt_v[gt_seg == 1] += 2
+                gt_v[gt_seg == 2] -= 2
+
+                # delete useless array
+                del aliased_v
+            else:
+                # if ROI is empty, simply use the initial Doppler velocities and segmentation
+                v = vel
+                gt_seg = ori_seg.astype(np.uint8)
 
             # delete useless array
-            del aliased_v
-        else:
-            # if ROI is empty, simply use the initial Doppler velocities and segmentation
-            v = vel
-            gt_seg = ori_seg.astype(np.uint8)
+            del vel
 
-        # delete useless array
-        del vel
+            # concatenate the velocity with Doppler power if given
+            if power is not None:
+                v = np.concatenate((v, power))
 
-        # concatenate the velocity with Doppler power if given
-        if power is not None:
-            v = np.concatenate((v, power))
-
-        # convert the numpy arrays  back to tensors
+        # convert the numpy arrays back to tensors
         v = torch.as_tensor(v)
         gt_seg = torch.as_tensor(gt_seg)
+        gt_v = torch.as_tensor(gt_v)
         if isinstance(img, MetaTensor):
             v = convert_to_dst_type(v, dst=img, dtype=torch.float32)[0]
             gt_v = convert_to_dst_type(gt_v, dst=img, dtype=torch.float32)[0]
