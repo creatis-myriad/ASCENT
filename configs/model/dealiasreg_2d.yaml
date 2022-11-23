@@ -10,7 +10,7 @@ optimizer:
   weight_decay: 3e-05
 
 scheduler:
-  _target_: ascent.models.components.unet_related.poly_lr.PolynomialLR
+  _target_: ascent.utils.scheduler.poly_lr.PolynomialLR
   _partial_: true
   max_decay_steps: ${trainer.max_epochs}
 

@@ -5,7 +5,7 @@ import torch.nn as nn
 from monai.data import MetaTensor
 from torch import Tensor
 
-from ascent.models.components.spyrit_related.utils import round_differentiable
+from ascent.utils.tensor_utils import round_differentiable
 
 
 class SpyritNet(nn.Module):

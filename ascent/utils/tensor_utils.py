@@ -5,22 +5,22 @@ import torch
 from torch import Tensor
 
 
-def sum_tensor(inputs: Tensor, dim: tuple(int), keepdim: bool = False) -> Tensor:
+def sum_tensor(inputs: Tensor, axes: tuple[int], keepdim: bool = False) -> Tensor:
     """Reduce tensor across given dimensions by summing.
 
     Args:
         inputs: Input tensor.
-        dim: Dimension(s) to reduce.
+        axes: Axes to reduce.
         keepdim: Whether the output tensor has dim retained or not.
 
     Returns:
-        Sum of each row of the input tensor in the given dimension dim. If dim is a list of dimensions,
+        Sum of each row of the input tensor in the given axes. If axes is a list of dimensions,
         reduce over all of them.
 
     Retrieved from:
         https://github.com/MIC-DKFZ/nnUNet/blob/master/nnunet/utilities/tensor_utilities.py
     """
-    axes = np.unique(dim).astype(int)
+    axes = np.unique(axes).astype(int)
     if keepdim:
         for ax in axes:
             inputs = inputs.sum(int(ax), keepdim=True)

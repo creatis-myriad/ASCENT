@@ -16,14 +16,14 @@ from monai.transforms import (
     SplitDimd,
 )
 
-from ascent.datamodules.components.transforms import (
+from ascent.datamodules.nnunet_datamodule import nnUNetDataModule
+from ascent.utils.transforms import (
     ArtfclAliasingd,
     Convert2Dto3Dd,
     Convert3Dto2Dd,
     DealiasLoadNpyd,
     MayBeSqueezed,
 )
-from ascent.datamodules.nnunet_datamodule import nnUNetDataModule
 
 
 class DealiasDataModule(nnUNetDataModule):

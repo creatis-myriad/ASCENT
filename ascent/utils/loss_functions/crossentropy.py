@@ -2,10 +2,12 @@ from torch import Tensor, nn
 
 
 class RobustCrossEntropyLoss(nn.CrossEntropyLoss):
-    """Robust cross entropy loss copied from https://github.com/MIC-
-    DKFZ/nnUNet/blob/master/nnunet/training/loss_functions/crossentropy.py.
+    """Robust cross entropy loss.
 
     This serves as a compatibility layer as the target tensor is float and has an extra dimension.
+
+    Retrieved from:
+        https://github.com/MIC-DKFZ/nnUNet/blob/master/nnunet/training/loss_functions/crossentropy.py
     """
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:  # noqa: D102

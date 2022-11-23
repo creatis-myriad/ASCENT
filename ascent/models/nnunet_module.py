@@ -14,9 +14,10 @@ from pytorch_lightning import LightningModule
 from skimage.transform import resize
 from torch import Tensor
 
-from ascent.datamodules.components.inferers import SlidingWindowInferer
-from ascent.models.components.unet_related.utils import softmax_helper, sum_tensor
 from ascent.utils.file_and_folder_operations import save_pickle
+from ascent.utils.inferers import SlidingWindowInferer
+from ascent.utils.softmax import softmax_helper
+from ascent.utils.tensor_utils import sum_tensor
 
 
 class nnUNetLitModule(LightningModule):

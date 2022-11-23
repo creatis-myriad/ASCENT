@@ -29,17 +29,15 @@ from pytorch_lightning.trainer.states import TrainerFn
 from sklearn.model_selection import KFold, train_test_split
 
 from ascent import utils
-from ascent.datamodules.components.data_loading import (
-    get_case_identifiers_from_npz_folders,
-)
-from ascent.datamodules.components.nnunet_iterator import nnUNet_Iterator
-from ascent.datamodules.components.transforms import (
+from ascent.utils.data_loading import get_case_identifiers_from_npz_folders
+from ascent.utils.dataset import nnUNet_Iterator
+from ascent.utils.file_and_folder_operations import load_pickle, save_pickle, subfiles
+from ascent.utils.transforms import (
     Convert2Dto3Dd,
     Convert3Dto2Dd,
     LoadNpyd,
     MayBeSqueezed,
 )
-from ascent.utils.file_and_folder_operations import load_pickle, save_pickle, subfiles
 
 log = utils.get_pylogger(__name__)
 

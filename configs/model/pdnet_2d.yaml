@@ -10,7 +10,7 @@ optimizer:
   weight_decay: 3e-05
 
 scheduler:
-  _target_: ascent.models.components.unet_related.poly_lr.PolynomialLR
+  _target_: ascent.utils.scheduler.poly_lr.PolynomialLR
   _partial_: true
   max_decay_steps: ${trainer.max_epochs}
 
@@ -26,7 +26,7 @@ net:
   variant: 1
 
 loss:
-  _target_: ascent.models.components.unet_related.losses.DC_and_CE_loss
+  _target_: ascent.utils.loss_functions.dice_loss.DC_and_CE_loss
   soft_dice_kwargs: { "batch_dice": True, "smooth": 1e-5, "do_bg": False }
   ce_kwargs: {}
 
