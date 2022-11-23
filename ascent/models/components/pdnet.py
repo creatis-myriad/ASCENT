@@ -62,11 +62,12 @@ class PDNet(nn.Module):
             n_primal + 1, 32, self.kernel_size, self.stride, self.padding, bias=self.bias
         )
 
-        if self.variant <= 2:
-            if self.variant == 2:
+        if self.variant <= 3:
+            if self.variant in [2, 3]:
                 self.conv_primal_1 = Conv2d(
                     n_primal + 2, 32, self.kernel_size, self.stride, self.padding, bias=self.bias
                 )
+
             self.conv_dual_2 = Conv2d(
                 32, 32, self.kernel_size, self.stride, self.padding, bias=self.bias
             )
@@ -86,10 +87,6 @@ class PDNet(nn.Module):
         )
 
         if self.variant == 3:
-            self.conv_primal_1 = Conv2d(
-                n_primal + 2, 32, self.kernel_size, self.stride, self.padding, bias=self.bias
-            )
-
             self.conv1 = Conv2d(
                 n_primal, 1, self.kernel_size, self.stride, self.padding, bias=self.bias
             )
