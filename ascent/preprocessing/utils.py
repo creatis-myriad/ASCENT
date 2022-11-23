@@ -1,14 +1,31 @@
 from copy import deepcopy
+from typing import Union
 
 import numpy as np
 
 
-def get_pool_and_conv_props(spacing, patch_size, min_feature_map_size, max_numpool):
-    """
-    :param spacing:
-    :param patch_size:
-    :param min_feature_map_size: min edge length of feature maps in bottleneck
-    :return:
+def get_pool_and_conv_props(
+    spacing: tuple[int, ...],
+    patch_size: tuple[int, ...],
+    min_feature_map_size: int,
+    max_numpool: int,
+) -> tuple[list[int, ...]]:
+    """Compute the optimum patch size, strides, number of pooling, and convolution kernel sizes
+    based on the given arguments.
+
+    Args:
+        spacing: Pixel spacing of the patch size.
+        patch_size: Input patch size of U-Net.
+        min_feature_map_size: Minimum edge length of feature maps in the U-Net bottleneck.
+        max_numpool: Maximum number of pooling for all the axes.
+
+    Returns:
+        A tuple containing:
+            - number of pooling per axis
+            - stride per axis for each convolution layer
+            - kernel size per axis for each convolution layer
+            - patch size that is divisible by the number of pooling
+            - 2 ** number of pooling per axis
     """
     dim = len(spacing)
 
@@ -84,16 +101,38 @@ def get_pool_and_conv_props(spacing, patch_size, min_feature_map_size, max_numpo
     )
 
 
-def get_shape_must_be_divisible_by(net_numpool_per_axis):
-    return 2 ** np.array(net_numpool_per_axis)
+def get_shape_must_be_divisible_by(num_pool_per_axis: tuple[int, ...]) -> np.ndarray:
+    """Compute 2 ** number of pooling per axis to get the integers to divide each axis of the input
+    patch with.
+
+    Args:
+        num_pool_per_axis: Number of pooling per axis.
+
+    Returns:
+        Numpy array containing 2 ** number of pooling per axis.
+    """
+    return 2 ** np.array(num_pool_per_axis)
 
 
-def pad_shape(shape, must_be_divisible_by):
-    """pads shape so that it is divisibly by must_be_divisible_by.
+def pad_shape(
+    shape: tuple[int, ...],
+    must_be_divisible_by: Union[
+        tuple[int, ...],
+        list[
+            int,
+        ],
+        np.ndarray[int, ...],
+    ],
+) -> tuple[int, ...]:
+    """Pads ``shape`` so that it is divisibly by ``must_be_divisible_by``.
 
-    :param shape:
-    :param must_be_divisible_by:
-    :return:
+    Args:
+        shape: Shaped to be padded
+        must_be_divisible_by: List or tuple or numpy array containing integers to divide each axis
+            of ``shape``.
+
+    Returns:
+        Padded shape that is divisible by ``must_be_divisible_by``.
     """
     if not isinstance(must_be_divisible_by, (tuple, list, np.ndarray)):
         must_be_divisible_by = [must_be_divisible_by] * len(shape)

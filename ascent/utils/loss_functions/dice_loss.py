@@ -84,6 +84,10 @@ def get_tp_fp_fn_tn(
 class SoftDiceLoss(nn.Module):
     """Soft Dice loss.
 
+    Note:
+        The loss is computed with (- dice) instead of (1 - dice). Therefore, the returned value
+        is negative.
+
     Retrieved from:
         https://github.com/MIC-DKFZ/nnUNet/blob/master/nnunet/training/loss_functions/dice_loss.py
     """
@@ -100,7 +104,7 @@ class SoftDiceLoss(nn.Module):
         Args:
             apply_nonlin: Non linearity to be applied.
             batch_dice: Whether to compute batch dice.
-            do_bg: Whether to include background.
+            do_bg: Whether to include background class in the loss computation.
             smooth: Epsillon to be added on denominator to avoid dividing by zero.
         """
         super().__init__()
@@ -110,7 +114,9 @@ class SoftDiceLoss(nn.Module):
         self.apply_nonlin = apply_nonlin
         self.smooth = smooth
 
-    def forward(self, x: Tensor, y: Tensor, loss_mask: Optional[Tensor] = None) -> Tensor:
+    def forward(
+        self, x: Tensor, y: Tensor, loss_mask: Optional[Tensor] = None
+    ) -> Tensor:  # noqa: D102
         shp_x = x.shape
 
         if self.batch_dice:
@@ -143,8 +149,33 @@ class SoftDiceLoss(nn.Module):
 
 
 class SoftDiceLossSquared(nn.Module):
-    def __init__(self, apply_nonlin=None, batch_dice=False, do_bg=True, smooth=1.0):
-        """squares the terms in the denominator as proposed by Milletari et al."""
+    """Squared soft Dice loss.
+
+    The terms in the denominator are squared as compared to the usual soft Dice loss.
+
+    Note:
+        The loss is computed with (- dice) instead of (1 - dice). Therefore, the returned value
+        is negative.
+
+    Retrieved from:
+        https://github.com/MIC-DKFZ/nnUNet/blob/master/nnunet/training/loss_functions/dice_loss.py
+    """
+
+    def __init__(
+        self,
+        apply_nonlin: Optional[nn.Module] = None,
+        batch_dice: bool = False,
+        do_bg: bool = True,
+        smooth: float = 1.0,
+    ):
+        """Initialize class instance.
+
+        Args:
+            apply_nonlin: Non linearity to be applied.
+            batch_dice: Whether to compute batch dice.
+            do_bg: Whether to include background class in the loss computation.
+            smooth: Epsillon to be added on denominator to avoid dividing by zero.
+        """
         super().__init__()
 
         self.do_bg = do_bg
@@ -152,7 +183,9 @@ class SoftDiceLossSquared(nn.Module):
         self.apply_nonlin = apply_nonlin
         self.smooth = smooth
 
-    def forward(self, x, y, loss_mask=None):
+    def forward(
+        self, x: Tensor, y: Tensor, loss_mask: Optional[Tensor] = None
+    ) -> Tensor:  # noqa: D102
         shp_x = x.shape
         shp_y = y.shape
 
@@ -182,8 +215,8 @@ class SoftDiceLossSquared(nn.Module):
         # values in the denominator get smoothed
         denominator = x**2 + y_onehot**2
 
-        # aggregation was previously done in get_tp_fp_fn, but needs to be done here now (needs to be done after
-        # squaring)
+        # aggregation was previously done in get_tp_fp_fn, but needs to be done here now (needs to
+        # be done after squaring)
         intersect = sum_tensor(intersect, axes, False) + self.smooth
         denominator = sum_tensor(denominator, axes, False) + self.smooth
 
@@ -204,26 +237,39 @@ class SoftDiceLossSquared(nn.Module):
 
 
 class DC_and_CE_loss(nn.Module):
+    """Weighted Dice and cross entropy loss.
+
+    Note:
+        - Weights for CE and Dice do not need to sum to one. Be careful when setting those values.
+        - Since the dice loss is negative, the minimum of this loss is -1.
+
+    Retrieved from:
+        https://github.com/MIC-DKFZ/nnUNet/blob/master/nnunet/training/loss_functions/dice_loss.py
+    """
+
     def __init__(
         self,
-        soft_dice_kwargs,
-        ce_kwargs,
-        aggregate="sum",
-        square_dice=False,
-        weight_ce=1,
-        weight_dice=1,
-        log_dice=False,
-        ignore_label=None,
+        soft_dice_kwargs: dict[str, Union[bool, float]],
+        ce_kwargs: Optional[dict] = {},
+        aggregate: str = "sum",
+        square_dice: bool = False,
+        weight_ce: float = 1,
+        weight_dice: float = 1,
+        log_dice: bool = False,
+        ignore_label: Optional[int] = None,
     ):
-        """CAREFUL. Weights for CE and Dice do not need to sum to one. You can set whatever you
-        want.
+        """Initialize class instance.
 
-        :param soft_dice_kwargs:
-        :param ce_kwargs:
-        :param aggregate:
-        :param square_dice:
-        :param weight_ce:
-        :param weight_dice:
+        Args:
+            soft_dice_kwargs: Key arguments to be passed to soft dice loss.
+            ce_kwargs: Key arguments to be passed to cross entropy loss.
+            aggregate: Aggragation to be done on dice loss and cross entropy loss. Only ``sum`` is
+                supported.
+            square_dice: Whether to use squared soft dice loss.
+            weight_ce: Weight of cross entropy loss.
+            weight_dice: Weight of soft dice loss.
+            log_dice: Whether to apply ``log`` to the computed soft dice loss.
+            ignore_label: Class to be ignored in the loss computation.
         """
         super().__init__()
         if ignore_label is not None:
@@ -242,15 +288,10 @@ class DC_and_CE_loss(nn.Module):
         else:
             self.dc = SoftDiceLossSquared(apply_nonlin=softmax_helper, **soft_dice_kwargs)
 
-    def forward(self, net_output, target):
-        """target must be b, c, x, y(, z) with c=1.
-
-        :param net_output:
-        :param target:
-        :return:
-        """
+    def forward(self, net_output: Tensor, target: Tensor) -> Tensor:  # noqa: D102
         if self.ignore_label is not None:
-            assert target.shape[1] == 1, "not implemented for one hot encoding"
+            if not target.shape[1] == 1:
+                raise NotImplementedError("Not implemented for one hot encoding")
             mask = target != self.ignore_label
             target[~mask] = 0
             mask = mask.float()

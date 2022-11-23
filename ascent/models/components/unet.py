@@ -37,8 +37,8 @@ class UNet(nn.Module):
         in_channels: int,
         num_classes: int,
         patch_size: list,
-        kernels: list[Sequence[tuple[int]]],
-        strides: list[Sequence[tuple[int]]],
+        kernels: list[Sequence[tuple[int, ...]]],
+        strides: list[Sequence[tuple[int, ...]]],
         normalization_layer: str = "instance",
         negative_slope: float = 1e-2,
         deep_supervision: bool = True,
@@ -210,8 +210,8 @@ class UNet(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        kernels: list[list],
-        strides: list[list],
+        kernels: list[Sequence[tuple[int, ...]]],
+        strides: list[Sequence[tuple[int, ...]]],
         conv_block: nn.Module,
         drop_block: bool = False,
     ) -> nn.ModuleList:
@@ -220,9 +220,9 @@ class UNet(nn.Module):
         Args:
             in_channels: Number of input channels.
             out_channels: Number of output channels.
-            kernels: List of list containing convolution kernel size of the first convolution layer
+            kernels: List of tuples containing convolution kernel size of the first convolution layer
                 of each double convolutions block.
-            strides: List of list containing convolution strides of the first convolution layer
+            strides: List of tuples containing convolution strides of the first convolution layer
                 of each double convolutions block.
             conv_block: Convolution block to use.
             drop_block: Whether to use drop out layers.
@@ -250,13 +250,13 @@ class UNet(nn.Module):
 
     @staticmethod
     def compute_approx_vram_consumption(
-        patch_size: list,
-        num_pool_per_axis: list,
+        patch_size: tuple[int, ...],
+        num_pool_per_axis: list[int, ...],
         base_num_features: int,
         max_num_features: int,
         num_modalities: int,
         num_classes: int,
-        pool_op_kernel_sizes: list[list],
+        pool_op_kernel_sizes: list[Sequence[tuple[int, ...]]],
         deep_supervision: bool = False,
         conv_per_stage: int = 2,
     ) -> int:

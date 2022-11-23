@@ -45,8 +45,8 @@ def get_norm(
 def get_conv(
     in_channels: int,
     out_channels: int,
-    kernel_size: Union[int, tuple],
-    stride: Union[int, tuple],
+    kernel_size: Union[int, tuple[int, ...]],
+    stride: Union[int, tuple[int, ...]],
     dim: Literal[2, 3],
     bias: bool = True,
 ):
@@ -71,8 +71,8 @@ def get_conv(
 def get_transp_conv(
     in_channels: int,
     out_channels: int,
-    kernel_size: Union[int, tuple],
-    stride: Union[int, tuple],
+    kernel_size: Union[int, tuple[int, ...]],
+    stride: Union[int, tuple[int, ...]],
     dim: Literal[2, 3],
     bias: bool = True,
 ):
@@ -97,7 +97,9 @@ def get_transp_conv(
     )
 
 
-def get_padding(kernel_size: Union[int, tuple], stride: Union[int, tuple]) -> Union[int, tuple]:
+def get_padding(
+    kernel_size: Union[int, tuple[int, ...]], stride: Union[int, tuple[int, ...]]
+) -> Union[int, tuple[int, ...]]:
     """Compute padding based on kernel size and stride.
 
     Args:
@@ -115,8 +117,10 @@ def get_padding(kernel_size: Union[int, tuple], stride: Union[int, tuple]) -> Un
 
 
 def get_output_padding(
-    kernel_size: Union[int, tuple], stride: Union[int, tuple], padding: Union[int, tuple]
-) -> Union[int, tuple]:
+    kernel_size: Union[int, tuple[int, ...]],
+    stride: Union[int, tuple[int, ...]],
+    padding: Union[int, tuple[int, ...]],
+) -> Union[int, tuple[int, ...]]:
     """Compute output padding based on kernel size, stride, and input padding.
 
     Args:
@@ -156,8 +160,8 @@ class ConvLayer(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size: Union[int, tuple],
-        stride: Union[int, tuple],
+        kernel_size: Union[int, tuple[int, ...]],
+        stride: Union[int, tuple[int, ...]],
         **kwargs,
     ):
         """Initialize class instance.
@@ -196,8 +200,8 @@ class ConvBlock(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size: Union[int, tuple],
-        stride: Union[int, tuple],
+        kernel_size: Union[int, tuple[int, ...]],
+        stride: Union[int, tuple[int, ...]],
         **kwargs,
     ):
         """Initialize class instance.
@@ -229,8 +233,8 @@ class ResidBlock(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size: Union[int, tuple],
-        stride: Union[int, tuple],
+        kernel_size: Union[int, tuple[int, ...]],
+        stride: Union[int, tuple[int, ...]],
         **kwargs,
     ):
         """Initialize class instance.
@@ -287,7 +291,7 @@ class AttentionLayer(nn.Module):
         norm: Literal[
             "batchnorm2d", "batchnorm3d", "instancenorm2d", "instancenorm3d", "groupnorm"
         ],
-        dim: int,
+        dim: Literal[2, 3],
     ):
         """Initialize class instance.
 
@@ -315,8 +319,8 @@ class UpsampleBlock(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size: Union[int, tuple],
-        stride: Union[int, tuple],
+        kernel_size: Union[int, tuple[int, ...]],
+        stride: Union[int, tuple[int, ...]],
         bias: bool = False,
         **kwargs,
     ):
