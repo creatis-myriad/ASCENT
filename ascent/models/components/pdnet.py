@@ -15,9 +15,7 @@ class PDNet(nn.Module):
         n_dual: int,
         in_channels: int,
         num_classes: int,
-        patch_size: list[
-            int,
-        ],
+        patch_size: list[int, ...],
         negative_slope: float = 1e-2,
         variant: int = 0,
     ) -> None:
@@ -203,9 +201,7 @@ class PDNetV2(nn.Module):
         n_dual: int,
         in_channels: int,
         num_classes: int,
-        patch_size: list[
-            int,
-        ],
+        patch_size: list[int, ...],
         kernels: list[Sequence[tuple[int]]],
         strides: list[Sequence[tuple[int]]],
     ) -> None:
