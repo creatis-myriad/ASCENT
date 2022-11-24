@@ -130,26 +130,17 @@ class PDNet(nn.Module):
             return x
 
     def forward(self, input_data: Tensor) -> Tensor:  # noqa: D102
+        primal = torch.concat(
+            [torch.zeros(input_data.shape[0], 1, *input_data.shape[2:], device=input_data.device)]
+            * self.n_primal,
+            dim=1,
+        )
+        dual = torch.concat(
+            [torch.zeros(input_data.shape[0], 1, *input_data.shape[2:], device=input_data.device)]
+            * self.n_dual,
+            dim=1,
+        )
         for i in range(self.iterations):
-            primal = torch.concat(
-                [
-                    torch.zeros(
-                        input_data.shape[0], 1, *input_data.shape[2:], device=input_data.device
-                    )
-                ]
-                * self.n_primal,
-                dim=1,
-            )
-            dual = torch.concat(
-                [
-                    torch.zeros(
-                        input_data.shape[0], 1, *input_data.shape[2:], device=input_data.device
-                    )
-                ]
-                * self.n_dual,
-                dim=1,
-            )
-
             # dual iterates
             if self.variant <= 2:
                 eval_pt = primal[:, 1:2, ...]
@@ -277,26 +268,18 @@ class PDNetV2(nn.Module):
             return x
 
     def forward(self, input_data: Tensor) -> Tensor:  # noqa: D102
-        for i in range(self.iterations):
-            primal = torch.concat(
-                [
-                    torch.zeros(
-                        input_data.shape[0], 1, *input_data.shape[2:], device=input_data.device
-                    )
-                ]
-                * self.n_primal,
-                dim=1,
-            )
-            dual = torch.concat(
-                [
-                    torch.zeros(
-                        input_data.shape[0], 1, *input_data.shape[2:], device=input_data.device
-                    )
-                ]
-                * self.n_dual,
-                dim=1,
-            )
+        primal = torch.concat(
+            [torch.zeros(input_data.shape[0], 1, *input_data.shape[2:], device=input_data.device)]
+            * self.n_primal,
+            dim=1,
+        )
+        dual = torch.concat(
+            [torch.zeros(input_data.shape[0], 1, *input_data.shape[2:], device=input_data.device)]
+            * self.n_dual,
+            dim=1,
+        )
 
+        for i in range(self.iterations):
             # dual iterates
             eval_pt = primal[:, 1:2, ...]
             eval_op = self.wrap(eval_pt)
