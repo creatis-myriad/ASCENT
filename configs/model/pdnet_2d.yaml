@@ -15,7 +15,7 @@ scheduler:
   max_decay_steps: ${trainer.max_epochs}
 
 net:
-  _target_: ascent.models.components.pdnet.PDNet
+  _target_: ascent.models.components.pdnet.PDNetOri
   iterations: 10
   n_primal: 5
   n_dual: 5
@@ -23,7 +23,7 @@ net:
   num_classes: 3
   patch_size: [40, 192]
   negative_slope: 1e-2
-  variant: 1
+  variant: 0
 
 loss:
   _target_: ascent.utils.loss_functions.dice_loss.DC_and_CE_loss
