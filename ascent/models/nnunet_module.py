@@ -2,7 +2,7 @@ import os
 import time
 from collections import OrderedDict
 from pathlib import Path
-from typing import Union
+from typing import Any, Literal, Optional, Union
 
 import numpy as np
 import SimpleITK as sitk
@@ -14,9 +14,10 @@ from pytorch_lightning import LightningModule
 from skimage.transform import resize
 from torch import Tensor
 
-from ascent.datamodules.components.inferers import sliding_window_inference
-from ascent.models.components.unet_related.utils import softmax_helper, sum_tensor
 from ascent.utils.file_and_folder_operations import save_pickle
+from ascent.utils.inferers import SlidingWindowInferer
+from ascent.utils.softmax import softmax_helper
+from ascent.utils.tensor_utils import sum_tensor
 
 
 class nnUNetLitModule(LightningModule):
@@ -42,10 +43,10 @@ class nnUNetLitModule(LightningModule):
         validation loop.
 
         Args:
-            net: Network architecture. Defaults to U-Net.
-            optimizer: Optimizer. Defaults to SGD optimizer.
-            loss: Loss function. Defaults to Cross Entropy - Dice
-            scheduler: Scheduler for training. Defaults to Polynomial Decay Scheduler.
+            net: Network architecture.
+            optimizer: Optimizer.
+            loss: Loss function.
+            scheduler: Scheduler for training.
             tta: Whether to use the test time augmentation, i.e. flip.
             sliding_window_overlap: Minimum overlap for sliding window inference.
             sliding_window_importance_map: Importance map used for sliding window inference.
@@ -56,20 +57,12 @@ class nnUNetLitModule(LightningModule):
         self.save_hyperparameters(logger=False, ignore=["net", "loss"])
 
         self.net = net
-        self.threeD = len(self.net.patch_size) == 3
-        self.patch_size = list(self.net.patch_size)
-
-        self.num_classes = self.net.num_classes
-
-        # declare a dummy input for display model summary
-        self.example_input_array = torch.rand(
-            1, self.net.in_channels, *self.patch_size, device=self.device
-        )
 
         # loss function (CE - Dice), min = -1
         self.loss = loss
 
-        # parameter alpha for calculating moving average dice -> alpha * old + (1-alpha) * new
+        # parameter alpha for calculating moving average eval metrics
+        # MA_metric = alpha * old + (1-alpha) * new
         self.val_eval_criterion_alpha = 0.9
 
         # current moving average dice
@@ -85,20 +78,32 @@ class nnUNetLitModule(LightningModule):
         self.online_eval_foreground_dc = []
 
         # we consider all the evaluation batches as a single element and only compute the global
-        # foreground dice at the end of evaluation epoch
+        # foreground dice at the end of the evaluation epoch
         self.online_eval_tp = []
         self.online_eval_fp = []
         self.online_eval_fn = []
 
+    def setup(self, stage: Optional[str] = None) -> None:  # noqa: D102
+        # to initialize some class variables that depend on the model
+        self.threeD = len(self.net.patch_size) == 3
+        self.patch_size = list(self.net.patch_size)
+        self.num_classes = self.net.num_classes
+
+        # create a dummy input to display model summary
+        self.example_input_array = torch.rand(
+            1, self.net.in_channels, *self.patch_size, device=self.device
+        )
+
+        # get the flipping axes in case of tta
         if self.hparams.tta:
             self.tta_flips = self.get_tta_flips()
-        self.test_idx = 0
-        self.test_imgs = []
 
-    def forward(self, img):  # noqa: D102
+    def forward(self, img: Union[Tensor, MetaTensor]) -> Union[Tensor, MetaTensor]:  # noqa: D102
         return self.net(img)
 
-    def training_step(self, batch, batch_idx: int):  # noqa: D102
+    def training_step(
+        self, batch: dict[str, Tensor], batch_idx: int
+    ) -> dict[str, Tensor]:  # noqa: D102
         img, label = batch["image"], batch["label"]
 
         # Need to handle carefully the multi-scale outputs from deep supervision heads
@@ -116,7 +121,9 @@ class nnUNetLitModule(LightningModule):
         )
         return {"loss": loss}
 
-    def validation_step(self, batch, batch_idx):  # noqa: D102
+    def validation_step(
+        self, batch: dict[str, Tensor], batch_idx: int
+    ) -> dict[str, Tensor]:  # noqa: D102
         img, label = batch["image"], batch["label"]
 
         # Only the highest resolution output is returned during the validation
@@ -158,7 +165,7 @@ class nnUNetLitModule(LightningModule):
 
         return {"val/loss": loss}
 
-    def validation_epoch_end(self, validation_step_outputs):  # noqa: D102
+    def validation_epoch_end(self, validation_step_outputs: dict[str, Tensor]):  # noqa: D102
         loss = self.metric_mean("val/loss", validation_step_outputs)
         self.online_eval_tp = np.sum(self.online_eval_tp, 0)
         self.online_eval_fp = np.sum(self.online_eval_fp, 0)
@@ -211,7 +218,24 @@ class nnUNetLitModule(LightningModule):
                 batch_size=self.trainer.datamodule.hparams.batch_size,
             )
 
-    def test_step(self, batch, batch_idx):  # noqa: D102
+    def on_test_start(self) -> None:  # noqa: D102
+        super().on_test_start()
+        if self.trainer.datamodule is None:
+            sw_batch_size = 2
+        else:
+            sw_batch_size = self.trainer.datamodule.hparams.batch_size
+
+        self.inferer = SlidingWindowInferer(
+            roi_size=self.patch_size,
+            sw_batch_size=sw_batch_size,
+            overlap=self.hparams.sliding_window_overlap,
+            mode=self.hparams.sliding_window_importance_map,
+            cache_roi_weight_map=True,
+        )
+
+    def test_step(
+        self, batch: dict[str, Tensor], batch_idx: int
+    ) -> dict[str, Tensor]:  # noqa: D102
         img, label, image_meta_dict = batch["image"], batch["label"], batch["image_meta_dict"]
 
         start_time = time.time()
@@ -291,7 +315,7 @@ class nnUNetLitModule(LightningModule):
 
         return {"test/dice": test_dice}
 
-    def test_epoch_end(self, test_step_outputs):  # noqa: D102
+    def test_epoch_end(self, test_step_outputs: dict[str, Tensor]):  # noqa: D102
         mean_dice = self.metric_mean("test/dice", test_step_outputs)
         self.log(
             "test/mean_dice",
@@ -303,7 +327,22 @@ class nnUNetLitModule(LightningModule):
             batch_size=self.trainer.datamodule.hparams.batch_size,
         )
 
-    def predict_step(self, batch, batch_idx):  # noqa: D102
+    def on_predict_start(self) -> None:  # noqa: D102
+        super().on_predict_start()
+        if self.trainer.datamodule is None:
+            sw_batch_size = 2
+        else:
+            sw_batch_size = self.trainer.datamodule.hparams.batch_size
+
+        self.inferer = SlidingWindowInferer(
+            roi_size=self.patch_size,
+            sw_batch_size=sw_batch_size,
+            overlap=self.hparams.sliding_window_overlap,
+            mode=self.hparams.sliding_window_importance_map,
+            cache_roi_weight_map=True,
+        )
+
+    def predict_step(self, batch: dict[str, Tensor], batch_idx: int):  # noqa: D102
         img, image_meta_dict = batch["image"], batch["image_meta_dict"]
 
         start_time = time.time()
@@ -342,16 +381,34 @@ class nnUNetLitModule(LightningModule):
 
         self.save_mask(final_preds, fname, spacing, save_dir)
 
-    def configure_optimizers(self):  # noqa: D102
-        optimizer = self.hparams.optimizer(params=self.parameters())
-        scheduler = self.hparams.scheduler(optimizer)
+    def configure_optimizers(self) -> dict[Literal["optimizer", "lr_scheduler"], Any]:
+        """Configures optimizers/LR schedulers.
 
-        return [optimizer], [scheduler]
+        Returns:
+            A dict with an `optimizer` key, and an optional `lr_scheduler` if a scheduler is used.
+        """
+        configured_optimizer = {"optimizer": self.hparams.optimizer(params=self.parameters())}
+        if self.hparams.scheduler is not None:
+            configured_optimizer["lr_scheduler"] = self.hparams.scheduler(
+                optimizer=configured_optimizer["optimizer"]
+            )
+        return configured_optimizer
 
-    def on_save_checkpoint(self, checkpoint):  # noqa: D102
+    def on_save_checkpoint(self, checkpoint: dict) -> None:
+        """Save extra information in checkpoint, i.e. the evaluation metrics for all epochs.
+
+        Args:
+            checkpoint: Checkpoint dictionary.
+        """
         checkpoint["all_val_eval_metrics"] = self.all_val_eval_metrics
 
-    def on_load_checkpoint(self, checkpoint):  # noqa: D102
+    def on_load_checkpoint(self, checkpoint: dict) -> None:
+        """Load information from checkpoint to class attribute, i.e. the evaluation metrics for all
+        epochs.
+
+        Args:
+            checkpoint: Checkpoint dictionary.
+        """
         self.all_val_eval_metrics = checkpoint["all_val_eval_metrics"]
 
     def compute_loss(
@@ -366,7 +423,6 @@ class nnUNetLitModule(LightningModule):
         Returns:
             Train loss.
         """
-
         if self.net.deep_supervision:
             loss = self.loss(preds[0], label)
             for i, pred in enumerate(preds[1:]):
@@ -384,8 +440,11 @@ class nnUNetLitModule(LightningModule):
 
         Returns:
             Logits of prediction.
-        """
 
+        Raises:
+            NotImplementedError: If the patch shape is not 2D nor 3D.
+            ValueError: If 3D patch is requested to predict 2D images.
+        """
         if len(image.shape) == 5:
             if len(self.patch_size) == 3:
                 return self.predict_3D_3Dconv_tiled(image)
@@ -410,7 +469,6 @@ class nnUNetLitModule(LightningModule):
         Returns:
             Logits averaged over the number of flips.
         """
-
         preds = self.predict(image)
         for flip_idx in self.tta_flips:
             preds += torch.flip(self.predict(torch.flip(image, flip_idx)), flip_idx)
@@ -427,9 +485,12 @@ class nnUNetLitModule(LightningModule):
 
         Returns:
             Logits of prediction.
-        """
 
-        assert len(image.shape) == 4, "data must be b, c, w, h"
+        Raises:
+            ValueError: If image is not 2D.
+        """
+        if not len(image.shape) == 4:
+            raise ValueError("image must be (b, c, w, h)")
         return self.sliding_window_inference(image)
 
     def predict_3D_3Dconv_tiled(
@@ -442,9 +503,12 @@ class nnUNetLitModule(LightningModule):
 
         Returns:
             Logits of prediction.
-        """
 
-        assert len(image.shape) == 5, "data must be b, c, w, h, d"
+        Raises:
+            ValueError: If image is not 3D.
+        """
+        if not len(image.shape) == 5:
+            raise ValueError("image must be (b, c, w, h, d)")
         return self.sliding_window_inference(image)
 
     def predict_3D_2Dconv_tiled(
@@ -457,9 +521,12 @@ class nnUNetLitModule(LightningModule):
 
         Returns:
             Logits of prediction.
-        """
 
-        assert len(image.shape) == 5, "data must be b, c, w, h, d"
+        Raises:
+            ValueError: If image is not 3D.
+        """
+        if not len(image.shape) == 5:
+            raise ValueError("image must be (b, c, w, h, d)")
         preds_shape = (image.shape[0], self.num_classes, *image.shape[2:])
         preds = torch.zeros(preds_shape, dtype=image.dtype, device=image.device)
         for depth in range(image.shape[-1]):
@@ -468,7 +535,7 @@ class nnUNetLitModule(LightningModule):
 
     @staticmethod
     def recovery_prediction(
-        prediction: np.array,
+        prediction: np.ndarray,
         new_shape: Union[tuple, list],
         anisotropy_flag: bool,
     ) -> np.array:
@@ -482,7 +549,6 @@ class nnUNetLitModule(LightningModule):
         Returns:
             (c, W, H, D) Resampled prediction.
         """
-
         shape = np.array(prediction[0].shape)
         if np.any(shape != np.array(new_shape)):
             resized_channels = []
@@ -535,7 +601,6 @@ class nnUNetLitModule(LightningModule):
         Returns:
             List of axes to flip an 2D or 3D image.
         """
-
         if self.threeD:
             return [[2], [3], [4], [2, 3], [2, 4], [3, 4], [2, 3, 4]]
         else:
@@ -552,21 +617,13 @@ class nnUNetLitModule(LightningModule):
         Returns:
             Predicted logits.
         """
-        if self.trainer.datamodule is None:
-            sw_batch_size = 2
-        else:
-            sw_batch_size = self.trainer.datamodule.hparams.batch_size
-        return sliding_window_inference(
+        return self.inferer(
             inputs=image,
-            roi_size=self.patch_size,
-            sw_batch_size=sw_batch_size,
-            predictor=self.net,
-            overlap=self.hparams.sliding_window_overlap,
-            mode=self.hparams.sliding_window_importance_map,
+            network=self.net,
         )
 
     @staticmethod
-    def metric_mean(name: str, outputs: dict) -> Tensor:
+    def metric_mean(name: str, outputs: dict[str, Tensor]) -> Tensor:
         """Average metrics across batch dimension at epoch end.
 
         Args:
@@ -602,7 +659,7 @@ class nnUNetLitModule(LightningModule):
         return properties_dict
 
     def save_mask(
-        self, preds: np.array, fname: str, spacing: np.array, save_dir: Union[str, Path]
+        self, preds: np.ndarray, fname: str, spacing: np.ndarray, save_dir: Union[str, Path]
     ) -> None:
         """Save segmentation mask to the given save directory.
 
@@ -612,8 +669,7 @@ class nnUNetLitModule(LightningModule):
             spacing: Spacing to save the segmentation mask.
             save_dir: Directory to save the segmentation mask.
         """
-
-        print(f"Saving segmentation for {fname}...\n")
+        print(f"Saving segmentation for {fname}...")
 
         os.makedirs(save_dir, exist_ok=True)
 
@@ -623,7 +679,7 @@ class nnUNetLitModule(LightningModule):
         sitk.WriteImage(itk_image, os.path.join(save_dir, fname + ".nii.gz"))
 
     def save_npz_and_properties(
-        self, preds: np.array, properties_dict: dict, fname: str, save_dir: Union[str, Path]
+        self, preds: np.ndarray, properties_dict: dict, fname: str, save_dir: Union[str, Path]
     ) -> None:
         """Save softmax probabilities to the given save directory.
 
@@ -634,8 +690,7 @@ class nnUNetLitModule(LightningModule):
             spacing: Spacing to save the segmentation mask.
             save_dir: Directory to save the segmentation mask.
         """
-
-        print(f"Saving softmax for {fname}...\n")
+        print(f"Saving softmax for {fname}...")
 
         os.makedirs(save_dir, exist_ok=True)
 
@@ -646,7 +701,6 @@ class nnUNetLitModule(LightningModule):
 
     def update_eval_criterion_MA(self):
         """Update moving average validation loss."""
-
         if self.val_eval_criterion_MA is None:
             self.val_eval_criterion_MA = self.all_val_eval_metrics[-1]
         else:
@@ -657,7 +711,6 @@ class nnUNetLitModule(LightningModule):
 
     def maybe_update_best_val_eval_criterion_MA(self):
         """Update moving average validation metrics."""
-
         if self.best_val_eval_criterion_MA is None:
             self.best_val_eval_criterion_MA = self.val_eval_criterion_MA
         if self.val_eval_criterion_MA > self.best_val_eval_criterion_MA:

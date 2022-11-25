@@ -59,7 +59,7 @@ class MNISTDataModule(LightningDataModule):
         self.data_test: Optional[Dataset] = None
 
     @property
-    def num_classes(self):
+    def num_classes(self):  # noqa: D102
         return 10
 
     def prepare_data(self):
@@ -87,7 +87,7 @@ class MNISTDataModule(LightningDataModule):
                 generator=torch.Generator().manual_seed(42),
             )
 
-    def train_dataloader(self):
+    def train_dataloader(self):  # noqa: D102
         return DataLoader(
             dataset=self.data_train,
             batch_size=self.hparams.batch_size,
@@ -96,7 +96,7 @@ class MNISTDataModule(LightningDataModule):
             shuffle=True,
         )
 
-    def val_dataloader(self):
+    def val_dataloader(self):  # noqa: D102
         return DataLoader(
             dataset=self.data_val,
             batch_size=self.hparams.batch_size,
@@ -105,7 +105,7 @@ class MNISTDataModule(LightningDataModule):
             shuffle=False,
         )
 
-    def test_dataloader(self):
+    def test_dataloader(self):  # noqa: D102
         return DataLoader(
             dataset=self.data_test,
             batch_size=self.hparams.batch_size,
