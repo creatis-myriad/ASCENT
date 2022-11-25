@@ -1,4 +1,4 @@
-_target_: ascent.models.nnunet_module.nnUNetLitModule
+_target_: ascent.models.nnunet_reg_module.nnUNetRegLitModule
 
 optimizer:
   _target_: torch.optim.SGD
@@ -16,23 +16,23 @@ scheduler:
 
 net:
   _target_: ascent.models.components.unet.UNet
-  in_channels: ???
-  num_classes: ???
-  patch_size: ???
-  kernels: ???
-  strides: ???
+  in_channels: 2
+  num_classes: 1
+  patch_size: [40, 192]
+  kernels: [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
+  strides: [[1, 1], [2, 2], [2, 2], [2, 2], [1, 2]]
   normalization_layer: "instance"
   negative_slope: 1e-2
-  deep_supervision: True
+  deep_supervision: False
   attention: False
   drop_block: False
   residual: False
-  out_seg_bias: False
+  out_seg_bias: True
 
 loss:
-  _target_: ascent.utils.loss_functions.dice_loss.DC_and_CE_loss
-  soft_dice_kwargs: { "batch_dice": True, "smooth": 1e-5, "do_bg": False }
-  ce_kwargs: {}
+  _target_: torch.nn.SmoothL1Loss
+  reduction: "mean"
+  beta: 1.0
 
 tta: True
 

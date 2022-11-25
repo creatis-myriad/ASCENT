@@ -15,19 +15,15 @@ scheduler:
   max_decay_steps: ${trainer.max_epochs}
 
 net:
-  _target_: ascent.models.components.unet.UNet
-  in_channels: ???
-  num_classes: ???
-  patch_size: ???
-  kernels: ???
-  strides: ???
-  normalization_layer: "instance"
-  negative_slope: 1e-2
-  deep_supervision: True
-  attention: False
-  drop_block: False
-  residual: False
-  out_seg_bias: False
+  _target_: ascent.models.components.pdnet.PDNetV2
+  iterations: 10
+  n_primal: 5
+  n_dual: 5
+  in_channels: 1
+  num_classes: 3
+  patch_size: [40, 192]
+  kernels: [[3, 3], [3, 3], [3, 3], [3, 3]]
+  strides: [[1, 1], [2, 2], [2, 2], [2, 2]]
 
 loss:
   _target_: ascent.utils.loss_functions.dice_loss.DC_and_CE_loss

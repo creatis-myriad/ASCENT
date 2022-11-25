@@ -6,7 +6,8 @@ class PolynomialLR(_LRScheduler):
     """Polynomial learning rate decay until step reach to max_decay_step."""
 
     def __init__(self, optimizer, max_decay_steps, end_learning_rate=0, power=0.9):
-        """
+        """Initialize class instance.
+
         Args:
             optimizer (Optimizer): Wrapped optimizer.
             max_decay_steps: after this step, we stop decreasing learning rate
@@ -22,7 +23,7 @@ class PolynomialLR(_LRScheduler):
         self.last_step = 0
         super().__init__(optimizer)
 
-    def get_lr(self):
+    def get_lr(self):  # noqa: D102
         if self.last_step > self.max_decay_steps:
             return [self.end_learning_rate for _ in self.base_lrs]
 
@@ -33,7 +34,7 @@ class PolynomialLR(_LRScheduler):
             for base_lr in self.base_lrs
         ]
 
-    def step(self, step=None):
+    def step(self, step=None):  # noqa: D102
         if step is None:
             step = self.last_step + 1
         self.last_step = step if step != 0 else 1

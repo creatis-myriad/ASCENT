@@ -65,7 +65,11 @@ def check_input_folder_and_return_datalist(
         expected_num_modalities: Number of input modalities.
 
     Returns:
-        Datalist. [{"image": ././path"},]
+        Datalist. [{"image": "././path"},]
+
+    Raises:
+        ValueError: If the input folder is empty.
+        RuntimeError: If there are missing files in the input folder.
     """
 
     log.info(f"This model expects {expected_num_modalities} input modalities for each image.")
@@ -76,9 +80,10 @@ def check_input_folder_and_return_datalist(
     remaining = deepcopy(files)
     missing = []
 
-    assert (
-        len(files) > 0
-    ), "input folder did not contain any images (expected to find .nii.gz file endings)"
+    if not len(files) > 0:
+        raise ValueError(
+            "Input folder did not contain any images (expected to find .nii.gz file endings)"
+        )
 
     # now check if all required files are present and that no unexpected files are remaining
     for c in maybe_case_ids:
@@ -144,7 +149,6 @@ def get_predict_transforms(dataset_properties: dict) -> Callable:
     Returns:
         Monai Compose(transforms)
     """
-
     load_transforms = [
         LoadImaged(keys="image", image_only=True),
         EnsureChannelFirstd(keys="image"),
@@ -176,11 +180,15 @@ def predict(cfg: DictConfig) -> Tuple[dict, dict]:
 
     Args:
         cfg (DictConfig): Configuration composed by Hydra.
+
     Returns:
         Tuple[dict, dict]: Dict with metrics and dict with all instantiated objects.
-    """
 
-    assert cfg.ckpt_path
+    Raises:
+        ValueError: If the checkpoint path is not provided.
+    """
+    if not cfg.ckpt_path:
+        raise ValueError("ckpt_path must not be empty!")
 
     log.info(f"Instantiating model <{cfg.model._target_}>")
     model: LightningModule = hydra.utils.instantiate(cfg.model)
@@ -195,7 +203,12 @@ def predict(cfg: DictConfig) -> Tuple[dict, dict]:
     }
 
     dataset_properties = load_pickle(
-        os.path.join(cfg.paths.data_dir, cfg.dataset, "preprocessed", "dataset_properties.pkl")
+        os.path.join(
+            cfg.paths.data_dir,
+            cfg.dataset,
+            "preprocessed",
+            "dataset_properties.pkl",
+        )
     )
     transforms = get_predict_transforms(dataset_properties)
     datalist = check_input_folder_and_return_datalist(

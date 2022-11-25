@@ -28,17 +28,18 @@ from pytorch_lightning import LightningDataModule
 from pytorch_lightning.trainer.states import TrainerFn
 from sklearn.model_selection import KFold, train_test_split
 
-from ascent.datamodules.components.data_loading import (
-    get_case_identifiers_from_npz_folders,
-)
-from ascent.datamodules.components.nnunet_iterator import nnUNet_Iterator
-from ascent.datamodules.components.transforms import (
+from ascent import utils
+from ascent.utils.data_loading import get_case_identifiers_from_npz_folders
+from ascent.utils.dataset import nnUNet_Iterator
+from ascent.utils.file_and_folder_operations import load_pickle, save_pickle, subfiles
+from ascent.utils.transforms import (
     Convert2Dto3Dd,
     Convert3Dto2Dd,
     LoadNpyd,
     MayBeSqueezed,
 )
-from ascent.utils.file_and_folder_operations import load_pickle, save_pickle, subfiles
+
+log = utils.get_pylogger(__name__)
 
 
 class nnUNetDataModule(LightningDataModule):
@@ -56,6 +57,7 @@ class nnUNetDataModule(LightningDataModule):
         num_workers: int = os.cpu_count() - 1,
         pin_memory: bool = True,
         test_splits: bool = True,
+        seg_label: bool = True,
     ):
         """Initializes class instance.
 
@@ -72,8 +74,11 @@ class nnUNetDataModule(LightningDataModule):
             num_workers: Number of subprocesses to use for data loading.
             pin_memory: Whether to pin memory to GPU.
             test_splits: Whether to split data into train/val/test (0.8/0.1/0.1).
-        """
+            seg_label: Whether the labels are segmentations.
 
+        Raises:
+            NotImplementedError: If the patch shape is not 2D nor 3D.
+        """
         super().__init__()
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
@@ -83,7 +88,8 @@ class nnUNetDataModule(LightningDataModule):
             data_dir, dataset_name, "preprocessed", "data_and_properties"
         )
 
-        assert len(patch_size) in [2, 3], "Only 2D and 3D patches are supported right now!"
+        if not len(patch_size) in [2, 3]:
+            raise NotImplementedError("Only 2D and 3D patches are supported right now!")
 
         self.crop_patch_size = patch_size
         self.threeD = len(patch_size) == 3
@@ -103,17 +109,15 @@ class nnUNetDataModule(LightningDataModule):
 
         Unpacking .npz data to .npy for faster data loading during training.
         """
-
-        print("\nUnpacking dataset...")
+        log.info("Unpacking dataset...")
         self.unpack_dataset()
-        print("Done")
+        log.info("Done")
 
     @staticmethod
     def do_splits(splits_file: Union[Path, str], preprocessed_path: Union[Path, str], test_splits):
         """Create 5-fold train/validation/test splits."""
-
         if not os.path.isfile(splits_file):
-            print("Creating new split...")
+            log.info("Creating new split...")
             splits = []
             all_keys_sorted = np.sort(
                 list(get_case_identifiers_from_npz_folders(preprocessed_path))
@@ -137,7 +141,7 @@ class nnUNetDataModule(LightningDataModule):
                     splits[-1]["test"] = test_keys
             save_pickle(splits, splits_file)
         else:
-            print("Using splits from existing split file:", splits_file)
+            log.info(f"Using splits from existing split file: {splits_file}")
 
     def setup(self, stage: Optional[str] = None):
         """Load data.
@@ -151,32 +155,29 @@ class nnUNetDataModule(LightningDataModule):
         This method is called by lightning with both `trainer.fit()` and `trainer.test()`, so be
         careful not to execute things like random split twice!
         """
-
         if stage == TrainerFn.FITTING or stage == TrainerFn.TESTING:
             splits_file = os.path.join(self.preprocessed_folder, "splits_final.pkl")
             self.do_splits(splits_file, self.full_data_dir, self.hparams.test_splits)
             splits = load_pickle(splits_file)
             if self.hparams.fold < len(splits):
-                print("Desired fold for training: %d" % self.hparams.fold)
+                log.info(f"Desired fold for training or testing: {self.hparams.fold}")
                 train_keys = splits[self.hparams.fold]["train"]
                 val_keys = splits[self.hparams.fold]["val"]
 
                 if self.hparams.test_splits:
                     test_keys = splits[self.hparams.fold]["test"]
-                    print(
-                        "This split has %d training, %d validation, and %d testing cases."
-                        % (len(train_keys), len(val_keys), len(test_keys))
+                    log.info(
+                        f"This split has {len(train_keys)} training, {len(val_keys)} validation, and {len(test_keys)} testing cases."
                     )
                 else:
-                    print(
-                        "This split has %d training and %d validation cases."
-                        % (len(train_keys), len(val_keys))
+                    log.info(
+                        f"This split has {len(train_keys)} training and {len(val_keys)} validation cases."
                     )
             else:
-                print(
-                    "INFO: You requested fold %d for training but splits "
-                    "contain only %d folds. I am now creating a "
-                    "random (but seeded) 80:10:10 split!" % (self.hparams.fold, len(splits))
+                log.warning(
+                    f"You requested fold {self.hparams.fold} for training but splits "
+                    "contain only {len(splits)} folds. I am now creating a "
+                    "random (but seeded) 80:10:10 split!"
                 )
                 # if we request a fold that is not in the split file, create a random 80:10:10 split
                 keys = np.sort(list(get_case_identifiers_from_npz_folders(self.full_data_dir)))
@@ -187,15 +188,13 @@ class nnUNetDataModule(LightningDataModule):
                     val_keys, test_keys = train_test_split(
                         val_and_test_keys, test_size=0.5, random_state=(12345 + self.hparams.fold)
                     )
-                    print(
-                        "This random 80:10:10 split has %d training, %d validation, and %d testing cases."
-                        % (len(train_keys), len(val_keys), len(test_keys))
+                    log.info(
+                        f"This random 80:10:10 split has {len(train_keys)} training, {len(val_keys)} validation, and {len(test_keys)} testing cases."
                     )
                 else:
                     val_keys = val_and_test_keys
-                    print(
-                        "This random 80:20 split has %d training and %d validation cases."
-                        % (len(train_keys), len(val_keys))
+                    log.info(
+                        f"This random 80:20 split has {len(train_keys)} training and {len(val_keys)} validation cases."
                     )
 
             self.train_files = [
@@ -297,7 +296,7 @@ class nnUNetDataModule(LightningDataModule):
                 range_x = [-15.0 / 180 * np.pi, 15.0 / 180 * np.pi]
 
         shared_train_val_transforms = [
-            LoadNpyd(keys=["data"]),
+            LoadNpyd(keys=["data"], seg_label=self.hparams.seg_label),
             EnsureChannelFirstd(keys=["image", "label"]),
             SpatialPadd(
                 keys=["image", "label"],
@@ -379,6 +378,7 @@ class nnUNetDataModule(LightningDataModule):
             LoadNpyd(
                 keys=["data", "image_meta_dict"],
                 test=True,
+                seg_label=self.hparams.seg_label,
             ),
             EnsureChannelFirstd(keys=["image", "label"]),
         ]
@@ -412,21 +412,24 @@ if __name__ == "__main__":
     import hydra
     import pyrootutils
     from hydra import compose, initialize_config_dir
+    from matplotlib import pyplot as plt
     from omegaconf import OmegaConf
+
+    from ascent.utils.visualization import dopplermap, imagesc
 
     root = pyrootutils.setup_root(__file__, pythonpath=True)
 
     initialize_config_dir(config_dir=str(root / "configs" / "datamodule"), job_name="test")
-    cfg = compose(config_name="camus_2d.yaml")
-    print(OmegaConf.to_yaml(cfg))
+    cfg = compose(config_name="dealias_2d.yaml")
 
     cfg.data_dir = str(root / "data")
     # cfg.patch_size = [128, 128]
-    cfg.in_channels = 1
-    cfg.patch_size = [640, 512]
+    cfg.in_channels = 2
+    cfg.patch_size = [40, 192]
     # cfg.patch_size = [128, 128, 12]
     cfg.batch_size = 1
     cfg.fold = 0
+    print(OmegaConf.to_yaml(cfg))
     camus_datamodule = hydra.utils.instantiate(cfg)
     camus_datamodule.prepare_data()
     camus_datamodule.setup(stage=TrainerFn.FITTING)
@@ -444,23 +447,23 @@ if __name__ == "__main__":
     # camus_datamodule.prepare_for_prediction(predict_files)
     # camus_datamodule.setup(stage=TrainerFn.PREDICTING)
     # predict_dl = camus_datamodule.predict_dataloader()
-
-    batch = next(iter(train_dl))
+    gen = iter(train_dl)
+    batch = next(gen)
     # batch = next(iter(test_dl))
     # batch = next(iter(predict_dl))
 
-    from matplotlib import pyplot as plt
+    cmap = dopplermap()
 
-    img = batch["image"][0]
-    label = batch["label"][0]
+    img = batch["image"][0].array
+    label = batch["label"][0].array
     img_shape = img.shape
     label_shape = label.shape
     print(f"image shape: {img_shape}, label shape: {label_shape}")
+    print(batch["image"][0]._meta["filename_or_obj"])
     plt.figure("image", (18, 6))
-    plt.subplot(1, 2, 1)
-    plt.title("image")
-    plt.imshow(img[0, :, :], cmap="gray")
-    plt.subplot(1, 2, 2)
-    plt.title("label")
-    plt.imshow(label[0, :, :])
+    ax = plt.subplot(1, 2, 1)
+    imagesc(ax, img[0, :, :].transpose(), "image", cmap, clim=[-1, 1])
+    ax = plt.subplot(1, 2, 2)
+    imagesc(ax, label[0, :, :].transpose(), "label", cmap)
+    print("max of seg: ", np.max(label[0, :, :]))
     plt.show()

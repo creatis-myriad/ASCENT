@@ -55,9 +55,12 @@ def evaluate(cfg: DictConfig) -> Tuple[dict, dict]:
 
     Returns:
         Tuple[dict, dict]: Dict with metrics and dict with all instantiated objects.
-    """
 
-    assert cfg.ckpt_path
+    Raises:
+        ValueError: Error when checkpoint path is not provided.
+    """
+    if not cfg.ckpt_path:
+        raise ValueError("ckpt_path must not be provided!")
 
     log.info(f"Instantiating datamodule <{cfg.datamodule._target_}>")
     datamodule: LightningDataModule = hydra.utils.instantiate(cfg.datamodule)
@@ -86,9 +89,6 @@ def evaluate(cfg: DictConfig) -> Tuple[dict, dict]:
     log.info("Starting testing!")
     log.info(f"Using checkpoint: {cfg.ckpt_path}")
     trainer.test(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
-
-    # for predictions use trainer.predict(...)
-    # predictions = trainer.predict(model=model, dataloaders=dataloaders, ckpt_path=cfg.ckpt_path)
 
     metric_dict = trainer.callback_metrics
 

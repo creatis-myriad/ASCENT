@@ -1,6 +1,8 @@
+from typing import Literal, Union
+
 import numpy as np
 import torch
-import torch.nn as nn
+from torch import Tensor, nn
 
 normalizations = {
     "instancenorm3d": nn.InstanceNorm3d,
@@ -22,19 +24,71 @@ dropouts = {
 }
 
 
-def get_norm(name, out_channels):
+def get_norm(
+    name: Literal["batchnorm2d", "batchnorm3d", "instancenorm2d", "instancenorm3d", "groupnorm"],
+    num_channels: int,
+):
+    """Get normalization layer.
+
+    Args:
+        name: Name of normalization layer to use.
+        num_channels: Number of channels expected in input.
+
+    Returns:
+        PyTorch normalization layer with learnable parameters.
+    """
     if "groupnorm" in name:
-        return nn.GroupNorm(32, out_channels, affine=True)
-    return normalizations[name](out_channels, affine=True)
+        return nn.GroupNorm(32, num_channels, affine=True)
+    return normalizations[name](num_channels, affine=True)
 
 
-def get_conv(in_channels, out_channels, kernel_size, stride, dim, bias=True):
+def get_conv(
+    in_channels: int,
+    out_channels: int,
+    kernel_size: Union[int, tuple[int, ...]],
+    stride: Union[int, tuple[int, ...]],
+    dim: Literal[2, 3],
+    bias: bool = True,
+):
+    """Get 2D or 3D convolution layer.
+
+    Args:
+        in_channels: Number of channels in the input image.
+        out_channels: Number of channels produced by the convolution.
+        kernel_size: Size of the convolving kernel.
+        stride: Stride of the convolution.
+        dim: Dimension of convolution.
+        bias: Set True to add a learnable bias to the output.
+
+    Returns:
+        PyTorch convolution layer.
+    """
     conv = convolutions[f"Conv{dim}d"]
     padding = get_padding(kernel_size, stride)
     return conv(in_channels, out_channels, kernel_size, stride, padding, bias=bias)
 
 
-def get_transp_conv(in_channels, out_channels, kernel_size, stride, dim, bias=False):
+def get_transp_conv(
+    in_channels: int,
+    out_channels: int,
+    kernel_size: Union[int, tuple[int, ...]],
+    stride: Union[int, tuple[int, ...]],
+    dim: Literal[2, 3],
+    bias: bool = True,
+):
+    """Get 2D or 3D transposed convolution layer.
+
+    Args:
+        in_channels: Number of channels in the input image.
+        out_channels: Number of channels produced by the convolution.
+        kernel_size: Size of the convolving kernel.
+        stride: Stride of the convolution.
+        dim: Dimension of convolution.
+        bias: Set True to add a learnable bias to the output.
+
+    Returns:
+        PyTorch transposed convolution layer.
+    """
     conv = convolutions[f"ConvTranspose{dim}d"]
     padding = get_padding(kernel_size, stride)
     output_padding = get_output_padding(kernel_size, stride, padding)
@@ -43,7 +97,18 @@ def get_transp_conv(in_channels, out_channels, kernel_size, stride, dim, bias=Fa
     )
 
 
-def get_padding(kernel_size, stride):
+def get_padding(
+    kernel_size: Union[int, tuple[int, ...]], stride: Union[int, tuple[int, ...]]
+) -> Union[int, tuple[int, ...]]:
+    """Compute padding based on kernel size and stride.
+
+    Args:
+        kernel_size: Size of the convolving kernel.
+        stride: Stride of the convolution.
+
+    Returns:
+        Padding, either int or tuple.
+    """
     kernel_size_np = np.atleast_1d(kernel_size)
     stride_np = np.atleast_1d(stride)
     padding_np = (kernel_size_np - stride_np + 1) / 2
@@ -51,7 +116,21 @@ def get_padding(kernel_size, stride):
     return padding if len(padding) > 1 else padding[0]
 
 
-def get_output_padding(kernel_size, stride, padding):
+def get_output_padding(
+    kernel_size: Union[int, tuple[int, ...]],
+    stride: Union[int, tuple[int, ...]],
+    padding: Union[int, tuple[int, ...]],
+) -> Union[int, tuple[int, ...]]:
+    """Compute output padding based on kernel size, stride, and input padding.
+
+    Args:
+        kernel_size: Size of the convolving kernel.
+        stride: Stride of the convolution.
+        padding: Padding added to input.
+
+    Returns:
+        Output padding, either int or tuple.
+    """
     kernel_size_np = np.atleast_1d(kernel_size)
     stride_np = np.atleast_1d(stride)
     padding_np = np.atleast_1d(padding)
@@ -60,13 +139,43 @@ def get_output_padding(kernel_size, stride, padding):
     return out_padding if len(out_padding) > 1 else out_padding[0]
 
 
-def get_drop_block(dim, p=0.5, inplace=True):
+def get_drop_block(dim: Literal[2, 3], p: float = 0.5, inplace: bool = True):
+    """Get 2D or 3D drop out layer.
+
+    Args:
+        dim: Dimension of drop out layer.
+
+    Returns:
+        PyTorch drop out layer.
+    """
     drop = dropouts[f"Dropout{dim}d"]
     return drop(p=p, inplace=inplace)
 
 
 class ConvLayer(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride, **kwargs):
+    """Convolution layer that consists of convolution, normalization, leakyRELU, and optional drop
+    out layer."""
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: Union[int, tuple[int, ...]],
+        stride: Union[int, tuple[int, ...]],
+        **kwargs,
+    ):
+        """Initialize class instance.
+
+        Args:
+            in_channels: Number of channels in the input image.
+            out_channels: Number of channels produced by the convolution.
+            kernel_size: Size of the convolving kernel.
+            stride: Stride of the convolution.
+            **dim (int): Dimension for convolution. (2 or 3)
+            **norm (str): Name of normalization layer.
+            **negative_slope (float): Negative slope to be used in leakyRELU.
+            **drop_block (bool): Set true to add a drop out layer.
+        """
         super().__init__()
         self.conv = get_conv(in_channels, out_channels, kernel_size, stride, kwargs["dim"])
         self.norm = get_norm(kwargs["norm"], out_channels)
@@ -75,7 +184,7 @@ class ConvLayer(nn.Module):
         if self.use_drop_block:
             self.drop_block = get_drop_block()
 
-    def forward(self, data):
+    def forward(self, data: Tensor):  # noqa: D102
         out = self.conv(data)
         if self.use_drop_block:
             out = self.drop_block(out)
@@ -85,19 +194,61 @@ class ConvLayer(nn.Module):
 
 
 class ConvBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride, **kwargs):
+    """Convolution block that consists of double ConvLayer."""
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: Union[int, tuple[int, ...]],
+        stride: Union[int, tuple[int, ...]],
+        **kwargs,
+    ):
+        """Initialize class instance.
+
+        Args:
+            in_channels: Number of channels in the input image.
+            out_channels: Number of channels produced by the convolution.
+            kernel_size: Size of the convolving kernel.
+            stride: Stride of the convolution.
+            **dim (int): Dimension for convolution. (2 or 3)
+            **norm (str): Name of normalization layer.
+            **negative_slope (float): Negative slope to be used in leakyRELU.
+            **drop_block (bool): Set true to add a drop out layer.
+        """
         super().__init__()
         self.conv1 = ConvLayer(in_channels, out_channels, kernel_size, stride, **kwargs)
         self.conv2 = ConvLayer(out_channels, out_channels, kernel_size, 1, **kwargs)
 
-    def forward(self, input_data):
+    def forward(self, input_data: Tensor):  # noqa: D102
         out = self.conv1(input_data)
         out = self.conv2(out)
         return out
 
 
 class ResidBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride, **kwargs):
+    """Residual convolution block that consists of double ConvLayer."""
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: Union[int, tuple[int, ...]],
+        stride: Union[int, tuple[int, ...]],
+        **kwargs,
+    ):
+        """Initialize class instance.
+
+        Args:
+            in_channels: Number of channels in the input image.
+            out_channels: Number of channels produced by the convolution.
+            kernel_size: Size of the convolving kernel.
+            stride: Stride of the convolution.
+            **dim (int): Dimension for convolution. (2 or 3)
+            **norm (str): Name of normalization layer.
+            **negative_slope (float): Negative slope to be used in leakyRELU.
+            **drop_block (bool): Set true to add a drop out layer.
+        """
         super().__init__()
         self.conv1 = ConvLayer(in_channels, out_channels, kernel_size, stride, **kwargs)
         self.conv2 = get_conv(out_channels, out_channels, kernel_size, 1, kwargs["dim"])
@@ -114,7 +265,7 @@ class ResidBlock(nn.Module):
             )
             self.norm_res = get_norm(kwargs["norm"], out_channels)
 
-    def forward(self, input_data):
+    def forward(self, input_data):  # noqa: D102
         residual = input_data
         out = self.conv1(input_data)
         out = self.conv2(out)
@@ -131,19 +282,60 @@ class ResidBlock(nn.Module):
 
 
 class AttentionLayer(nn.Module):
-    def __init__(self, in_channels, out_channels, norm, dim):
+    """Attention layer that consists of a convolution and normalization layer."""
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        norm: Literal[
+            "batchnorm2d", "batchnorm3d", "instancenorm2d", "instancenorm3d", "groupnorm"
+        ],
+        dim: Literal[2, 3],
+    ):
+        """Initialize class instance.
+
+        Args:
+            in_channels: Number of channels in the input image.
+            out_channels: Number of channels produced by the convolution.
+            dim: Dimension for convolution. (2 or 3)
+            norm: Name of normalization layer.
+        """
         super().__init__()
         self.conv = get_conv(in_channels, out_channels, kernel_size=3, stride=1, dim=dim)
         self.norm = get_norm(norm, out_channels)
 
-    def forward(self, inputs):
+    def forward(self, inputs: Tensor):  # noqa: D102
         out = self.conv(inputs)
         out = self.norm(out)
         return out
 
 
 class UpsampleBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride, bias=False, **kwargs):
+    """Upsample block that consists of a transposed convolution layer, an optional attention layer,
+    and a double ConvLayer."""
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: Union[int, tuple[int, ...]],
+        stride: Union[int, tuple[int, ...]],
+        bias: bool = False,
+        **kwargs,
+    ):
+        """Initialize class instance.
+
+        Args:
+            in_channels: Number of channels in the input image.
+            out_channels: Number of channels produced by the convolution.
+            kernel_size: Size of the convolving kernel.
+            stride: Stride of the convolution.
+            bias: Set True to add a learnable bias to the output.
+            **dim (int): Dimension for convolution. (2 or 3)
+            **norm (str): Name of normalization layer.
+            **attention (bool): Set true to add an attention layer.
+        """
         super().__init__()
         self.transp_conv = get_transp_conv(
             in_channels, out_channels, stride, stride, kwargs["dim"], bias=bias
@@ -158,7 +350,7 @@ class UpsampleBlock(nn.Module):
             self.sigmoid = nn.Sigmoid()
             self.relu = nn.ReLU(inplace=True)
 
-    def forward(self, input_data, skip_data):
+    def forward(self, input_data: Tensor, skip_data: Tensor):  # noqa: D102
         out = self.transp_conv(input_data)
         if self.attention:
             out_a = self.conv_o(out)
@@ -172,7 +364,19 @@ class UpsampleBlock(nn.Module):
 
 
 class OutputBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, dim, bias=False):
+    """Output convolution block that includes only a single convolution layer."""
+
+    def __init__(
+        self, in_channels: int, out_channels: int, dim: Literal[2, 3], bias: bool = False
+    ):
+        """Initialize class instance.
+
+        Args:
+            in_channels: Number of channels in the input image.
+            out_channels: Number of channels produced by the convolution.
+            kernel_size: Size of the convolving kernel.
+            dim: Dimension for convolution. (2 or 3)
+        """
         super().__init__()
         self.conv = get_conv(
             in_channels, out_channels, kernel_size=1, stride=1, dim=dim, bias=bias
@@ -180,5 +384,5 @@ class OutputBlock(nn.Module):
         if bias:
             nn.init.constant_(self.conv.bias, 0)
 
-    def forward(self, input_data):
+    def forward(self, input_data):  # noqa: D102
         return self.conv(input_data)

@@ -10,3 +10,4 @@ fold: ${fold}
 num_workers: 12
 pin_memory: True
 test_splits: True
+seg_label: True

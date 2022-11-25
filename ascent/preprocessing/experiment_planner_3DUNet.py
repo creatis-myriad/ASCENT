@@ -57,7 +57,6 @@ class nnUNetPlanner3D(nnUNetPlanner2D):
                 - Convolution kernels size
                 - Dummy 2D augmentation flag.
         """
-
         dataset_num_voxels = np.prod(median_shape, dtype=np.int64) * num_cases
 
         # compute how many voxels are one mm
@@ -180,7 +179,6 @@ class nnUNetPlanner3D(nnUNetPlanner2D):
 
     def plan_experiment(self):
         """Plan experiment."""
-
         log.info("Planning experiment for 3D U-Net...")
         all_shapes_after_resampling = self.dataset_properties["all_shapes_after_resampling"]
         current_spacing = self.dataset_properties["spacing_after_resampling"]
