@@ -1,7 +1,3 @@
-import warnings
-
-warnings.filterwarnings(action="ignore", category=UserWarning, module="torchaudio")
-
 import os
 from collections import OrderedDict
 from pathlib import Path
