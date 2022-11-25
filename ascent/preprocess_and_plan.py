@@ -7,10 +7,6 @@ root = pyrootutils.setup_root(
     dotenv=True,
 )
 
-import warnings
-
-warnings.filterwarnings(action="ignore")
-
 import hydra
 from omegaconf import DictConfig
 
