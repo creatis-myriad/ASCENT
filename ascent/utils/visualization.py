@@ -1,16 +1,19 @@
+from typing import Union
+
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import ListedColormap
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from torch import Tensor
 
 
 def imagesc(
     ax: matplotlib.axes,
-    image: np.array,
+    image: Union[Tensor, np.ndarray],
     title: str,
     colormap: matplotlib.colormaps = plt.cm.gray,
-    clim: list[float, float] = None,
+    clim: Union[tuple[float, float], list[float, float]] = None,
     show_axis: bool = False,
 ) -> None:
     """Display image with scaled colors. Similar to Matlab's imagesc.
@@ -39,6 +42,10 @@ def imagesc(
             )
     else:
         clim_args = {}
+
+    if isinstance(image, Tensor):
+        image = image.cpu().detach().numpy()
+
     im = ax.imshow(image, colormap, **clim_args)
     plt.title(title)
     divider = make_axes_locatable(ax)
