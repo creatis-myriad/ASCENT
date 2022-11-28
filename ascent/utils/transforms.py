@@ -83,6 +83,10 @@ class ArtfclAliasing(RandomizableTransform):
         if np.max(ori_seg) > 0:
             gt_v = self.dealias(v, ori_seg)
 
+            # concatenate the velocity with Doppler power if given
+            if power is not None:
+                v = np.concatenate((v, power))
+
             # convert the numpy arrays back to tensors
             v = torch.as_tensor(v)
             gt_seg = torch.as_tensor(ori_seg)
