@@ -1,0 +1,10 @@
+_target_: ascent.models.components.pdnet.PDNet
+
+iterations: 10
+n_primal: 5
+n_dual: 5
+in_channels: 1
+num_classes: 3
+patch_size: [40, 192]
+negative_slope: 1e-2
+variant: 0

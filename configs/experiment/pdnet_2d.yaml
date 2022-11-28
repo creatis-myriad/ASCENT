@@ -9,13 +9,17 @@ defaults:
   - override /hydra: nnunet
 
 tags: ["dealiasm", "PDNet_2D"]
-task_name: "PDNet"
+task_name: "DEALIASMv2"
 fold: 0
 train: True
 test: True
 nnUNet_variant: 2D
 best_model: False
+
 logger:
   comet:
     project_name: "PDNet"
     experiment_name: "2D_Fold${fold}"
+
+trainer:
+  gradient_clip_val: 1

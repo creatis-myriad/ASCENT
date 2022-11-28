@@ -179,7 +179,7 @@ if __name__ == "__main__":
     initialize_config_dir(
         config_dir=str(root / "configs" / "datamodule"), job_name="test", version_base="1.2"
     )
-    cfg = compose(config_name="unwrapV2_2d.yaml")
+    cfg = compose(config_name="unwrap_2d.yaml")
 
     cfg.data_dir = str(root / "data")
     cfg.in_channels = 3

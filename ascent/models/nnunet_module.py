@@ -38,6 +38,7 @@ class nnUNetLitModule(LightningModule):
         sliding_window_importance_map: bool = "gaussian",
         save_predictions: bool = True,
         save_npz: bool = False,
+        name: str = "nnUNet",
     ):
         """Saves the system's configuration in `hparams`. Initialize variables for training and
         validation loop.
@@ -51,6 +52,7 @@ class nnUNetLitModule(LightningModule):
             sliding_window_overlap: Minimum overlap for sliding window inference.
             sliding_window_importance_map: Importance map used for sliding window inference.
             save_prediction: Whether to save the test predictions.
+            name: Name of the network.
         """
         super().__init__()
         # ignore net and loss as they are nn.module and will be saved automatically
