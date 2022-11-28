@@ -1,0 +1,4 @@
+_target_: ascent.utils.scheduler.poly_lr.PolynomialLR
+
+_partial_: true
+max_decay_steps: ${trainer.max_epochs}

@@ -1,41 +1,12 @@
+defaults:
+  - net: unet
+  - optimizer: sgd
+  - scheduler: polylr
+  - loss: dice_ce
+
 _target_: ascent.models.nnunet_module.nnUNetLitModule
 
-optimizer:
-  _target_: torch.optim.SGD
-  _partial_: true
-  lr: 0.01
-  dampening: 0
-  momentum: 0.99
-  nesterov: True
-  weight_decay: 3e-05
-
-scheduler:
-  _target_: ascent.utils.scheduler.poly_lr.PolynomialLR
-  _partial_: true
-  max_decay_steps: ${trainer.max_epochs}
-
-net:
-  _target_: ascent.models.components.unet.UNet
-  in_channels: ???
-  num_classes: ???
-  patch_size: ???
-  kernels: ???
-  strides: ???
-  normalization_layer: "instance"
-  negative_slope: 1e-2
-  deep_supervision: True
-  attention: False
-  drop_block: False
-  residual: False
-  out_seg_bias: False
-
-loss:
-  _target_: ascent.utils.loss_functions.dice_loss.DC_and_CE_loss
-  soft_dice_kwargs: { "batch_dice": True, "smooth": 1e-5, "do_bg": False }
-  ce_kwargs: {}
-
 tta: True
-
 save_predictions: True
-
 save_npz: False
+name: nnUNet

@@ -1,0 +1,14 @@
+_target_: ascent.models.components.unet.UNet
+
+in_channels: ???
+num_classes: ???
+patch_size: ???
+kernels: ???
+strides: ???
+normalization_layer: "instance"
+negative_slope: 1e-2
+deep_supervision: True
+attention: False
+drop_block: False
+residual: False
+out_seg_bias: False

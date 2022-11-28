@@ -1,0 +1,23 @@
+_target_: ascent.models.components.spyrit_net.SpyritNet
+
+unwrap:
+  _target_: ascent.models.components.spyrit_related.unwrap.Robust2DUnwrap
+  shape: [40, 192]
+  mu: 1e-6
+
+denoiser:
+  _target_: ascent.models.components.unet.UNet
+  in_channels: 3
+  num_classes: 1
+  patch_size: [40, 192]
+  kernels: [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
+  strides: [[1, 1], [2, 2], [2, 2], [2, 2], [1, 2]]
+  normalization_layer: "instance"
+  negative_slope: 1e-2
+  deep_supervision: False
+  attention: False
+  drop_block: False
+  residual: False
+  out_seg_bias: True
+
+postprocess: True
