@@ -194,7 +194,7 @@ if __name__ == "__main__":
     initialize_config_dir(
         config_dir=str(root / "configs" / "datamodule"), job_name="test", version_base="1.2"
     )
-    cfg = compose(config_name="dealiasc_2d.yaml")
+    cfg = compose(config_name="dealiasreg_2d.yaml")
     cfg.in_channels = 2
     cfg.data_dir = str(root / "data")
     cfg.patch_size = [40, 192]
