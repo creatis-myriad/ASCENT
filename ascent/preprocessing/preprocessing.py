@@ -2,9 +2,9 @@ import itertools
 import os
 import pickle  # nosec B403
 from collections import OrderedDict
-from pathlib import Path
-from typing import Callable, Union
+from typing import Callable, Sequence, Union
 
+import monai
 import numpy as np
 from einops.einops import rearrange
 from joblib import Parallel, delayed
@@ -168,13 +168,14 @@ class SegPreprocessor:
 
     def __init__(
         self,
-        dataset_path: Union[str, Path],
+        dataset_path: str,
         do_resample: bool = True,
         do_normalize: bool = True,
         num_workers: int = 12,
         overwrite_existing: bool = False,
     ) -> None:
-        """
+        """Initialize class instance.
+
         Args:
             dataset_path: Path to the dataset.
             do_resample: Whether to resample data.
@@ -197,15 +198,14 @@ class SegPreprocessor:
         self.intensity_properties = OrderedDict()
         self.all_size_reductions = []
 
-    def _create_datalist(self) -> tuple[list[dict[str, str]], list[str], dict[int, str]]:
-        """Read the dataset.json in 'raw' directory and extract useful information.
+    def _create_datalist(self) -> tuple[list[dict[str, str], ...], dict[int, str]]:
+        """Read the dataset.json in ``raw`` directory and extract useful information.
 
         Returns:
             - List of dictionaries containing the paths to the image and its label.
             - Image keys in datalist.
             - Dictionary containing the modalities indicated in dataset.json.
         """
-
         datalist = []
 
         json_file = os.path.join(self.dataset_path, "dataset.json")
@@ -235,9 +235,9 @@ class SegPreprocessor:
 
     def _get_target_spacing(
         self,
-        datalist: list[dict[str, Union[Path, str]]],
-        transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
-    ) -> list[float]:
+        datalist: list[dict[str, str]],
+        transforms: Callable[Union[Sequence[monai.transforms], monai.transforms]],
+    ) -> list[float, ...]:
         """Calculate the target spacing.
 
         The calculation of the target spacing involves:
@@ -246,14 +246,13 @@ class SegPreprocessor:
             - Handling of the case where the median image spacing is anisotropic.
 
         Args:
-            datalist: List of paths to all the images and labels.
+            datalist: List of dictionaries containing paths to the images and labels.
             transforms: Compose of sequences of monai's transformations to read the path provided
                 in datalist and transform the data.
 
         Returns:
             Target spacing.
         """
-
         spacings = self._run_parallel_from_raw(self._get_spacing, datalist, transforms)
         spacings = np.array(spacings)
         target_spacing = np.median(spacings, axis=0)
@@ -264,14 +263,14 @@ class SegPreprocessor:
 
     def _get_spacing(
         self,
-        data: dict[str, Union[Path, str]],
-        transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
+        data: dict[str, str],
+        transforms: Callable[Union[Sequence[monai.transforms], monai.transforms]],
         **kwargs,
-    ) -> list[float]:
+    ) -> list[float, ...]:
         """Get the image spacing from image in the data dictionary.
 
         Args:
-            data: Paths to a pair of image and label.
+            data: Dictionary containing image and label tensors.
             transforms: Compose of sequences of monai's transformations to read the path provided
                 in datalist and transform the data.
 
@@ -284,9 +283,9 @@ class SegPreprocessor:
 
     def _collect_intensities(
         self,
-        datalist: list[dict[str, Union[Path, str]]],
-        transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
-    ) -> dict[dict[str, float]]:
+        datalist: list[dict[str, str]],
+        transforms: Callable[Union[Sequence[monai.transforms], monai.transforms]],
+    ) -> dict[int, dict[str, float]]:
         """Collect the intensity properties of the whole dataset.
 
         Compute the min, max, mean, std, 0.5th percentile, and 99.5th percentile after gathering
@@ -323,16 +322,16 @@ class SegPreprocessor:
 
     def _get_intensities(
         self,
-        data: dict[str, Union[Path, str]],
-        transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
+        data: dict[str, str],
+        transforms: Callable[Union[Sequence[monai.transforms], monai.transforms]],
         **kwargs,
-    ) -> list:
+    ) -> list[float, ...]:
         """Collect the intensities of a data.
 
         Gather the intensities of all the foreground pixels in an image.
 
         Args:
-            data: Paths to a pair of image and label.
+            data: Dictionary containing image and label tensors.
             transforms: Compose of sequences of monai's transformations to read the path provided
                 in datalist and transform the data.
             kwargs: Indication of the desired modality for intensity collection.
@@ -350,8 +349,8 @@ class SegPreprocessor:
 
     def _crop_from_list_of_files(
         self,
-        datalist: list[dict[str, Union[Path, str]]],
-        transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
+        datalist: list[dict[str, str]],
+        transforms: Callable[Union[Sequence[monai.transforms], monai.transforms]],
     ) -> None:
         """Crop the dataset to non-zero region and save the cropped data.
 
@@ -369,14 +368,14 @@ class SegPreprocessor:
 
     def _crop(
         self,
-        data: dict[str, Union[Path, str]],
-        transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
+        data: dict[str, str],
+        transforms: Callable[Union[Sequence[monai.transforms], monai.transforms]],
         **kwargs,
     ) -> None:
         """Crop an image-label pair to non-zero region and save it.
 
         Args:
-            data: Paths to a pair of image and label.
+            data: Dictionary containing image and label tensors.
             transforms: Compose of sequences of monai's transformations to read the path provided
                 in datalist and transform the data.
         """
@@ -428,39 +427,42 @@ class SegPreprocessor:
                 pickle.dump(properties, f)  # nosec B301
 
     @staticmethod
-    def get_case_identifier_from_raw_data(data: dict[str, Union[Path, str]]) -> str:
+    def get_case_identifier_from_raw_data(data: dict[str, str]) -> str:
         """Extract the case identifier for files in raw dataset.
 
         Example:
             ~/abc/def/ghi/BraTS_0001_0000.nii.gz -> BraTS_0001
 
         Args:
-            data: Paths to a pair of image and label.
+            data: Dictionary containing image and label tensors.
 
         Returns:
             Case identifier.
         """
-
         return os.path.basename(data["image"].meta["filename_or_obj"]).split(".nii.gz")[0][:-5]
 
     @staticmethod
-    def get_case_identifier_from_npz(case: Union[Path, str]) -> str:
-        """Extract the case identifier for files in cropped dataset.
+    def get_case_identifier_from_npz(case: str) -> str:
+        """Extract the case identifier from cropped .npz file.
 
         Example:
             ~/abc/def/ghi/BraTS_0001_0000.npz -> BraTS_0001
 
         Args:
-            data: Paths to a pair of image and label.
+            case: Path to a .npz file.
 
         Returns:
             Case identifier.
         """
-
         case_identifier = os.path.basename(case)[:-4]
         return case_identifier
 
-    def _get_all_classes(self):
+    def _get_all_classes(self) -> list[int, ...]:
+        """Get list of classes excluding background from dataset.json.
+
+        Returns:
+            List of classes excluding background.
+        """
         dataset_json = load_json(os.path.join(self.dataset_path, "dataset.json"))
         classes = dataset_json["labels"]
         all_classes = [int(i) for i in classes.keys() if int(i) > 0]
@@ -468,9 +470,7 @@ class SegPreprocessor:
 
     def _check_anisotropy(
         self,
-        spacing: list[
-            float,
-        ],
+        spacing: list[float, ...],
     ) -> bool:
         """Check whether the spacing is anisotropic.
 
@@ -490,9 +490,7 @@ class SegPreprocessor:
 
     def _calculate_new_shape(
         self,
-        spacing: list[
-            float,
-        ],
+        spacing: list[float, ...],
         shape: Union[list, tuple],
     ) -> list:
         """Calculate the new shape after resampling.
@@ -504,17 +502,14 @@ class SegPreprocessor:
         Returns:
             New shape after resampling.
         """
-
         spacing_ratio = np.array(spacing) / np.array(self.target_spacing)
         new_shape = (spacing_ratio * np.array(shape)).astype(int).tolist()
         return new_shape
 
     def _get_all_size_reductions(
         self,
-        list_of_cropped_npz_files: list[
-            Union[str, Path],
-        ],
-    ) -> list[float]:
+        list_of_cropped_npz_files: list[str, ...],
+    ) -> list[float, ...]:
         """Gather all the size reductions after cropping the dataset.
 
         Args:
@@ -523,7 +518,6 @@ class SegPreprocessor:
         Returns:
             List containing all the size reductions after cropping.
         """
-
         properties = self._run_parallel_from_cropped(
             self._get_size_reduction, list_of_cropped_npz_files
         )
@@ -538,11 +532,10 @@ class SegPreprocessor:
         Returns:
             Size reduction after cropping.
         """
-
         properties = self._load_properties_of_cropped(case_identifier)
         return properties["cropping_size_reduction"]
 
-    def _load_cropped(self, case_identifier) -> tuple[np.ndarray, np.ndarray, dict]:
+    def _load_cropped(self, case_identifier: str) -> tuple[np.ndarray, np.ndarray, dict]:
         """Load image, label and properties of a cropped data.
 
         Args:
@@ -553,7 +546,6 @@ class SegPreprocessor:
             - Label numpy array
             - Data properties
         """
-
         all_data = np.load(os.path.join(self.cropped_folder, "%s.npz" % case_identifier))["data"]
         data = all_data[:-1].astype(np.float32)
         seg = all_data[-1:]
@@ -569,14 +561,11 @@ class SegPreprocessor:
         Returns:
             Data properties.
         """
-
         with open(os.path.join(self.cropped_folder, "%s.pkl" % case_identifier), "rb") as f:
             properties = pickle.load(f)  # nosec B301
         return properties
 
-    def _determine_whether_to_use_mask_for_norm(
-        self,
-    ) -> dict[bool]:
+    def _determine_whether_to_use_mask_for_norm(self) -> dict[int, bool]:
         """Determine whether to use non-zero mask for data normalization.
 
         Use non-zero mask for normalization when the image is not a CT and when the cropping to
@@ -585,7 +574,6 @@ class SegPreprocessor:
         Returns:
             Boolean flags to indicate the use of non-zero mask for each modality.
         """
-
         # only use the nonzero mask for normalization of the cropping based on it resulted in a
         # decrease in image size (this is an indication that the data is something like brats/isles
         # and then we want to normalize in the brain region only)
@@ -607,13 +595,12 @@ class SegPreprocessor:
         use_nonzero_mask_for_normalization = use_nonzero_mask_for_norm
         return use_nonzero_mask_for_normalization
 
-    def _preprocess(self, list_of_cropped_npz_files: list[Union[Path, str]]) -> None:
+    def _preprocess(self, list_of_cropped_npz_files: list[str, ...]) -> None:
         """Preprocess (resample and normalize) the dataset.
 
         Args:
             list_of_cropped_npz_files: Cropped npz files.
         """
-
         os.makedirs(self.preprocessed_npz_folder, exist_ok=True)
 
         self._run_parallel_from_cropped(self._resample_and_normalize, list_of_cropped_npz_files)
@@ -627,7 +614,6 @@ class SegPreprocessor:
         Args:
             case_identifier: Case identifier of a data.
         """
-
         data, seg, properties = self._load_cropped(case_identifier)
         if not self.do_resample:
             print("\n", "Skip resampling...")
@@ -697,7 +683,6 @@ class SegPreprocessor:
             - Normalized image.
             - Label.
         """
-
         assert len(self.use_nonzero_mask) == len(data)
         print("Normalization...")
         for c in range(len(data)):
@@ -729,12 +714,12 @@ class SegPreprocessor:
         return data, seg
 
     def _get_all_shapes_after_resampling(
-        self, list_of_preprocessed_npz_files: list[Union[Path, str]]
-    ) -> list[np.array]:
+        self, list_of_preprocessed_npz_files: list[str, ...]
+    ) -> list[np.ndarray, ...]:
         """Get all shapes after resampling.
 
         Args:
-            list_of_preprocessed_npz_files: List of preprocessed npz data.
+            list_of_preprocessed_npz_files: List of preprocessed .npz filenames.
 
         Returns:
             List of all shapes after resampling.
@@ -744,26 +729,28 @@ class SegPreprocessor:
         )
         return shapes
 
-    def _get_shape_after_resampling(self, case_identifier: str) -> dict:
+    def _get_shape_after_resampling(self, case_identifier: str) -> np.ndarray:
         """Get the shape after resampling of a preprocessed data.
 
         Args:
             case_identifier: Case identifier of a data.
 
         Returns:
-            Data properties.
+            Numpy array containing case identifier's shape after resampling.
         """
-
         with open(
             os.path.join(self.preprocessed_npz_folder, "%s.pkl" % case_identifier), "rb"
         ) as f:
             properties = pickle.load(f)  # nosec B301
         return properties["shape_after_resampling"]
 
-    def _save_dataset_properties(self, list_of_preprocessed_npz_files) -> None:
+    def _save_dataset_properties(self, list_of_preprocessed_npz_files: list[str, ...]) -> None:
         """Save useful dataset properties that will be used during inference and for experiment
-        planning."""
+        planning.
 
+        Args:
+            list_of_preprocessed_npz_files: List containing all preprocessed npz file paths.
+        """
         prop = OrderedDict()
         prop["do_resample"] = self.do_resample
         prop["spacing_after_resampling"] = self.target_spacing
@@ -786,10 +773,10 @@ class SegPreprocessor:
     def _run_parallel_from_raw(
         self,
         func: Callable,
-        datalist: list[dict[str, Union[Path, str]]],
-        transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
+        datalist: list[dict[str, str]],
+        transforms: Callable[Union[Sequence[monai.transforms], monai.transforms]],
         **kwargs,
-    ):
+    ) -> list:
         """Parallel runs to perform operations on raw data.
 
         Args:
@@ -797,24 +784,28 @@ class SegPreprocessor:
             datalist: List of paths to all the images and labels.
             transforms: Compose of sequences of monai's transformations to read the path provided
                 in datalist and transform the data.
-            kwargs: Indication of the desired modality for intensity collection. To be passed to
-                _get_intensities().
-        """
+            kwargs: Keyword arguments to be passed to self._get_intensities(). Indication of the
+                desired modality for intensity collection
 
+        Returns:
+            List containing the results returned by parallel runs of ``func``.
+        """
         return Parallel(n_jobs=self.num_workers)(
             delayed(func)(data, transforms, **kwargs) for data in datalist
         )
 
     def _run_parallel_from_cropped(
-        self, func: Callable, list_of_cropped_npz_files: list[Union[Path, str]]
-    ):
+        self, func: Callable, list_of_cropped_npz_files: list[str, ...]
+    ) -> list:
         """Parallel runs to perform operations on cropped data.
 
         Args:
             func: Function to be called.
-            list_of_cropped_npz_files: Cropped .npz files.
-        """
+            list_of_cropped_npz_files: List of paths of cropped .npz files.
 
+        Returns:
+            List containing the results returned by parallel runs of ``func``.
+        """
         return Parallel(n_jobs=self.num_workers)(
             delayed(func)(self.get_case_identifier_from_npz(npz_file))
             for npz_file in list_of_cropped_npz_files
@@ -872,24 +863,24 @@ class RegPreprocessor(SegPreprocessor):
 
     def _get_intensities(
         self,
-        data: dict[str, Union[Path, str]],
+        data: dict[str, str],
         transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
         **kwargs,
-    ) -> list:
+    ) -> list[float, ...]:
         """Collect the intensities of a data.
 
         Gather the intensities of all the foreground pixels in an image.
 
         Args:
-            data: Paths to a pair of image and label.
-            transforms: Compose of sequences of monai's transformations to read the path provided
-                in datalist and transform the data.
-            kwargs: Indication of the desired modality for intensity collection.
+            data: Dictionary containing image and label tensors.
+            transforms: Compose of sequences of monai's transformations to load and transform the
+                data.
+            kwargs: Keyword arguments to be passed to self._get_intensities(). Indication of the
+                desired modality for intensity collection
 
         Returns:
             Image intensities of foreground pixels.
         """
-
         # simply return all intensities of the image in a list
         data = transforms(data)
         image = data["image"].astype(np.float32)
@@ -898,18 +889,17 @@ class RegPreprocessor(SegPreprocessor):
 
     def _crop(
         self,
-        data: dict[str, Union[Path, str]],
-        transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
+        data: dict[str, str],
+        transforms: Callable[Union[Sequence[monai.transforms], monai.transforms]],
         **kwargs,
     ) -> None:
         """Crop an image-label pair to non-zero region and save it.
 
         Args:
-            data: Paths to a pair of image and label.
+            data: Dictionary containing image and label tensors.
             transforms: Compose of sequences of monai's transformations to read the path provided
                 in datalist and transform the data.
         """
-
         # skip cropping but save some useful information
         list_of_data_files = data["image"]
         case_identifier = os.path.basename(list_of_data_files[0]).split(".nii.gz")[0][:-5]
@@ -941,18 +931,15 @@ class RegPreprocessor(SegPreprocessor):
             with open(properties_name, "wb") as f:
                 pickle.dump(properties, f)  # nosec B301
 
-    def _determine_whether_to_use_mask_for_norm(
-        self,
-    ) -> dict[bool]:
+    def _determine_whether_to_use_mask_for_norm(self) -> dict[int, bool]:
         """Determine whether to use non-zero mask for data normalization.
 
         Use non-zero mask for normalization when the image is not a CT and when the cropping to
         non-zero reduces the median image size to more than 25%.
 
         Returns:
-            Boolean flags to indicate the use of non-zero mask for each modality.
+            Dictionary of boolean flags to indicate the use of non-zero mask for each modality.
         """
-
         # disable non zero mask normalization as we don't have the segmentation
         num_modalities = len(list(self.modalities.keys()))
         use_nonzero_mask_for_norm = OrderedDict()
@@ -962,10 +949,13 @@ class RegPreprocessor(SegPreprocessor):
 
         return use_nonzero_mask_for_norm
 
-    def _save_dataset_properties(self, list_of_preprocessed_npz_files) -> None:
+    def _save_dataset_properties(self, list_of_preprocessed_npz_files: list[str, ...]) -> None:
         """Save useful dataset properties that will be used during inference and for experiment
-        planning."""
+        planning.
 
+        Args:
+            list_of_preprocessed_npz_files: List containing all preprocessed npz file paths.
+        """
         prop = OrderedDict()
         prop["do_resample"] = self.do_resample
         prop["spacing_after_resampling"] = self.target_spacing
@@ -994,7 +984,6 @@ class RegPreprocessor(SegPreprocessor):
         Args:
             case_identifier: Case identifier of a data.
         """
-
         data, seg, properties = self._load_cropped(case_identifier)
         if not self.do_resample:
             print("\n", "Skip resampling...")
@@ -1101,7 +1090,7 @@ class RegPreprocessor(SegPreprocessor):
 class DealiasPreprocessor(RegPreprocessor):
     """Preprocessor for deep unfolding dealiasing."""
 
-    def _create_datalist(self) -> tuple[list[dict[str, str]], list[str], dict[int, str]]:
+    def _create_datalist(self) -> tuple[list[dict[str, str], ...], dict[int, str]]:
         """Read the dataset.json in 'raw' directory and extract useful information.
 
         Returns:
@@ -1109,7 +1098,6 @@ class DealiasPreprocessor(RegPreprocessor):
             - Image keys in datalist.
             - Dictionary containing the modalities indicated in dataset.json.
         """
-
         datalist = []
 
         json_file = os.path.join(self.dataset_path, "dataset.json")
@@ -1145,7 +1133,7 @@ class DealiasPreprocessor(RegPreprocessor):
 
         return datalist, modalities
 
-    def _load_cropped(self, case_identifier) -> tuple[np.ndarray, np.ndarray, dict]:
+    def _load_cropped(self, case_identifier: str) -> tuple[np.ndarray, np.ndarray, dict]:
         """Load image, label and properties of a cropped data.
 
         Args:
@@ -1156,7 +1144,6 @@ class DealiasPreprocessor(RegPreprocessor):
             - Label numpy array
             - Data properties
         """
-
         all_data = np.load(os.path.join(self.cropped_folder, "%s.npz" % case_identifier))["data"]
         data = all_data[:-2].astype(np.float32)
         seg = all_data[-2:].astype(np.float32)
@@ -1172,7 +1159,6 @@ class DealiasPreprocessor(RegPreprocessor):
         Args:
             case_identifier: Case identifier of a data.
         """
-
         # seg is now a double-channel array, seg[0] contains the dealiased velocity while seg[1]
         # contains the segmentation of aliased pixels
         data, seg, properties = self._load_cropped(case_identifier)
