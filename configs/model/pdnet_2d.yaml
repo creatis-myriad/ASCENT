@@ -5,3 +5,6 @@ defaults:
   - override scheduler: coslr
 
 name: PDNet
+
+optimizer:
+  weight_decay: 0.001
