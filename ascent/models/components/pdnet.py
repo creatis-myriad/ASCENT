@@ -342,6 +342,7 @@ class PDNetV2(nn.Module):
         self.in_channels = in_channels
         self.num_classes = num_classes
         self.patch_size = patch_size
+        self.negative_slope = 1e-2
 
         # to keep the compatibility with nnUNetLitModule
         self.deep_supervision = False
