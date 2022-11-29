@@ -163,7 +163,7 @@ class ConvLayer(nn.Module):
         kernel_size: Union[int, tuple[int, ...]],
         stride: Union[int, tuple[int, ...]],
         **kwargs,
-    ):
+    ) -> None:
         """Initialize class instance.
 
         Args:
@@ -203,7 +203,7 @@ class ConvBlock(nn.Module):
         kernel_size: Union[int, tuple[int, ...]],
         stride: Union[int, tuple[int, ...]],
         **kwargs,
-    ):
+    ) -> None:
         """Initialize class instance.
 
         Args:
@@ -236,7 +236,7 @@ class ResidBlock(nn.Module):
         kernel_size: Union[int, tuple[int, ...]],
         stride: Union[int, tuple[int, ...]],
         **kwargs,
-    ):
+    ) -> None:
         """Initialize class instance.
 
         Args:
@@ -292,7 +292,7 @@ class AttentionLayer(nn.Module):
             "batchnorm2d", "batchnorm3d", "instancenorm2d", "instancenorm3d", "groupnorm"
         ],
         dim: Literal[2, 3],
-    ):
+    ) -> None:
         """Initialize class instance.
 
         Args:
@@ -323,7 +323,7 @@ class UpsampleBlock(nn.Module):
         stride: Union[int, tuple[int, ...]],
         bias: bool = False,
         **kwargs,
-    ):
+    ) -> None:
         """Initialize class instance.
 
         Args:
@@ -368,7 +368,7 @@ class OutputBlock(nn.Module):
 
     def __init__(
         self, in_channels: int, out_channels: int, dim: Literal[2, 3], bias: bool = False
-    ):
+    ) -> None:
         """Initialize class instance.
 
         Args:

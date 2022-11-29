@@ -29,7 +29,7 @@ from ascent.utils.transforms import (
 class nnUNetDealiasDataModule(nnUNetDataModule):
     """Data module for dealiasing using segmentation."""
 
-    def __init__(self, alias_transform: bool = True, **kwargs):
+    def __init__(self, alias_transform: bool = True, **kwargs) -> None:
         """Initializes class instance.
 
         Args:

@@ -35,7 +35,6 @@ class DealiasDataModule(nnUNetDataModule):
         Args:
             alias_transform: Whether to apply artificial aliasing augmentation.
         """
-
         super().__init__(**kwargs)
 
     def setup_transforms(self) -> None:
