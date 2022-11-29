@@ -187,6 +187,8 @@ class PDNet(nn.Module):
             bias=self.bias,
         )
 
+        self.apply(self.initialize_weights)
+
     @staticmethod
     def wrap(x: Tensor, wrap_param: float = 1.0, normalize: bool = False) -> Tensor:
         """Wrap any element with its absolute value surpassing the wrapping parameter.
@@ -284,6 +286,13 @@ class PDNet(nn.Module):
 
         return out
 
+    def initialize_weights(self, module: nn.Module) -> None:
+        """Initialize the weights of all nn Modules using Kaimimg normal initialization."""
+        if isinstance(module, (nn.Conv3d, nn.Conv2d, nn.ConvTranspose3d, nn.ConvTranspose2d)):
+            module.weight = nn.init.kaiming_normal_(module.weight, a=self.negative_slope)
+            if module.bias is not None:
+                module.bias = nn.init.constant_(module.bias, 0)
+
 
 class PDNetV2(nn.Module):
     """Modified primal-dual based reconstruction network to perform color Doppler dealiasing.
@@ -349,6 +358,8 @@ class PDNetV2(nn.Module):
 
         self.output_conv = Conv2d(1, self.num_classes, 3, 1, 1, bias=False)
 
+        self.apply(self.initialize_weights)
+
     @staticmethod
     def wrap(x: Tensor, wrap_param: float = 1.0, normalize: bool = False) -> Tensor:
         """Wrap any element with its absolute value surpassing the wrapping parameter.
@@ -402,6 +413,13 @@ class PDNetV2(nn.Module):
         out = self.output_conv(primal[:, 0:1, ...])
 
         return out
+
+    def initialize_weights(self, module: nn.Module) -> None:
+        """Initialize the weights of all nn Modules using Kaimimg normal initialization."""
+        if isinstance(module, (nn.Conv3d, nn.Conv2d, nn.ConvTranspose3d, nn.ConvTranspose2d)):
+            module.weight = nn.init.kaiming_normal_(module.weight, a=self.negative_slope)
+            if module.bias is not None:
+                module.bias = nn.init.constant_(module.bias, 0)
 
 
 if __name__ == "__main__":
