@@ -54,7 +54,7 @@ class nnUNetDataModule(LightningDataModule):
         pin_memory: bool = True,
         test_splits: bool = True,
         seg_label: bool = True,
-    ):
+    ) -> None:
         """Initializes class instance.
 
         Args:
@@ -110,8 +110,16 @@ class nnUNetDataModule(LightningDataModule):
         log.info("Done")
 
     @staticmethod
-    def do_splits(splits_file: Union[Path, str], preprocessed_path: Union[Path, str], test_splits):
-        """Create 5-fold train/validation/test splits."""
+    def do_splits(
+        splits_file: Union[Path, str], preprocessed_path: Union[Path, str], test_splits: bool
+    ) -> None:
+        """Create 5-fold train/validation/test splits if ```splits_final.pkl``` does not exist.
+
+        Args:
+            splits_file: Path containing ```splits_final.pkl```.
+            preprocessed_path: Path to preprocessed folder.
+            test_splits: Whether to do test splitting.
+        """
         if not os.path.isfile(splits_file):
             log.info("Creating new split...")
             splits = []
@@ -139,7 +147,7 @@ class nnUNetDataModule(LightningDataModule):
         else:
             log.info(f"Using splits from existing split file: {splits_file}")
 
-    def setup(self, stage: Optional[str] = None):
+    def setup(self, stage: Optional[str] = None) -> None:
         """Load data.
 
         More detailed steps:
@@ -397,8 +405,12 @@ class nnUNetDataModule(LightningDataModule):
         )
 
     @staticmethod
-    def convert_to_npy(npz_file, key="data"):
-        """Convert .npz file to .npy."""
+    def convert_to_npy(npz_file: str, key="data"):
+        """Decompress .npz file to .npy.
+
+        Args:
+            npz_file: Path of the npz file to be decompressed.
+        """
         if not os.path.isfile(npz_file[:-3] + "npy"):
             a = np.load(npz_file)[key]
             np.save(npz_file[:-3] + "npy", a)

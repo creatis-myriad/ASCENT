@@ -1,6 +1,6 @@
 from copy import deepcopy
 from pathlib import Path
-from typing import Union
+from typing import Sequential, Union
 
 import numpy as np
 
@@ -22,6 +22,11 @@ class nnUNetPlanner3D(nnUNetPlanner2D):
     """
 
     def __init__(self, preprocessed_folder: Union[str, Path]) -> None:
+        """Initialize class instance.
+
+        Args:
+            preprocessed_folder: Path to 'preprocessed' folder of a dataset.
+        """
         super().__init__(preprocessed_folder)
         self.unet_max_num_filters = 320
         self.anisotropy_threshold = 3
@@ -33,7 +38,7 @@ class nnUNetPlanner3D(nnUNetPlanner2D):
         num_cases: int,
         num_classes: int,
         num_modalities: int,
-    ):
+    ) -> dict[str, Union[int, bool, list[Sequential[int]], list[list[Sequential[int]]]]]:
         """Compute training and model parameters based on nnUNet's heuristic rules.
 
         Computation of 3D input patch shape is different from 2D. Instead of using directly the
@@ -177,8 +182,8 @@ class nnUNetPlanner3D(nnUNetPlanner2D):
 
         return plan
 
-    def plan_experiment(self):
-        """Plan experiment."""
+    def plan_experiment(self) -> None:
+        """Plan experiment and write plans to yaml files."""
         log.info("Planning experiment for 3D U-Net...")
         all_shapes_after_resampling = self.dataset_properties["all_shapes_after_resampling"]
         current_spacing = self.dataset_properties["spacing_after_resampling"]

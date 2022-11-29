@@ -17,7 +17,7 @@ class SpyritNet(nn.Module):
     """
 
     def __init__(self, unwrap: nn.Module, denoiser: nn.Module, postprocess: bool = True):
-        """Initialize SpyritNet.
+        """Initialize class instance.
 
         Args:
             unwrap: Analytical phase unwrapping algorithm.

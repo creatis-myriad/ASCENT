@@ -17,9 +17,10 @@ class Robust2DUnwrap(nn.Module):
     create a weighted input. This avoids the reconstruction of A matrix (which was A1'@W@A1 + A2'@W@A2)
     during the forward pass since the weight varies for each input.
 
-    Reference: D. C. Ghiglia and L. A. Romero. "Robust two-dimensional weighted and unweighted
-    phase unwrapping that uses fast transforms and iterative methods". Journal of the Optical
-    Society of America A 1994.
+    Reference:
+        D. C. Ghiglia and L. A. Romero. "Robust two-dimensional weighted and unweighted
+        phase unwrapping that uses fast transforms and iterative methods". Journal of the Optical
+        Society of America A 1994.
     """
 
     def __init__(
@@ -33,11 +34,11 @@ class Robust2DUnwrap(nn.Module):
         """ Define the sparse finite difference matrices (for faster matrix multiplication) and
         fully connected layers.
 
-            Args:
-                shape: Shape of the input tensor.
-                mu: Initial regularization weight.
-                wrap_param: Wrapping parameter.
-                normalize: Whether to normalize the wrapped tensor between -1 and 1.
+        Args:
+            shape: Shape of the input tensor.
+            mu: Initial regularization weight.
+            wrap_param: Wrapping parameter.
+            normalize: Whether to normalize the wrapped tensor between -1 and 1.
         """
         # learnable weight for regularization
         self.mu = nn.Parameter(torch.tensor([float(mu)], requires_grad=True))

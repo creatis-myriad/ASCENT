@@ -26,7 +26,8 @@ class nnUNetPlanner2D:
     """
 
     def __init__(self, preprocessed_folder: Union[str, Path]) -> None:
-        """
+        """Initialize class instance.
+
         Args:
             preprocessed_folder: Path to 'preprocessed' folder of a dataset.
 
@@ -182,8 +183,8 @@ class nnUNetPlanner2D:
         }
         return plan
 
-    def plan_experiment(self):
-        """Plan experiment."""
+    def plan_experiment(self) -> None:
+        """Plan experiment and write plans to yaml files."""
         log.info("Planning experiment for 2D U-Net...")
         all_shapes_after_resampling = self.dataset_properties["all_shapes_after_resampling"]
         current_spacing = self.dataset_properties["spacing_after_resampling"]

@@ -42,7 +42,7 @@ class MNISTDataModule(LightningDataModule):
         batch_size: int = 64,
         num_workers: int = 0,
         pin_memory: bool = False,
-    ):
+    ) -> None:
         super().__init__()
 
         # this line allows to access init params with 'self.hparams' attribute
@@ -59,7 +59,12 @@ class MNISTDataModule(LightningDataModule):
         self.data_test: Optional[Dataset] = None
 
     @property
-    def num_classes(self):  # noqa: D102
+    def num_classes(self) -> int:
+        """Get number of classes.
+
+        Returns:
+            Number of classes.
+        """
         return 10
 
     def prepare_data(self):

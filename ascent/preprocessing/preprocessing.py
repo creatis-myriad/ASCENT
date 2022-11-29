@@ -33,7 +33,6 @@ def resample_image(
     Returns:
         Resampled image.
     """
-
     shape = np.array(image[0].shape)
     if not np.all(shape == np.array(new_shape)):
         resized_channels = []
@@ -97,7 +96,6 @@ def resample_label(
     Returns:
         Resampled label.
     """
-
     shape = np.array(label[0].shape)
     if not np.all(shape == np.array(new_shape)):
         reshaped = np.zeros(new_shape, dtype=np.uint8)
@@ -183,7 +181,6 @@ class SegPreprocessor:
             num_workers: Number of workers to run the preprocessing.
             overwrite_existing: Whether to overwrite the preprocessed data if it exists.
         """
-
         self.dataset_path = os.path.join(dataset_path, "raw")
         self.cropped_folder = os.path.join(dataset_path, "cropped")
         self.preprocessed_folder = os.path.join(dataset_path, "preprocessed")
@@ -277,7 +274,6 @@ class SegPreprocessor:
         Returns:
             Image spacing.
         """
-
         data = transforms(data)
         return data["image"].meta["pixdim"][1:4].tolist()
 
@@ -299,7 +295,6 @@ class SegPreprocessor:
         Returns:
             Intensity properties dictionary.
         """
-
         intensity_properties = OrderedDict()
         for i in range(len(self.modalities)):
             mod = {"modality": i}
@@ -339,7 +334,6 @@ class SegPreprocessor:
         Returns:
             Image intensities of foreground pixels.
         """
-
         data = transforms(data)
         image = data["image"].astype(np.float32)
         label = data["label"].astype(np.uint8)
@@ -362,7 +356,6 @@ class SegPreprocessor:
             transforms: Compose of sequences of monai's transformations to read the path provided
                 in datalist and transform the data.
         """
-
         os.makedirs(self.cropped_folder, exist_ok=True)
         self._run_parallel_from_raw(self._crop, datalist, transforms)
 
@@ -379,7 +372,6 @@ class SegPreprocessor:
             transforms: Compose of sequences of monai's transformations to read the path provided
                 in datalist and transform the data.
         """
-
         list_of_data_files = data["image"]
         case_identifier = os.path.basename(list_of_data_files[0]).split(".nii.gz")[0][:-5]
         if self.overwrite_existing or (
@@ -813,7 +805,6 @@ class SegPreprocessor:
 
     def run(self) -> None:
         """Perform the cropping, resampling, normalization and saving of the dataset."""
-
         # get all training data
         datalist, self.modalities = self._create_datalist()
 
@@ -1044,7 +1035,6 @@ class RegPreprocessor(SegPreprocessor):
 
     def run(self) -> None:
         """Perform the resampling, normalization and saving of the dataset."""
-
         # get all training data
         datalist, self.modalities = self._create_datalist()
 
