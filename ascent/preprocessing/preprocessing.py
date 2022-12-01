@@ -2,9 +2,8 @@ import itertools
 import os
 import pickle  # nosec B403
 from collections import OrderedDict
-from typing import Callable, Sequence, Union
+from typing import Callable, Union
 
-import monai
 import numpy as np
 from einops.einops import rearrange
 from joblib import Parallel, delayed
