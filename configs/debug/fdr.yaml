@@ -7,3 +7,5 @@ defaults:
 
 trainer:
   fast_dev_run: true
+  limit_val_batches: 1
+  accelerator: gpu

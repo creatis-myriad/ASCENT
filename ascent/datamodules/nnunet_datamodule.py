@@ -248,7 +248,7 @@ class nnUNetDataModule(LightningDataModule):
         return DataLoader(
             dataset=self.data_train,
             batch_size=self.hparams.batch_size,
-            num_workers=self.hparams.num_workers,
+            num_workers=max(self.hparams.num_workers, 1),
             pin_memory=self.hparams.pin_memory,
             shuffle=False,
             persistent_workers=True,
@@ -258,7 +258,7 @@ class nnUNetDataModule(LightningDataModule):
         return DataLoader(
             dataset=self.data_val,
             batch_size=self.hparams.batch_size,
-            num_workers=self.hparams.num_workers,
+            num_workers=max(self.hparams.num_workers, 1),
             pin_memory=self.hparams.pin_memory,
             shuffle=False,
             persistent_workers=True,
@@ -400,7 +400,7 @@ class nnUNetDataModule(LightningDataModule):
         Use Parallel to speed up the unpacking process.
         """
         npz_files = subfiles(self.full_data_dir, True, None, ".npz", True)
-        Parallel(n_jobs=self.hparams.num_workers)(
+        Parallel(n_jobs=max(self.hparams.num_workers, 1))(
             delayed(self.convert_to_npy)(npz_file) for npz_file in npz_files
         )
 
