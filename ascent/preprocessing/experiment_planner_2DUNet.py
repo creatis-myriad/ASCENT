@@ -2,7 +2,7 @@ import errno
 import os
 from copy import deepcopy
 from pathlib import Path
-from typing import Sequential, Union
+from typing import Sequence, Union
 
 import numpy as np
 import pyrootutils
@@ -63,7 +63,7 @@ class nnUNetPlanner2D:
         num_cases: int,
         num_classes: int,
         num_modalities: int,
-    ) -> dict[str, Union[int, bool, list[Sequential[int]], list[list[Sequential[int]]]]]:
+    ) -> dict[str, Union[int, bool, list[Sequence[int]], list[list[Sequence[int]]]]]:
         """Compute training and model parameters based on nnUNet's heuristic rules.
 
         Args:
@@ -214,7 +214,7 @@ class nnUNetPlanner2D:
         self.write_plans_to_yaml(plan)
 
     def write_plans_to_yaml(
-        self, plan: dict[str, Union[int, bool, list[Sequential[int]], list[list[Sequential[int]]]]]
+        self, plan: dict[str, Union[int, bool, list[Sequence[int]], list[list[Sequence[int]]]]]
     ) -> None:
         """Write plans to yaml file.
 
