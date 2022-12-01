@@ -233,7 +233,7 @@ class SegPreprocessor:
     def _get_target_spacing(
         self,
         datalist: list[dict[str, str]],
-        transforms: Callable[Union[Sequence[monai.transforms], monai.transforms]],
+        transforms: Callable,
     ) -> list[float, ...]:
         """Calculate the target spacing.
 
@@ -261,7 +261,7 @@ class SegPreprocessor:
     def _get_spacing(
         self,
         data: dict[str, str],
-        transforms: Callable[Union[Sequence[monai.transforms], monai.transforms]],
+        transforms: Callable,
         **kwargs,
     ) -> list[float, ...]:
         """Get the image spacing from image in the data dictionary.
@@ -280,7 +280,7 @@ class SegPreprocessor:
     def _collect_intensities(
         self,
         datalist: list[dict[str, str]],
-        transforms: Callable[Union[Sequence[monai.transforms], monai.transforms]],
+        transforms: Callable,
     ) -> dict[int, dict[str, float]]:
         """Collect the intensity properties of the whole dataset.
 
@@ -318,7 +318,7 @@ class SegPreprocessor:
     def _get_intensities(
         self,
         data: dict[str, str],
-        transforms: Callable[Union[Sequence[monai.transforms], monai.transforms]],
+        transforms: Callable,
         **kwargs,
     ) -> list[float, ...]:
         """Collect the intensities of a data.
@@ -344,7 +344,7 @@ class SegPreprocessor:
     def _crop_from_list_of_files(
         self,
         datalist: list[dict[str, str]],
-        transforms: Callable[Union[Sequence[monai.transforms], monai.transforms]],
+        transforms: Callable,
     ) -> None:
         """Crop the dataset to non-zero region and save the cropped data.
 
@@ -362,7 +362,7 @@ class SegPreprocessor:
     def _crop(
         self,
         data: dict[str, str],
-        transforms: Callable[Union[Sequence[monai.transforms], monai.transforms]],
+        transforms: Callable,
         **kwargs,
     ) -> None:
         """Crop an image-label pair to non-zero region and save it.
@@ -766,7 +766,7 @@ class SegPreprocessor:
         self,
         func: Callable,
         datalist: list[dict[str, str]],
-        transforms: Callable[Union[Sequence[monai.transforms], monai.transforms]],
+        transforms: Callable,
         **kwargs,
     ) -> list:
         """Parallel runs to perform operations on raw data.
@@ -881,7 +881,7 @@ class RegPreprocessor(SegPreprocessor):
     def _crop(
         self,
         data: dict[str, str],
-        transforms: Callable[Union[Sequence[monai.transforms], monai.transforms]],
+        transforms: Callable,
         **kwargs,
     ) -> None:
         """Crop an image-label pair to non-zero region and save it.
