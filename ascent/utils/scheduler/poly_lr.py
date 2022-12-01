@@ -15,9 +15,7 @@ class PolynomialLR(_LRScheduler):
             power: The power of the polynomial.
         """
 
-        if max_decay_steps <= 1.0:
-            raise ValueError("max_decay_steps should be greater than 1.")
-        self.max_decay_steps = max_decay_steps
+        self.max_decay_steps = max(max_decay_steps, 1)
         self.end_learning_rate = end_learning_rate
         self.power = power
         self.last_step = 0
