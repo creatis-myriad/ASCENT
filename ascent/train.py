@@ -123,13 +123,16 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
             if ckpt_path == "":
                 log.warning("Best ckpt not found! Using current weights for testing...")
                 ckpt_path = None
+            else:
+                log.info(f"Loading best ckpt: {ckpt_path}")
         else:
             ckpt_path = trainer.checkpoint_callback.last_model_path
             if ckpt_path == "":
                 log.warning("Last ckpt not found! Using current weights for testing...")
                 ckpt_path = None
+            else:
+                log.info(f"Loading last ckpt: {ckpt_path}")
         trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
-        log.info(f"Best ckpt path: {ckpt_path}")
 
     test_metrics = trainer.callback_metrics
 

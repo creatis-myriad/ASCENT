@@ -4,22 +4,23 @@ defaults:
   - override /datamodule: dealiasm_2d
   - override /model: pdnetv2_2d
   - override /callbacks: nnunet
-  - override /logger: comet
+  - override /logger: wandb
   - override /trainer: nnunet
   - override /hydra: nnunet
 
-tags: ["dealiasm", "PDNetV2_2D"]
+tags: ["${model.name}_${nnUNet_variant}", "Fold${fold}"]
 task_name: "DEALIASMv2"
 fold: 0
 train: True
 test: True
 nnUNet_variant: 2D
-best_model: False
+best_model: True
 
 logger:
-  comet:
-    project_name: "PDNetV2"
-    experiment_name: "2D_Fold${fold}"
+  wandb:
+    project: "${task_name}"
+    name: "${model.name}_${nnUNet_variant}"
+    tags: ["Fold${fold}"]
 
 trainer:
   gradient_clip_val: 1

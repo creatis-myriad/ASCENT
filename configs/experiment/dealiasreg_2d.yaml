@@ -4,11 +4,11 @@ defaults:
   - override /datamodule: dealiasreg_2d
   - override /model: dealiasreg_2d
   - override /callbacks: nnunet
-  - override /logger: comet
+  - override /logger: wandb
   - override /trainer: nnunet
   - override /hydra: nnunet
 
-tags: ["DA"]
+tags: ["${model.name}_${nnUNet_variant}", "Fold${fold}"]
 task_name: "DEALIAS_reg"
 fold: 0
 train: True
@@ -24,6 +24,7 @@ callbacks:
     save_last: True
     auto_insert_metric_name: False
 logger:
-  comet:
-    project_name: "UNWRAP"
-    experiment_name: "2D_Fold${fold}"
+  wandb:
+    project: "${task_name}"
+    name: "${model.name}_${nnUNet_variant}"
+    tags: ["Fold${fold}"]

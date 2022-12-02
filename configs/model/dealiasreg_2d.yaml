@@ -12,3 +12,5 @@ net:
   strides: [[1, 1], [2, 2], [2, 2], [2, 2], [1, 2]]
   deep_supervision: False
   out_seg_bias: True
+
+name: nnUNetReg
