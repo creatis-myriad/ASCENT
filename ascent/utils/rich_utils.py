@@ -93,8 +93,12 @@ def enforce_tags(cfg: DictConfig, save_to_file: bool = False) -> None:
         log.info(f"Tags: {cfg.tags}")
 
     if save_to_file:
+        # to force the interpolation of variables
+        tags = []
+        for tag in cfg.tags:
+            tags.append(tag)
         with open(Path(cfg.paths.output_dir, "tags.log"), "w") as file:
-            rich.print(cfg.tags, file=file)
+            rich.print(tags, file=file)
 
 
 if __name__ == "__main__":

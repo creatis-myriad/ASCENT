@@ -4,11 +4,11 @@ defaults:
   - override /datamodule: dealias_2d
   - override /model: dealias_2d
   - override /callbacks: nnunet
-  - override /logger: comet
+  - override /logger: wandb
   - override /trainer: nnunet
   - override /hydra: nnunet
 
-tags: ["dealias", "nnUNet_2D"]
+tags: ["${model.name}_${nnUNet_variant}", "Fold${fold}"]
 task_name: "DEALIAS"
 fold: 0
 train: True
@@ -16,6 +16,7 @@ test: True
 nnUNet_variant: 2D
 best_model: False
 logger:
-  comet:
-    project_name: "DEALIAS"
-    experiment_name: "2D_Fold${fold}"
+  wandb:
+    project: "${task_name}"
+    name: "${model.name}_${nnUNet_variant}"
+    tags: ["Fold${fold}"]

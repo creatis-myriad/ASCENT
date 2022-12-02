@@ -301,11 +301,13 @@ class nnUNetPlanner2D:
                 {"override /datamodule": datamodule_yaml[:-5]},
                 {"override /model": model_yaml[:-5]},
                 {"override /callbacks": "nnunet"},
-                {"override /logger": "comet"},
+                {"override /logger": "wandb"},
                 {"override /trainer": "nnunet"},
                 {"override /hydra": "nnunet"},
             ],
-            "tags": flist([DoubleQuote(dataset_name.lower()), DoubleQuote(f"nnUNet_{dim}D")]),
+            "tags": flist(
+                [DoubleQuote("${model.name}_${nnUNet_variant}"), DoubleQuote("Fold${fold}")]
+            ),
             "task_name": DoubleQuote(dataset_name),
             "fold": 0,
             "train": True,
@@ -313,9 +315,10 @@ class nnUNetPlanner2D:
             "nnUNet_variant": f"{dim}D",
             "best_model": False,
             "logger": {
-                "comet": {
-                    "project_name": DoubleQuote(dataset_name),
-                    "experiment_name": DoubleQuote(str(dim) + "D_Fold${fold}"),
+                "wandb": {
+                    "project": DoubleQuote("${task_name}"),
+                    "name": DoubleQuote("${model.name}_${nnUNet_variant}"),
+                    "tags": flist([DoubleQuote("Fold${fold}")]),
                 }
             },
         }

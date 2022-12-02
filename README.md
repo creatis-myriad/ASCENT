@@ -226,16 +226,16 @@ By default, ASCENT applies test time augmentation during inference. To disable t
 
 ASCENTS supports all the logging frameworks proposed by PyTorch Lightning: [Weights&Biases](https://www.wandb.com/), [Neptune](https://neptune.ai/), [Comet](https://www.comet.ml/), [MLFlow](https://mlflow.org), [Tensorboard](https://www.tensorflow.org/tensorboard/).
 
-For nnUNet experiments, Comet logger is used by default. This requires you to create an account. After signing up, rename the [.env.example](.env.example) file to `.env` and specify your Comet API Key as follows:
+For nnUNet experiments, Weights&Biases logger is used by default. This requires you to create an account. After signing up, rename the [.env.example](.env.example) file to `.env` and specify your WANDB API Key as follows:
 
 ```bash
 ### API keys ###
-COMET_API_KEY=<your-comet-api-key>
+WANDB_API_KEY=<your-wandb-api-key>
 ```
 
-The environment variables in the `.env` file is automatically loaded by pyrootutils before each run.
+The environment variables in the `.env` file is automatically loaded by `pyrootutils` before each run.
 
-Override `logger` to use your logger of preference:
+You can simply override `logger` to use your logger of preference:
 
 ```bash
 # to use the default tensorboard logger of PyTorch Lightning
