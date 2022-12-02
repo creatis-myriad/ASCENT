@@ -26,6 +26,7 @@ hydra:
 
 trainer:
   max_epochs: 1
+  precision: 32
   accelerator: cpu # debuggers don't like gpus
   devices: 1 # debuggers don't like multiprocessing
   detect_anomaly: true # raise exception if NaN or +/-inf is detected in any tensor
