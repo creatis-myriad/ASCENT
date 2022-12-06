@@ -30,7 +30,7 @@ class DealiasDataModule(nnUNetDataModule):
     """Data module for dealiasing using deep unfolding."""
 
     def __init__(self, alias_transform: bool = True, **kwargs):
-        """Initializes class instance.
+        """Initialize class instance.
 
         Args:
             alias_transform: Whether to apply artificial aliasing augmentation.
@@ -117,21 +117,41 @@ class DealiasDataModule(nnUNetDataModule):
         if self.hparams.do_dummy_2D_data_aug and self.threeD:
             other_transforms.append(Convert2Dto3Dd(keys=["image", "label", "seg"], in_channels=2))
 
+        if self.hparams.in_channels > 1:
+            other_transforms.extend(
+                [
+                    SplitDimd(keys=["image"], dim=0),
+                    RandGaussianNoised(keys=["image_0", "label"], std=0.01, prob=0.15),
+                    RandGaussianSmoothd(
+                        keys=["image_0", "label"],
+                        sigma_x=(0.5, 1.15),
+                        sigma_y=(0.5, 1.15),
+                        prob=0.15,
+                    ),
+                    RandScaleIntensityd(keys=["image_0", "label"], factors=0.3, prob=0.15),
+                    RandAdjustContrastd(keys=["image_0", "label"], gamma=(0.7, 1.5), prob=0.3),
+                    SelectItemsd(keys=["image_0", "image_1", "label", "seg"]),
+                    ConcatItemsd(keys=["image_0", "image_1"], name="image"),
+                    SelectItemsd(keys=["image", "label", "seg"]),
+                ]
+            )
+        else:
+            other_transforms.extend(
+                [
+                    RandGaussianNoised(keys=["image", "label"], std=0.01, prob=0.15),
+                    RandGaussianSmoothd(
+                        keys=["image", "label"],
+                        sigma_x=(0.5, 1.15),
+                        sigma_y=(0.5, 1.15),
+                        prob=0.15,
+                    ),
+                    RandScaleIntensityd(keys=["image", "label"], factors=0.3, prob=0.15),
+                    RandAdjustContrastd(keys=["image", "label"], gamma=(0.7, 1.5), prob=0.3),
+                ]
+            )
+
         other_transforms.extend(
             [
-                SplitDimd(keys=["image"], dim=0),
-                RandGaussianNoised(keys=["image_0", "label"], std=0.01, prob=0.15),
-                RandGaussianSmoothd(
-                    keys=["image_0", "label"],
-                    sigma_x=(0.5, 1.15),
-                    sigma_y=(0.5, 1.15),
-                    prob=0.15,
-                ),
-                RandScaleIntensityd(keys=["image_0", "label"], factors=0.3, prob=0.15),
-                RandAdjustContrastd(keys=["image_0", "label"], gamma=(0.7, 1.5), prob=0.3),
-                SelectItemsd(keys=["image_0", "image_1", "label", "seg"]),
-                ConcatItemsd(keys=["image_0", "image_1"], name="image"),
-                SelectItemsd(keys=["image", "label", "seg"]),
                 RandFlipd(keys=["image", "label", "seg"], spatial_axis=[0], prob=0.5),
                 RandFlipd(keys=["image", "label", "seg"], spatial_axis=[1], prob=0.5),
             ]

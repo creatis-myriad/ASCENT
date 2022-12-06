@@ -1,0 +1,35 @@
+# @package _global_
+
+defaults:
+  - override /datamodule: dealiasv_2d
+  - override /model: pdnetreg_2d
+  - override /callbacks: nnunet
+  - override /logger: wandb
+  - override /trainer: nnunet
+  - override /hydra: nnunet
+
+tags: ["dealiasv", "PDNetReg_2D"]
+task_name: "DEALIASV"
+fold: 0
+train: True
+test: True
+nnUNet_variant: 2D
+best_model: True
+
+logger:
+  wandb:
+    project: "${task_name}"
+    name: "${model.name}_${nnUNet_variant}"
+    tags: ["Fold${fold}"]
+
+trainer:
+  gradient_clip_val: 1
+
+callbacks:
+  model_checkpoint:
+    dirpath: ${paths.output_dir}/checkpoints
+    filename: "epoch_{epoch:03d}"
+    monitor: "val/mse_MA"
+    mode: "min"
+    save_last: True
+    auto_insert_metric_name: False

@@ -8,3 +8,4 @@ num_classes: 3
 patch_size: [40, 192]
 negative_slope: 1e-2
 variant: 0
+out_conv: True

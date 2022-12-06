@@ -29,8 +29,8 @@ from ascent.utils.transforms import (
 class nnUNetDealiasDataModule(nnUNetDataModule):
     """Data module for dealiasing using segmentation."""
 
-    def __init__(self, alias_transform: bool = True, **kwargs) -> None:
-        """Initializes class instance.
+    def __init__(self, alias_transform: bool = True, **kwargs):
+        """Initialize class instance.
 
         Args:
             alias_transform: Whether to apply artificial aliasing augmentation.

@@ -59,6 +59,17 @@ class nnUNetRegLitModule(nnUNetLitModule):
             logger=True,
             batch_size=self.trainer.datamodule.hparams.batch_size,
         )
+
+        self.log(
+            "val/mse",
+            metric,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=self.trainer.datamodule.hparams.batch_size,
+        )
+
         self.log(
             "val/mse_MA",
             self.val_eval_criterion_MA,

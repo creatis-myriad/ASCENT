@@ -54,8 +54,8 @@ class nnUNetDataModule(LightningDataModule):
         pin_memory: bool = True,
         test_splits: bool = True,
         seg_label: bool = True,
-    ) -> None:
-        """Initializes class instance.
+    ):
+        """Initialize class instance.
 
         Args:
             data_dir: Path to the data directory.
