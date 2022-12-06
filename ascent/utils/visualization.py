@@ -49,6 +49,7 @@ def imagesc(
         image = image.cpu().detach().numpy()
 
     im = ax.imshow(image, colormap, **clim_args)
+
     plt.title(title)
 
     if show_colorbar:
