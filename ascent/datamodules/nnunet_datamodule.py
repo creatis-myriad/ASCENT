@@ -113,7 +113,8 @@ class nnUNetDataModule(LightningDataModule):
     def do_splits(
         splits_file: Union[Path, str], preprocessed_path: Union[Path, str], test_splits: bool
     ) -> None:
-        """Create 5-fold train/validation/test splits if ```splits_final.pkl``` does not exist.
+        """Create 5-fold train/validation splits or 10-fold train/validation/test splits if
+        ```splits_final.pkl``` does not exist.
 
         Args:
             splits_file: Path containing ```splits_final.pkl```.
@@ -126,23 +127,32 @@ class nnUNetDataModule(LightningDataModule):
             all_keys_sorted = np.sort(
                 list(get_case_identifiers_from_npz_folders(preprocessed_path))
             )
-            kfold = KFold(n_splits=5, shuffle=True, random_state=12345)
-            for i, (train_idx, val_and_test_idx) in enumerate(kfold.split(all_keys_sorted)):
-                train_keys = np.array(all_keys_sorted)[train_idx]
-                val_and_test_keys = np.array(all_keys_sorted)[val_and_test_idx]
-                val_and_test_keys_sorted = np.sort(val_and_test_keys)
-                if test_splits:
-                    kfold_2 = KFold(n_splits=2, shuffle=True, random_state=12345)
-                    _, (val_idx, test_idx) = kfold_2.split(val_and_test_keys_sorted)
-                    val_keys = np.array(val_and_test_keys_sorted)[val_idx]
-                    test_keys = np.array(val_and_test_keys_sorted)[test_idx]
-                else:
-                    val_keys = val_and_test_keys_sorted
-                splits.append(OrderedDict())
-                splits[-1]["train"] = train_keys
-                splits[-1]["val"] = val_keys
-                if test_splits:
+
+            if test_splits:
+                kfold = KFold(n_splits=10, shuffle=True, random_state=12345)
+                for i, (train_and_val_idx, test_idx) in enumerate(kfold.split(all_keys_sorted)):
+                    train_and_val_keys = np.array(all_keys_sorted)[train_and_val_idx]
+                    train_and_val_keys_sorted = np.sort(train_and_val_keys)
+                    test_keys = np.array(all_keys_sorted)[test_idx]
+
+                    train_keys, val_keys = train_test_split(
+                        train_and_val_keys_sorted, train_size=0.9, random_state=12345
+                    )
+
+                    splits.append(OrderedDict())
+                    splits[-1]["train"] = train_keys
+                    splits[-1]["val"] = val_keys
                     splits[-1]["test"] = test_keys
+            else:
+                kfold = KFold(n_splits=5, shuffle=True, random_state=12345)
+                for i, (train_idx, val_idx) in enumerate(kfold.split(all_keys_sorted)):
+                    train_keys = np.array(all_keys_sorted)[train_idx]
+                    val_keys = np.array(all_keys_sorted)[val_idx]
+
+                    splits.append(OrderedDict())
+                    splits[-1]["train"] = train_keys
+                    splits[-1]["val"] = val_keys
+
             save_pickle(splits, splits_file)
         else:
             log.info(f"Using splits from existing split file: {splits_file}")
