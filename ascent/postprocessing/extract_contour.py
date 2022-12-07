@@ -1,3 +1,4 @@
+from itertools import pairwise
 from typing import Sequence, Union
 
 import numpy as np
@@ -6,17 +7,24 @@ from skimage.measure import find_contours
 
 
 def endo_epi_control_points(
-    segmentation: np.ndarray, labels: Union[int, Sequence[int]], num_control_points: int
-) -> list[tuple[int, int]]:
+    segmentation: np.ndarray,
+    labels: Union[int, Sequence[int]],
+    num_control_points: int,
+    spacing: tuple[float, float],
+) -> np.ndarray:
     """Lists uniformly distributed control points along the contour of the endocardium/epicardium.
 
     Args:
         segmentation: (H, W), Segmentation map.
         labels: Labels of the classes that are part of the endocardium/epicardium.
         num_control_points: Number of control points to sample along the contour of the endocardium/epicardium.
+        spacing: Pixel spacing in ``mm``.
 
     Returns:
         Coordinates of the control points along the contour of the endocardium/epicardium.
+
+    Raises:
+        RuntimeError: When not exactly two corners are detected.
     """
     structure_mask = np.isin(segmentation, labels)
 
@@ -51,13 +59,21 @@ def endo_epi_control_points(
     outer_contours = contours[: right_corner_contour_idx + 1]
 
     # Round the contours' coordinates so they don't fall between pixels anymore
-    outer_contours = np.floor(outer_contours).astype(int)
+    outer_contours = np.round(outer_contours).astype(int)
 
-    # Sample the requested number of control points from within the contour, making sure the first and last control
-    # points correspond to the corners
-    control_points_idx = (
-        np.linspace(0, len(outer_contours) - 1, num=num_control_points).round().astype(int)
-    )
+    # Compute accumulated distance from left corner to right corner
+    dist = [0]
+    for p0, p1 in pairwise(outer_contours):
+        dist.append(dist[-1] + np.linalg.norm((p1 - p0) * np.array(spacing)))
+
+    dist = np.array(dist)
+
+    # Get equally spaced distance steps along the contour's perimeter
+    dist_step = np.linspace(dist[0], dist[-1], num=num_control_points)
+
+    # Get the closest points on the contour that respect the distance steps
+    control_points_idx = [np.argmin(np.abs(d - dist)) for d in dist_step]
+
     return np.roll(outer_contours[control_points_idx], 1, axis=1)
 
 
@@ -72,10 +88,13 @@ if __name__ == "__main__":
     )
     seg_itk = sitk.ReadImage(seg_path)
     seg_array = sitk.GetArrayFromImage(seg_itk)
-    points = endo_epi_control_points(seg_array[0], [1, 2], 15)
+    spacing = seg_itk.GetSpacing()
+    endo_points = endo_epi_control_points(seg_array[0], 1, 15, spacing[:-1])
+    epi_points = endo_epi_control_points(seg_array[0], [1, 2], 15, spacing[:-1])
 
-    plt.figure("Visualization", (18, 6))
+    plt.figure(figsize=(18, 6), dpi=1200)
     ax = plt.subplot(1, 3, 1)
     imagesc(ax, seg_array[0], clim=[0, 2], show_colorbar=False)
-    ax.scatter(points[:, 0], points[:, 1], c="r", s=2)
+    ax.scatter(endo_points[:, 0], endo_points[:, 1], c="r", s=4)
+    ax.scatter(epi_points[:, 0], epi_points[:, 1], c="b", s=4)
     plt.show()
