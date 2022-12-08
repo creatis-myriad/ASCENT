@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import ListedColormap
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from skimage import color
 from torch import Tensor
 
 
@@ -83,6 +84,36 @@ def dopplermap(m: int = 256) -> Type[ListedColormap]:
     J = np.array(J)
     cmap = ListedColormap(J)
     return cmap
+
+
+def overlay_mask_on_image(
+    image: np.ndarray,
+    segmentation: np.ndarray,
+    bg_label: int = 0,
+    alpha: float = 0.3,
+    colors: Optional[Union[list, list[list]]] = None,
+) -> np.ndarray:
+    """Overlay segmentation mask on given image.
+
+    Args:
+        image: Image to overlay.
+        segmentation: Segmentation mask.
+        bg_label: Label of background.
+        alpha: Opacity of colorized labels.
+        colors: Colors of overlay of the segmentation labels.
+
+    Returns:
+        RGB Numpy array of image overlaid with segmentation mask.
+
+    Raises:
+        ValueError: When image and segmentation have different shapes.
+    """
+    if not np.all(image.shape == segmentation.shape):
+        raise ValueError(
+            f"image {image.shape} does not have the same dimension as segmentation {segmentation.shape}!"
+        )
+
+    return color.label2rgb(segmentation, image, bg_label=bg_label, alpha=alpha, colors=colors)
 
 
 if __name__ == "__main__":
