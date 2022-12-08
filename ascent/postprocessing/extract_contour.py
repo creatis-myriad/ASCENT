@@ -1,11 +1,16 @@
+import errno
 import itertools
-from typing import Sequence, Union
+import os
+from typing import Optional, Sequence, Union
 
 import numpy as np
 from scipy import ndimage
 from scipy.signal import find_peaks
 from skimage.measure import find_contours
 from skimage.morphology import disk
+
+from ascent.utils.file_and_folder_operations import save_json
+from ascent.utils.type_definitions import PathLike
 
 
 def cart2pol(x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -127,7 +132,7 @@ def _endo_epi_contour(segmentation: np.ndarray, labels: Union[int, Sequence[int]
     # contour = np.array(np.where(contour == True)).transpose()
 
     # Identify the left/right markers at the base of the endo/epi
-    left_corner, right_corner = _endo_epi_base(structure_mask, contour, smooth=True, debug=True)
+    left_corner, right_corner = _endo_epi_base(structure_mask, contour, smooth=False, debug=False)
 
     contour = find_contours(structure_mask, level=0.9)[0]
 
@@ -189,27 +194,142 @@ def endo_epi_control_points(
         np.argmin(np.abs(point_cum_dist - contour_cum_dist))
         for point_cum_dist in control_points_step
     ]
-    return contour[control_points_indices]
+    return np.roll(contour[control_points_indices], 1, 1)
+
+
+def extract_control_points_and_save_as_json(
+    seg_path: PathLike,
+    output_folder: PathLike,
+    num_points: int = 15,
+    json_name: Optional[str] = None,
+) -> None:
+    """Extract endocardium and/or epicardium control points from segmentation and export the point
+    coordinates to a .json file.
+
+    Args:
+        seg_path: Path to segmentation file (.nii.gz).
+        output_folder: Path of output folder to save the json file.
+        num_points: Number of control points to extract.
+        json_name: Name of the json file to save. Segmentation filename will be used if set as None.
+
+    Raises:
+        FileNotFoundError: When segmentation file is not found.
+        NotImplementedError: When the segmentation file is not in nifti format.
+    """
+    if not os.path.isfile(seg_path):
+        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), seg_path)
+
+    if not seg_path.endswith(".nii.gz"):
+        raise NotImplementedError("Currently, only nifti segmentation files are supported.")
+
+    seg_itk = sitk.ReadImage(seg_path)
+    seg_array = sitk.GetArrayFromImage(seg_itk).astype(np.uint8)
+    spacing = seg_itk.GetSpacing()
+
+    endo_points = []
+    epi_points = []
+
+    if not len(seg_array.shape) == 3:
+        seg_array = seg_array[
+            None,
+        ]
+        spacing = spacing
+    else:
+        spacing = spacing[:-1]
+
+    for _, seg in enumerate(seg_array):
+        endo_points.append(
+            (endo_epi_control_points(seg, 1, num_points, spacing) * spacing).tolist()
+        )
+
+        if 2 in np.unique(seg):
+            epi_points.append(
+                (endo_epi_control_points(seg, [1, 2], num_points, spacing) * spacing).tolist()
+            )
+
+    os.makedirs(output_folder, exist_ok=True)
+
+    if json_name is None:
+        json_name = os.path.basename(seg_path)[:-7] + ".json"
+    else:
+        json_name = json_name + ".json"
+
+    json_path = os.path.join(output_folder, json_name)
+
+    json_dict = {}
+    json_dict["contourCheck"] = 0
+    json_dict["imageQuality"] = 0
+    json_dict["ecg"] = []
+    json_dict["left_ventricle_endo"] = endo_points
+    json_dict["left_ventricle_epi"] = epi_points
+    json_dict["left_atrium"] = 0
+
+    save_json(json_dict, json_path)
+
+
+def nifti2mhd(
+    nifti_file: PathLike, output_folder: PathLike, mhd_name: Optional[str] = None
+) -> None:
+    """Convert nifti file to raw mhd file.
+
+    Args:
+        nifti_file: Path to nifti file.
+        output_folder: Path to output folder for saving.
+        mhd_name: Filename to save the mhd file.
+    """
+    if not seg_path.endswith(".nii.gz"):
+        raise ValueError(f"{nifti_file} is not a nifti file.")
+
+    if not os.path.isfile(seg_path):
+        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), seg_path)
+
+    output_folder = os.path.join(output_folder, os.path.basename(seg_path)[:8])
+    os.makedirs(output_folder, exist_ok=True)
+
+    if mhd_name is None:
+        mhd_name = os.path.basename(seg_path)[:8] + ".mhd"
+    else:
+        mhd_name = mhd_name + ".mhd"
+
+    nifti_itk = sitk.ReadImage(nifti_file)
+    nifti_array = sitk.GetArrayFromImage(nifti_itk)
+    spacing = nifti_itk.GetSpacing()
+    mhd_itk = sitk.GetImageFromArray(nifti_array)
+    mhd_itk.SetSpacing(spacing)
+    sitk.WriteImage(mhd_itk, os.path.join(output_folder, mhd_name))
 
 
 if __name__ == "__main__":
     import SimpleITK as sitk
     from matplotlib import pyplot as plt
 
-    from ascent.utils.visualization import imagesc
+    from ascent.utils.visualization import imagesc, overlay_mask_on_image
 
+    bmode_path = "C:/Users/ling/Desktop/A3C-nnUNet-results/nifti/bmode/0064_A3C_bmode.nii.gz"
     seg_path = "C:/Users/ling/Desktop/A3C-nnUNet-results/nifti/post_processed_masks/0064_A3C_post_mask.nii.gz"
-    frame = 50
+    output_folder = "C:/Users/ling/Desktop/new_A3C_data/bmode"
+    json_name = os.path.basename(seg_path)[:8]
+    extract_control_points_and_save_as_json(seg_path, output_folder, json_name=json_name)
+    nifti2mhd(bmode_path, output_folder)
+    frame = 20
 
     seg_itk = sitk.ReadImage(seg_path)
     seg_array = sitk.GetArrayFromImage(seg_itk)
-    spacing = seg_itk.GetSpacing()
-    endo_points = endo_epi_control_points(seg_array[frame], 1, 15, spacing[:-1])
-    epi_points = endo_epi_control_points(seg_array[frame], [1, 2], 15, spacing[:-1])
 
-    plt.figure(figsize=(18, 6), dpi=300)
-    ax = plt.subplot(1, 3, 1)
-    imagesc(ax, seg_array[frame], clim=[0, 2], show_colorbar=False)
-    ax.scatter(endo_points[:, 1], endo_points[:, 0], c="r", s=4)
-    ax.scatter(epi_points[:, 1], epi_points[:, 0], c="b", s=4)
-    plt.show()
+    bmode_itk = sitk.ReadImage(bmode_path)
+    bmode_array = sitk.GetArrayFromImage(bmode_itk)
+
+    overlaid = overlay_mask_on_image(bmode_array, seg_array)
+
+    spacing = seg_itk.GetSpacing()
+
+    for frame in range(seg_array.shape[0]):
+        endo_points = endo_epi_control_points(seg_array[frame], 1, 15, spacing[:-1])
+        epi_points = endo_epi_control_points(seg_array[frame], [1, 2], 15, spacing[:-1])
+
+        plt.figure(figsize=(18, 6), dpi=300)
+        ax = plt.subplot(1, 3, 1)
+        imagesc(ax, overlaid[frame], show_colorbar=False)
+        ax.scatter(endo_points[:, 1], endo_points[:, 0], c="r", s=4)
+        ax.scatter(epi_points[:, 1], epi_points[:, 0], c="b", s=4)
+        plt.show()
