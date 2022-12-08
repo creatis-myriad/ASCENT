@@ -229,6 +229,7 @@ def extract_control_points_and_save_as_json(
 
     endo_points = []
     epi_points = []
+    dummy_points = []
 
     if not len(seg_array.shape) == 3:
         seg_array = seg_array[
@@ -247,6 +248,10 @@ def extract_control_points_and_save_as_json(
             epi_points.append(
                 (endo_epi_control_points(seg, [1, 2], num_points, spacing) * spacing).tolist()
             )
+        else:
+            epi_points.append([])
+
+        dummy_points.append([])
 
     os.makedirs(output_folder, exist_ok=True)
 
@@ -263,7 +268,7 @@ def extract_control_points_and_save_as_json(
     json_dict["ecg"] = []
     json_dict["left_ventricle_endo"] = endo_points
     json_dict["left_ventricle_epi"] = epi_points
-    json_dict["left_atrium"] = 0
+    json_dict["right_ventricle"] = dummy_points
 
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(json_dict, f, ensure_ascii=False, indent=4)
