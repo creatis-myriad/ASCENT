@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Optional, Type, Union
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -11,9 +11,9 @@ from torch import Tensor
 def imagesc(
     ax: matplotlib.axes,
     image: Union[Tensor, np.ndarray],
-    title: str,
+    title: Optional[str] = None,
     colormap: matplotlib.colormaps = plt.cm.gray,
-    clim: Union[tuple[float, float], list[float, float]] = None,
+    clim: Optional[tuple[float, float]] = None,
     show_axis: bool = False,
 ) -> None:
     """Display image with scaled colors. Similar to Matlab's imagesc.
@@ -27,10 +27,10 @@ def imagesc(
         show_axis: Whether to show axis when plotting.
 
     Example:
-        plt.figure("image", (18, 6))
-        ax = plt.subplot(1, 2, 1)
-        imagesc(ax, np.random.rand(100,100), "image", cmap, clim=[-1, 1])
-        plt.show()
+        >>> plt.figure("image", (18, 6))
+        >>> ax = plt.subplot(1, 2, 1)
+        >>> imagesc(ax, np.random.rand(100,100), "image", clim=[-1, 1])
+        >>> plt.show()
     """
 
     if clim is not None and isinstance(clim, (list, tuple)):
@@ -55,11 +55,14 @@ def imagesc(
         ax.set_axis_off()
 
 
-def dopplermap(m: int = 256):
+def dopplermap(m: int = 256) -> Type[ListedColormap]:
     """Color Doppler-based color map.
 
     Args:
         m: Number of samples in the colormap.
+
+    Returns:
+        Doppler colormap in Matplotlib format.
     """
 
     x = np.linspace(0, 1, m)
