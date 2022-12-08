@@ -15,6 +15,7 @@ def imagesc(
     colormap: matplotlib.colormaps = plt.cm.gray,
     clim: Optional[tuple[float, float]] = None,
     show_axis: bool = False,
+    show_colorbar: bool = True,
 ) -> None:
     """Display image with scaled colors. Similar to Matlab's imagesc.
 
@@ -25,6 +26,7 @@ def imagesc(
         colormap: Colormap of plotting.
         clim: Colormap limits.
         show_axis: Whether to show axis when plotting.
+        show_colorbar: Whether to show colorbar when plotting.
 
     Example:
         >>> plt.figure("image", (18, 6))
@@ -48,9 +50,12 @@ def imagesc(
 
     im = ax.imshow(image, colormap, **clim_args)
     plt.title(title)
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="10%", pad=0.05)
-    plt.colorbar(im, cax)
+
+    if show_colorbar:
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="10%", pad=0.05)
+        plt.colorbar(im, cax)
+
     if not show_axis:
         ax.set_axis_off()
 
