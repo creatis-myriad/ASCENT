@@ -1,16 +1,158 @@
-from itertools import pairwise
+import itertools
 from typing import Sequence, Union
 
 import numpy as np
-from skimage.feature import corner_peaks, corner_shi_tomasi
+from scipy import ndimage
+from scipy.signal import find_peaks
 from skimage.measure import find_contours
+from skimage.morphology import disk
+
+
+def cart2pol(x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Converts (x,y) cartesian coordinates to (theta,rho) polar coordinates.
+
+    Notes:
+        - Made to mimic Matlab's `cart2pol` function: https://www.mathworks.com/help/matlab/ref/pol2cart.html
+
+    Args:
+        x: x component of cartesian coordinates.
+        y: y component of cartesian coordinates.
+
+    Returns:
+        (theta,rho) polar coordinates corresponding to the input cartesian coordinates.
+
+    Example:
+        >>> x = np.array([5, 3.5355, 0, -10])
+        >>> y = np.array([0, 3.5355, 10, 0])
+        >>> cart2pol(x,y)
+        (array([0, 0.7854, 1.5708, 3.1416]), array([5.0000, 5.0000, 10.0000, 10.0000]))
+    """
+    rho = np.sqrt(x**2 + y**2)
+    theta = np.arctan2(y, x)
+    return theta, rho
+
+
+def _endo_epi_base(
+    structure_mask: np.ndarray,
+    contour: np.ndarray,
+    smooth: bool = False,
+    debug: bool = False,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Finds the left/right markers at the base of the endo/epi using Shi-Tomasi corner detection
+    algorithm.
+
+    Args:
+        segmentation: (H, W), Segmentation map.
+        labels: Labels of the classes that are part of the endocardium/epicardium.
+
+    Returns:
+        Coordinates of the left/right markers at the base of the endo/epi.
+    """
+
+    if smooth:
+        structure_mask = ndimage.binary_closing(structure_mask, structure=disk(3), iterations=5)
+
+    # Find the center point of the segmentation
+    center = [np.average(indices) for indices in np.where(structure_mask)]
+
+    # Shift the grid center to the center of the mask
+    contour_shifted = contour - center
+    # contour_shifted[:, 0] = contour_shifted[:, 0] - min(contour_shifted[:, 0])
+    # contour_shifted[:, 1] = contour_shifted[:, 1] - center[1]
+
+    # Convert contour points from Cartesian grid to Polar grid
+    theta, rho = cart2pol(contour_shifted[:, 1], contour_shifted[:, 0])
+
+    # Sort theta and rho arrays
+    rho_sorted = rho[theta.argsort()]
+    theta_sorted = theta[theta.argsort()]
+
+    # Compute appropriate distance that corresponds to [pi/4, 2.1*pi/4]
+    angle_interval = [np.pi / 4, 2.1 * np.pi / 4]
+    min_distance_idx = np.argmin(np.abs(theta_sorted - angle_interval[0]))
+    max_distance_idx = np.argmin(np.abs(theta_sorted - angle_interval[1]))
+    distance = max_distance_idx - min_distance_idx
+
+    if debug:
+        plt.scatter(theta, rho, c="b", marker="o", s=4)
+        plt.show()
+
+    # Detect peaks that correspond to endo/epi base and apex
+    peaks, _ = find_peaks(rho_sorted, distance=distance, prominence=0.5)
+
+    # Keep only peaks that have positive angle to eliminate apex peak
+    peaks = peaks[theta_sorted[peaks] > 0]
+
+    if (num_corners := len(peaks)) >= 2:
+        peaks = peaks[:2]
+    elif (num_corners := len(peaks)) < 2:
+        raise RuntimeError(
+            f"Identified {num_corners} corner(s) for the endo/epi. We needed to identify exactly 2 corners to "
+            f"determine control points along the contour of the endo/epi."
+        )
+
+    # Retrieve the corner indices
+    peaks = peaks[::-1]
+    rho[theta < 0] = 0
+    corner_idx = [np.argmin(np.abs(rho_sorted[p] - rho)) for p in peaks]
+
+    left_corner, right_corner = contour[corner_idx[0], :], contour[corner_idx[1], :]
+
+    if debug:
+        plt.imshow(structure_mask)
+        plt.scatter(left_corner[1], left_corner[0], c="r", marker="o", s=1)
+        plt.scatter(right_corner[1], right_corner[0], c="r", marker="o", s=1)
+        plt.show()
+    return left_corner, right_corner
+
+
+def _endo_epi_contour(segmentation: np.ndarray, labels: Union[int, Sequence[int]]) -> np.ndarray:
+    """Lists points on the contour of the endo/epi (excluding the base), from the left of the base
+    to its right.
+
+    Args:
+        segmentation: (H, W), Segmentation map.
+        labels: Labels of the classes that are part of the endocardium/epicardium.
+
+    Returns:
+        Coordinates of points on the contour of the endo/epi (excluding the base), from the left of the base to its
+        right.
+    """
+    structure_mask = np.isin(segmentation, labels)
+
+    # Extract all the points on the contour of the structure of interest
+    # Use `level=0.9` to force the contour to be closer to the structure of interest than the background
+    contour = find_contours(structure_mask, level=0.9)[0]
+    # contour = canny(structure_mask)
+    # contour = np.array(np.where(contour == True)).transpose()
+
+    # Identify the left/right markers at the base of the endo/epi
+    left_corner, right_corner = _endo_epi_base(structure_mask, contour, smooth=True, debug=True)
+
+    contour = find_contours(structure_mask, level=0.9)[0]
+
+    # Shift the contour so that they start at the left corner
+    # To detect the contour coordinates that match the corner, we use the closest match since skimage's
+    # `find_contours` coordinates are interpolated between pixels, so they won't match exactly corner coordinates
+    dist_to_left_corner = np.linalg.norm(left_corner - contour, axis=1)
+    left_corner_contour_idx = np.argmin(dist_to_left_corner)
+    contour = np.roll(contour, -left_corner_contour_idx, axis=0)
+
+    # Filter the full contour to discard points along the base
+    # We implement this by slicing the contours from the left corner to the right corner, since the contour returned
+    # by skimage's `find_contours` is oriented clockwise
+    dist_to_right_corner = np.linalg.norm(right_corner - contour, axis=1)
+    right_corner_contour_idx = np.argmin(dist_to_right_corner)
+    contour_without_base = contour[: right_corner_contour_idx + 1]
+
+    return contour_without_base
 
 
 def endo_epi_control_points(
     segmentation: np.ndarray,
     labels: Union[int, Sequence[int]],
     num_control_points: int,
-    spacing: tuple[float, float],
+    voxelspacing: tuple[float, float] = None,
 ) -> np.ndarray:
     """Lists uniformly distributed control points along the contour of the endocardium/epicardium.
 
@@ -18,63 +160,36 @@ def endo_epi_control_points(
         segmentation: (H, W), Segmentation map.
         labels: Labels of the classes that are part of the endocardium/epicardium.
         num_control_points: Number of control points to sample along the contour of the endocardium/epicardium.
-        spacing: Pixel spacing in ``mm``.
+        voxelspacing: Size of the segmentation's voxels along each (height, width) dimension (in mm).
 
     Returns:
         Coordinates of the control points along the contour of the endocardium/epicardium.
-
-    Raises:
-        RuntimeError: When not exactly two corners are detected.
     """
-    structure_mask = np.isin(segmentation, labels)
+    if voxelspacing is None:
+        voxelspacing = (1, 1)
+    voxelspacing = np.array(voxelspacing)
 
-    # Find the two points at the base of the structure of interest, using Shi-Tomasi corner detection algorithm
-    base_corners = corner_peaks(corner_shi_tomasi(structure_mask), min_distance=10, num_peaks=2)
-    if (num_corners := len(base_corners)) != 2:
-        raise RuntimeError(
-            f"Identified {num_corners} corner(s) for the endo/epi. We needed to identify exactly 2 corners to "
-            f"determine control points along the contour of the endo/epi."
-        )
-    left_corner_idx, right_corner_idx = np.argmin(base_corners[:, 1]), np.argmax(
-        base_corners[:, 1]
-    )
-    left_corner, right_corner = base_corners[left_corner_idx], base_corners[right_corner_idx]
+    # Find the points along the contour of the endo/epi excluding the base
+    contour = _endo_epi_contour(segmentation, labels)
 
-    # Extract all the points on the contour of the structure of interest
-    # Use level=0.9 to force the contour to touch the endo/epicardial wall
-    contours = find_contours(structure_mask, level=0.9)[0]
+    # Round the contour's coordinates, so they don't fall between pixels anymore
+    contour = contour.round().astype(int)
 
-    # Shift the contours so that they start at the left corner
-    # To detect the contour coordinates that match the corner, we use the closest match since skimage's
-    # `find_contours` coordinates are interpolated between pixels, so they won't match exactly corner coordinates
-    dist_to_left_corner = np.linalg.norm(left_corner - contours, axis=1)
-    left_corner_contour_idx = np.argmin(dist_to_left_corner)
-    contours = np.roll(contours, -left_corner_contour_idx, axis=0)
+    # Compute the geometric distances between each point along the contour and the previous one.
+    # This allows to then simply compute the cumulative distance from the left corner to each contour point
+    contour_dist_to_prev = [0.0] + [
+        np.linalg.norm((p1 - p0) * voxelspacing) for p0, p1 in itertools.pairwise(contour)
+    ]
+    contour_cum_dist = np.cumsum(contour_dist_to_prev)
 
-    # Filter the full contour to discard points along the base
-    # We implement this by slicing the contours from the left corner to the right corner, since the contour returned
-    # by skimage's `find_contours` is oriented clockwise
-    dist_to_right_corner = np.linalg.norm(right_corner - contours, axis=1)
-    right_corner_contour_idx = np.argmin(dist_to_right_corner)
-    outer_contours = contours[: right_corner_contour_idx + 1]
-
-    # Round the contours' coordinates so they don't fall between pixels anymore
-    outer_contours = np.round(outer_contours).astype(int)
-
-    # Compute accumulated distance from left corner to right corner
-    dist = [0]
-    for p0, p1 in pairwise(outer_contours):
-        dist.append(dist[-1] + np.linalg.norm((p1 - p0) * np.array(spacing)))
-
-    dist = np.array(dist)
-
-    # Get equally spaced distance steps along the contour's perimeter
-    dist_step = np.linspace(dist[0], dist[-1], num=num_control_points)
-
-    # Get the closest points on the contour that respect the distance steps
-    control_points_idx = [np.argmin(np.abs(d - dist)) for d in dist_step]
-
-    return np.roll(outer_contours[control_points_idx], 1, axis=1)
+    # Select points along the contour that are equidistant along the contour (by selecting points that are closest
+    # to where steps of `perimeter / num_control_points` would expect to find points)
+    control_points_step = np.linspace(0, contour_cum_dist[-1], num=num_control_points)
+    control_points_indices = [
+        np.argmin(np.abs(point_cum_dist - contour_cum_dist))
+        for point_cum_dist in control_points_step
+    ]
+    return contour[control_points_indices]
 
 
 if __name__ == "__main__":
@@ -83,18 +198,18 @@ if __name__ == "__main__":
 
     from ascent.utils.visualization import imagesc
 
-    seg_path = (
-        "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/CAMUS/raw/labelsTr/NewCamus_0012.nii.gz"
-    )
+    seg_path = "C:/Users/ling/Desktop/A3C-nnUNet-results/nifti/post_processed_masks/0064_A3C_post_mask.nii.gz"
+    frame = 50
+
     seg_itk = sitk.ReadImage(seg_path)
     seg_array = sitk.GetArrayFromImage(seg_itk)
     spacing = seg_itk.GetSpacing()
-    endo_points = endo_epi_control_points(seg_array[0], 1, 15, spacing[:-1])
-    epi_points = endo_epi_control_points(seg_array[0], [1, 2], 15, spacing[:-1])
+    endo_points = endo_epi_control_points(seg_array[frame], 1, 15, spacing[:-1])
+    epi_points = endo_epi_control_points(seg_array[frame], [1, 2], 15, spacing[:-1])
 
-    plt.figure(figsize=(18, 6), dpi=1200)
+    plt.figure(figsize=(18, 6), dpi=300)
     ax = plt.subplot(1, 3, 1)
-    imagesc(ax, seg_array[0], clim=[0, 2], show_colorbar=False)
-    ax.scatter(endo_points[:, 0], endo_points[:, 1], c="r", s=4)
-    ax.scatter(epi_points[:, 0], epi_points[:, 1], c="b", s=4)
+    imagesc(ax, seg_array[frame], clim=[0, 2], show_colorbar=False)
+    ax.scatter(endo_points[:, 1], endo_points[:, 0], c="r", s=4)
+    ax.scatter(epi_points[:, 1], epi_points[:, 0], c="b", s=4)
     plt.show()
