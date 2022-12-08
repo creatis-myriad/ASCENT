@@ -1,5 +1,6 @@
 import errno
 import itertools
+import json
 import os
 from typing import Optional, Sequence, Union
 
@@ -264,7 +265,8 @@ def extract_control_points_and_save_as_json(
     json_dict["left_ventricle_epi"] = epi_points
     json_dict["left_atrium"] = 0
 
-    save_json(json_dict, json_path)
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(json_dict, f, ensure_ascii=False, indent=4)
 
 
 def nifti2mhd(
@@ -307,7 +309,7 @@ if __name__ == "__main__":
 
     bmode_path = "C:/Users/ling/Desktop/A3C-nnUNet-results/nifti/bmode/0064_A3C_bmode.nii.gz"
     seg_path = "C:/Users/ling/Desktop/A3C-nnUNet-results/nifti/post_processed_masks/0064_A3C_post_mask.nii.gz"
-    output_folder = "C:/Users/ling/Desktop/new_A3C_data/bmode"
+    output_folder = "C:/Users/ling/Desktop/new_A3C_data/control_points"
     json_name = os.path.basename(seg_path)[:8]
     extract_control_points_and_save_as_json(seg_path, output_folder, json_name=json_name)
     nifti2mhd(bmode_path, output_folder)
