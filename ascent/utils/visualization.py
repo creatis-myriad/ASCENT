@@ -13,7 +13,7 @@ def imagesc(
     image: Union[Tensor, np.ndarray],
     title: Optional[str] = None,
     colormap: matplotlib.colormaps = plt.cm.gray,
-    clim: Optional[Union[tuple[float, float], list[float, float]]] = None,
+    clim: Optional[tuple[float, float]] = None,
     show_axis: bool = False,
 ) -> None:
     """Display image with scaled colors. Similar to Matlab's imagesc.
