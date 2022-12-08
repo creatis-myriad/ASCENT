@@ -2,6 +2,7 @@ import numpy as np
 from monai.transforms import (
     Compose,
     ConcatItemsd,
+    CopyItemsd,
     EnsureChannelFirstd,
     RandAdjustContrastd,
     RandCropByPosNegLabeld,
@@ -29,11 +30,19 @@ from ascent.utils.transforms import (
 class nnUNetDealiasDataModule(nnUNetDataModule):
     """Data module for dealiasing using segmentation."""
 
-    def __init__(self, alias_transform: bool = True, **kwargs):
+    def __init__(
+        self,
+        alias_transform: bool = True,
+        separate_transform: bool = True,
+        exclude_Dpower: bool = False,
+        **kwargs,
+    ):
         """Initialize class instance.
 
         Args:
             alias_transform: Whether to apply artificial aliasing augmentation.
+            separate_transform: Whether to apply separate on Doppler power and velocity.
+            exclude_Dpower: Whether to include Doppler power in case of velocity-power concatenated input.
         """
         super().__init__(**kwargs)
 
@@ -115,9 +124,11 @@ class nnUNetDealiasDataModule(nnUNetDataModule):
         )
 
         if self.hparams.do_dummy_2D_data_aug and self.threeD:
-            other_transforms.append(Convert2Dto3Dd(keys=["image", "label"], in_channels=2))
+            other_transforms.append(
+                Convert2Dto3Dd(keys=["image", "label"], in_channels=self.hparams.in_channels)
+            )
 
-        if self.hparams.in_channels > 1:
+        if self.hparams.separate_transform:
             other_transforms.extend(
                 [
                     SplitDimd(keys=["image"], dim=0),
@@ -157,10 +168,30 @@ class nnUNetDealiasDataModule(nnUNetDataModule):
         if self.threeD:
             other_transforms.append(RandFlipd(keys=["image", "label"], spatial_axis=[2], prob=0.5))
 
-        val_transforms = shared_train_val_transforms
+        if self.hparams.exclude_Dpower and self.hparams.in_channels == 1:
+            other_transforms.extend(
+                [
+                    SplitDimd(keys=["image"], dim=0),
+                    SelectItemsd(keys=["image_0", "label"]),
+                    CopyItemsd(keys=["image_0"], names="image"),
+                    SelectItemsd(keys=["image", "label"]),
+                ]
+            )
+
+        val_transforms = shared_train_val_transforms.copy()
 
         if not self.threeD:
             val_transforms.append(MayBeSqueezed(keys=["image", "label"], dim=-1))
+
+        if self.hparams.exclude_Dpower and self.hparams.in_channels == 1:
+            val_transforms.extend(
+                [
+                    SplitDimd(keys=["image"], dim=0),
+                    SelectItemsd(keys=["image_0", "label"]),
+                    CopyItemsd(keys=["image_0"], names="image"),
+                    SelectItemsd(keys=["image", "label"]),
+                ]
+            )
 
         test_transforms = [
             LoadNpyd(
@@ -173,6 +204,16 @@ class nnUNetDealiasDataModule(nnUNetDataModule):
 
         if not self.threeD:
             test_transforms.append(MayBeSqueezed(keys=["image", "label"], dim=-1))
+
+        if self.hparams.exclude_Dpower and self.hparams.in_channels == 1:
+            test_transforms.extend(
+                [
+                    SplitDimd(keys=["image"], dim=0),
+                    SelectItemsd(keys=["image_0", "label"]),
+                    CopyItemsd(keys=["image_0"], names="image"),
+                    SelectItemsd(keys=["image", "label"]),
+                ]
+            )
 
         self.train_transforms = Compose(shared_train_val_transforms + other_transforms)
         self.val_transforms = Compose(val_transforms)
@@ -194,8 +235,8 @@ if __name__ == "__main__":
     initialize_config_dir(
         config_dir=str(root / "configs" / "datamodule"), job_name="test", version_base="1.2"
     )
-    cfg = compose(config_name="dealiasreg_2d.yaml")
-    cfg.in_channels = 2
+    cfg = compose(config_name="dealias_2d.yaml")
+    cfg.in_channels = 1
     cfg.data_dir = str(root / "data")
     cfg.patch_size = [40, 192]
     cfg.batch_size = 1
