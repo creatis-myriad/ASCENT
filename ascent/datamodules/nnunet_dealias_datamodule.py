@@ -209,9 +209,9 @@ class nnUNetDealiasDataModule(nnUNetDataModule):
             test_transforms.extend(
                 [
                     SplitDimd(keys=["image"], dim=0),
-                    SelectItemsd(keys=["image_0", "label"]),
+                    SelectItemsd(keys=["image_0", "label", "image_meta_dict"]),
                     CopyItemsd(keys=["image_0"], names="image"),
-                    SelectItemsd(keys=["image", "label"]),
+                    SelectItemsd(keys=["image", "label", "image_meta_dict"]),
                 ]
             )
 
