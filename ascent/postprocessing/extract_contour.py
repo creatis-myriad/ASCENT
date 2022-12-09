@@ -270,8 +270,11 @@ def extract_control_points_and_save_as_json(
     json_dict["left_ventricle_epi"] = epi_points
     json_dict["right_ventricle"] = dummy_points
 
+    if os.path.isfile(json_path):
+        os.remove(json_path)
+
     with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(json_dict, f, ensure_ascii=False, indent=4)
+        json.dump(json_dict, f, separators=(",", ":"))
 
 
 def nifti2mhd(
