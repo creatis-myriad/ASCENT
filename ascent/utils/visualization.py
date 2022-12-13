@@ -1,3 +1,4 @@
+import os
 from typing import Optional, Type, Union
 
 import matplotlib
@@ -5,8 +6,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import ListedColormap
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from PIL import Image
 from skimage import color
 from torch import Tensor
+
+from ascent.utils.type_definitions import PathLike
 
 
 def imagesc(
@@ -114,6 +118,30 @@ def overlay_mask_on_image(
         )
 
     return color.label2rgb(segmentation, image, bg_label=bg_label, alpha=alpha, colors=colors)
+
+
+def array2gif(images: np.ndarray, output_path: PathLike):
+    """Save piles of RGB images as animated GIF.
+
+    Args:
+        images: 4D array (frame, H, W, C) to be converted to GIF.
+        output_path: Path to save the animated GIF.
+
+    Raises:
+        ValueError: When images does not have 4 dimensions.
+    """
+    if not (dim := len(images.shape)) == 4:
+        raise ValueError(
+            f"images should have 4 dimensions (frame, H, W, C), but got {dim} dimension(s) instead."
+        )
+
+    if np.max(images) == 1:
+        images = images * 255
+    images = images.astype(np.uint8)
+    images = [Image.fromarray(image) for image in images]
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    images[0].save(output_path, save_all=True, append_images=images[1:], duration=40, loop=0)
 
 
 if __name__ == "__main__":

@@ -6,11 +6,11 @@ from typing import Optional, Sequence, Union
 
 import numpy as np
 from scipy import ndimage
+from scipy.ndimage import center_of_mass
 from scipy.signal import find_peaks
 from skimage.measure import find_contours
 from skimage.morphology import disk
 
-from ascent.utils.file_and_folder_operations import save_json
 from ascent.utils.type_definitions import PathLike
 
 
@@ -58,20 +58,16 @@ def _endo_epi_base(
     if smooth:
         structure_mask = ndimage.binary_closing(structure_mask, structure=disk(3), iterations=5)
 
-    # Find the center point of the segmentation
-    center = [np.average(indices) for indices in np.where(structure_mask)]
-
-    # Shift the grid center to the center of the mask
-    contour_shifted = contour - center
-    # contour_shifted[:, 0] = contour_shifted[:, 0] - min(contour_shifted[:, 0])
-    # contour_shifted[:, 1] = contour_shifted[:, 1] - center[1]
+    # Shift the grid center to the center of mass
+    contour_shifted = contour - center_of_mass(structure_mask)
 
     # Convert contour points from Cartesian grid to Polar grid
     theta, rho = cart2pol(contour_shifted[:, 1], contour_shifted[:, 0])
 
     # Sort theta and rho arrays
-    rho_sorted = rho[theta.argsort()]
-    theta_sorted = theta[theta.argsort()]
+    theta_sorted_idx = theta.argsort()
+    rho_sorted = rho[theta_sorted_idx]
+    theta_sorted = theta[theta_sorted_idx]
 
     # Compute appropriate distance that corresponds to [pi/4, 2.1*pi/4]
     angle_interval = [np.pi / 4, 2.1 * np.pi / 4]
@@ -89,18 +85,20 @@ def _endo_epi_base(
     # Keep only peaks that have positive angle to eliminate apex peak
     peaks = peaks[theta_sorted[peaks] > 0]
 
-    if (num_corners := len(peaks)) >= 2:
+    while len(peaks) < 2:
+        distance = distance - 5
+
+        # Detect peaks that correspond to endo/epi base and apex
+        peaks, _ = find_peaks(rho_sorted, distance=distance, prominence=0.5)
+
+        # Keep only peaks that have positive angle to eliminate apex peak
+        peaks = peaks[theta_sorted[peaks] > 0]
+
+    if len(peaks) >= 2:
         peaks = peaks[:2]
-    elif (num_corners := len(peaks)) < 2:
-        raise RuntimeError(
-            f"Identified {num_corners} corner(s) for the endo/epi. We needed to identify exactly 2 corners to "
-            f"determine control points along the contour of the endo/epi."
-        )
 
     # Retrieve the corner indices
-    peaks = peaks[::-1]
-    rho[theta < 0] = 0
-    corner_idx = [np.argmin(np.abs(rho_sorted[p] - rho)) for p in peaks]
+    corner_idx = theta_sorted_idx[peaks][::-1]
 
     left_corner, right_corner = contour[corner_idx[0], :], contour[corner_idx[1], :]
 
@@ -129,13 +127,9 @@ def _endo_epi_contour(segmentation: np.ndarray, labels: Union[int, Sequence[int]
     # Extract all the points on the contour of the structure of interest
     # Use `level=0.9` to force the contour to be closer to the structure of interest than the background
     contour = find_contours(structure_mask, level=0.9)[0]
-    # contour = canny(structure_mask)
-    # contour = np.array(np.where(contour == True)).transpose()
 
     # Identify the left/right markers at the base of the endo/epi
     left_corner, right_corner = _endo_epi_base(structure_mask, contour, smooth=False, debug=False)
-
-    contour = find_contours(structure_mask, level=0.9)[0]
 
     # Shift the contour so that they start at the left corner
     # To detect the contour coordinates that match the corner, we use the closest match since skimage's
@@ -315,12 +309,12 @@ if __name__ == "__main__":
 
     from ascent.utils.visualization import imagesc, overlay_mask_on_image
 
-    bmode_path = "C:/Users/ling/Desktop/A3C-nnUNet-results/nifti/bmode/0064_A3C_bmode.nii.gz"
-    seg_path = "C:/Users/ling/Desktop/A3C-nnUNet-results/nifti/post_processed_masks/0064_A3C_post_mask.nii.gz"
+    bmode_path = "C:/Users/ling/Desktop/A3C-nnUNet-results/nifti/bmode/0027_A3C_bmode.nii.gz"
+    seg_path = "C:/Users/ling/Desktop/A3C-nnUNet-results/nifti/post_processed_masks/0027_A3C_post_mask.nii.gz"
     output_folder = "C:/Users/ling/Desktop/new_A3C_data/control_points"
     json_name = os.path.basename(seg_path)[:8]
-    extract_control_points_and_save_as_json(seg_path, output_folder, json_name=json_name)
-    nifti2mhd(bmode_path, output_folder)
+    # extract_control_points_and_save_as_json(seg_path, output_folder, json_name=json_name)
+    # nifti2mhd(bmode_path, output_folder)
     frame = 20
 
     seg_itk = sitk.ReadImage(seg_path)
@@ -333,13 +327,13 @@ if __name__ == "__main__":
 
     spacing = seg_itk.GetSpacing()
 
-    for frame in range(seg_array.shape[0]):
-        endo_points = endo_epi_control_points(seg_array[frame], 1, 15, spacing[:-1])
-        epi_points = endo_epi_control_points(seg_array[frame], [1, 2], 15, spacing[:-1])
+    for frame in range(5):
+        endo_points = endo_epi_control_points(seg_array[frame], 1, 12, spacing[:-1])
+        epi_points = endo_epi_control_points(seg_array[frame], [1, 2], 12, spacing[:-1])
 
         plt.figure(figsize=(18, 6), dpi=300)
         ax = plt.subplot(1, 3, 1)
         imagesc(ax, overlaid[frame], show_colorbar=False)
-        ax.scatter(endo_points[:, 1], endo_points[:, 0], c="r", s=4)
-        ax.scatter(epi_points[:, 1], epi_points[:, 0], c="b", s=4)
+        ax.scatter(endo_points[:, 0], endo_points[:, 1], c="r", s=4)
+        ax.scatter(epi_points[:, 0], epi_points[:, 1], c="b", s=4)
         plt.show()
