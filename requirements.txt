@@ -27,7 +27,7 @@ SimpleITK                           # read/write io for data
 scikit-image                        # image transformations
 scikit-learn                        # dataset split
 nibabel                             # manipulate nifti files
-monai==1.0.1                        # for data reading and transformations
+monai==1.1.0                        # for data reading and transformations
 einops                              # useful tensor operations
 ruamel.yaml                         # yaml io
 joblib                              # parallel process
