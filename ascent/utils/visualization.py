@@ -45,7 +45,8 @@ def imagesc(
             clim_args = {"vmin": float(clim[0]), "vmax": float(clim[1])}
         else:
             raise ValueError(
-                f"clim should be a list or tuple containing 2 floats with clim[0] < clim[1], got {clim} instead."
+                f"clim should be a list or tuple containing 2 floats with clim[0] < clim[1], got"
+                f" {clim} instead."
             )
     else:
         clim_args = {}

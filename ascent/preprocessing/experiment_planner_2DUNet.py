@@ -202,7 +202,8 @@ class nnUNetPlanner2D:
         log.info(f"The min shape in the dataset is {min_shape}.")
 
         log.info(
-            f"We don't want feature maps smaller than {self.unet_featuremap_min_edge_length}  in the bottleneck.",
+            f"We don't want feature maps smaller than {self.unet_featuremap_min_edge_length}  in "
+            f"the bottleneck.",
         )
 
         plan = self.get_properties(
