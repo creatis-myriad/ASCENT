@@ -31,3 +31,5 @@ monai==1.0.1                        # for data reading and transformations
 einops                              # useful tensor operations
 ruamel.yaml                         # yaml io
 joblib                              # parallel process
+pandas                              # data structures for data analysis and stats
+seaborn                             # high-level visualization library

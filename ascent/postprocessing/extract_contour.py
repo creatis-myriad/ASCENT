@@ -1,20 +1,23 @@
 import errno
+import functools
 import itertools
 import json
 import os
-from typing import Optional, Sequence, Union
+from typing import Callable, Literal, Optional, Sequence, Tuple
 
 import numpy as np
+import pandas as pd
 from scipy import ndimage
-from scipy.ndimage import center_of_mass
+from scipy.ndimage import gaussian_filter1d
 from scipy.signal import find_peaks
 from skimage.measure import find_contours
 from skimage.morphology import disk
 
 from ascent.utils.type_definitions import PathLike
+from ascent.utils.visualization import array2gif, overlay_mask_on_image
 
 
-def cart2pol(x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def cart2pol(x: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     """Converts (x,y) cartesian coordinates to (theta,rho) polar coordinates.
 
     Notes:
@@ -38,85 +41,19 @@ def cart2pol(x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return theta, rho
 
 
-def _endo_epi_base(
-    structure_mask: np.ndarray,
-    contour: np.ndarray,
-    smooth: bool = False,
-    debug: bool = False,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Finds the left/right markers at the base of the endo/epi using Shi-Tomasi corner detection
-    algorithm.
-
-    Args:
-        segmentation: (H, W), Segmentation map.
-        labels: Labels of the classes that are part of the endocardium/epicardium.
-
-    Returns:
-        Coordinates of the left/right markers at the base of the endo/epi.
-    """
-
-    if smooth:
-        structure_mask = ndimage.binary_closing(structure_mask, structure=disk(3), iterations=5)
-
-    # Shift the grid center to the center of mass
-    contour_shifted = contour - center_of_mass(structure_mask)
-
-    # Convert contour points from Cartesian grid to Polar grid
-    theta, rho = cart2pol(contour_shifted[:, 1], contour_shifted[:, 0])
-
-    # Sort theta and rho arrays
-    theta_sorted_idx = theta.argsort()
-    rho_sorted = rho[theta_sorted_idx]
-    theta_sorted = theta[theta_sorted_idx]
-
-    # Compute appropriate distance that corresponds to [pi/4, 2.1*pi/4]
-    angle_interval = [np.pi / 4, 2.1 * np.pi / 4]
-    min_distance_idx = np.argmin(np.abs(theta_sorted - angle_interval[0]))
-    max_distance_idx = np.argmin(np.abs(theta_sorted - angle_interval[1]))
-    distance = max_distance_idx - min_distance_idx
-
-    if debug:
-        plt.scatter(theta, rho, c="b", marker="o", s=4)
-        plt.show()
-
-    # Detect peaks that correspond to endo/epi base and apex
-    peaks, _ = find_peaks(rho_sorted, distance=distance, prominence=0.5)
-
-    # Keep only peaks that have positive angle to eliminate apex peak
-    peaks = peaks[theta_sorted[peaks] > 0]
-
-    while len(peaks) < 2:
-        distance = distance - 5
-
-        # Detect peaks that correspond to endo/epi base and apex
-        peaks, _ = find_peaks(rho_sorted, distance=distance, prominence=0.5)
-
-        # Keep only peaks that have positive angle to eliminate apex peak
-        peaks = peaks[theta_sorted[peaks] > 0]
-
-    if len(peaks) >= 2:
-        peaks = peaks[:2]
-
-    # Retrieve the corner indices
-    corner_idx = theta_sorted_idx[peaks][::-1]
-
-    left_corner, right_corner = contour[corner_idx[0], :], contour[corner_idx[1], :]
-
-    if debug:
-        plt.imshow(structure_mask)
-        plt.scatter(left_corner[1], left_corner[0], c="r", marker="o", s=1)
-        plt.scatter(right_corner[1], right_corner[0], c="r", marker="o", s=1)
-        plt.show()
-    return left_corner, right_corner
-
-
-def _endo_epi_contour(segmentation: np.ndarray, labels: Union[int, Sequence[int]]) -> np.ndarray:
+def _endo_epi_contour(
+    segmentation: np.ndarray,
+    labels: int | Sequence[int],
+    base_fn: Callable[[np.ndarray], Tuple[np.ndarray, np.ndarray]],
+) -> np.ndarray:
     """Lists points on the contour of the endo/epi (excluding the base), from the left of the base
     to its right.
 
     Args:
         segmentation: (H, W), Segmentation map.
         labels: Labels of the classes that are part of the endocardium/epicardium.
+        base_fn: Function that identifies the left and right corners at the base of the endocardium/epicardium in a
+            segmentation mask.
 
     Returns:
         Coordinates of points on the contour of the endo/epi (excluding the base), from the left of the base to its
@@ -124,12 +61,12 @@ def _endo_epi_contour(segmentation: np.ndarray, labels: Union[int, Sequence[int]
     """
     structure_mask = np.isin(segmentation, labels)
 
+    # Identify the left/right markers at the base of the endo/epi
+    left_corner, right_corner = base_fn(segmentation)
+
     # Extract all the points on the contour of the structure of interest
     # Use `level=0.9` to force the contour to be closer to the structure of interest than the background
     contour = find_contours(structure_mask, level=0.9)[0]
-
-    # Identify the left/right markers at the base of the endo/epi
-    left_corner, right_corner = _endo_epi_base(structure_mask, contour, smooth=False, debug=False)
 
     # Shift the contour so that they start at the left corner
     # To detect the contour coordinates that match the corner, we use the closest match since skimage's
@@ -148,55 +85,332 @@ def _endo_epi_contour(segmentation: np.ndarray, labels: Union[int, Sequence[int]
     return contour_without_base
 
 
+def _endo_epi_apex(
+    segmentation: np.ndarray, labels: int | Sequence[int]
+) -> np.ndarray | Tuple[np.ndarray, float]:
+    """Identifies the apex of the endo/epi as the point farthest from the center of the endo/epi.
+
+    Args:
+
+    Returns:
+        The coordinates of the endocardium/epicardium apex.
+    """
+    structure_mask = np.isin(segmentation, labels)
+
+    # Find the center point of the segmentation
+    center = ndimage.center_of_mass(structure_mask)
+
+    # Extract all the points on the contour of the structure of interest
+    # Use `level=0.9` to force the contour to be closer to the structure of interest than the background
+    contour = find_contours(structure_mask, level=0.9)[0]
+
+    # Shift the grid center to the center of the mask
+    contour_centered = contour - center
+
+    # Convert contour points from Cartesian grid to Polar grid
+    theta, rho = cart2pol(contour_centered[:, 1], contour_centered[:, 0])
+
+    # Sort theta and rho arrays
+    theta_sort_indices = theta.argsort()
+    theta_sorted, rho_sorted = theta[theta_sort_indices], rho[theta_sort_indices]
+
+    # Smooth the signal to avoid finding peaks for small localities
+    rho_sorted_gaussian_filtered = gaussian_filter1d(rho_sorted, len(contour) * 5e-2)
+
+    # Detect peaks that correspond to endo/epi base and apex
+    peaks, properties = find_peaks(rho_sorted_gaussian_filtered, height=0)
+
+    # Discard base peaks by only keeping peaks found in the upper half of the mask
+    # (by discarding peaks found where theta < 0)
+    upper_half_peaks_mask = theta_sorted[peaks] < 0
+    peaks = peaks[upper_half_peaks_mask]
+
+    ####################
+    # Debugging code to display contour curve in polar coordinates
+    #####################
+    if "DEBUG" in os.environ:
+        import seaborn as sns
+        from matplotlib import pyplot as plt
+
+        plot_data = pd.melt(
+            pd.DataFrame(
+                {
+                    "theta": theta_sorted,
+                    "none": rho_sorted,
+                    "gaussian": rho_sorted_gaussian_filtered,
+                }
+            ),
+            id_vars=["theta"],
+            value_vars=["none", "gaussian"],
+            var_name="filter",
+            value_name="rho",
+        )
+        with sns.axes_style("darkgrid"):
+            plot = sns.lineplot(data=plot_data, x="theta", y="rho", style="filter")
+
+        # Annotate the peaks with their respective index
+        for peak_idx, peak in enumerate(peaks):
+            plot.annotate(
+                f"{peak_idx}",
+                (theta_sorted[peak], rho_sorted[peak]),
+                xytext=(1, 4),
+                textcoords="offset points",
+            )
+
+        # Plot lines pointing to the peaks to make them more visible
+        plot.vlines(
+            x=theta_sorted[peaks],
+            ymin=rho[theta > 0].min(),
+            ymax=rho_sorted[peaks],
+            linestyles="dashed",
+        )
+
+        plt.show()
+    ####################
+    # End of debugging block
+    ####################
+
+    if not len(peaks):
+        raise RuntimeError("Unable to identify the apex of the endo/epi.")
+
+    # Extract the heights of each peak and discard the values associated with discarded peaks
+    peaks_heights = properties["peak_heights"]
+    peaks_heights = peaks_heights[upper_half_peaks_mask]
+
+    # Keep only the highest peak as the peak corresponding to the apex
+    peak = peaks[peaks_heights.argmax()]
+
+    # Map the index of the peak in polar coordinates back to the indices in the list of contour points
+    contour_idx = theta_sort_indices[peak]
+    apex = contour[contour_idx]
+
+    ####################
+    # Debugging code to display the selected corners on the segmentation mask
+    #####################
+    if "DEBUG" in os.environ:
+        plt.imshow(structure_mask)
+        plt.scatter(apex[1], apex[0], c="r", marker="o", s=3)
+        plt.show()
+    ####################
+    # End of debugging block
+    ####################
+
+    return apex
+
+
+def endo_base(
+    segmentation: np.ndarray, lv_labels: int | Sequence[int], myo_labels: int | Sequence[int]
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Finds the left/right markers at the base of the endocardium.
+
+    Args:
+        segmentation: (H, W), Segmentation map.
+        lv_labels: Labels of the classes that are part of the left ventricle.
+        myo_labels: Labels of the classes that are part of the left ventricle.
+
+    Returns:
+        Coordinates of the left/right markers at the base of the endocardium.
+    """
+    struct = ndimage.generate_binary_structure(2, 2)
+    left_ventricle = np.isin(segmentation, lv_labels)
+    myocardium = np.isin(segmentation, myo_labels)
+    others = ~(left_ventricle + myocardium)
+    dilated_myocardium = ndimage.binary_dilation(myocardium, structure=struct)
+    dilated_others = ndimage.binary_dilation(others, structure=struct)
+    y_coords, x_coords = np.nonzero(left_ventricle * dilated_myocardium * dilated_others)
+
+    if (num_markers := len(y_coords)) < 2:
+        raise RuntimeError(
+            f"Identified {num_markers} marker(s) at the edges of the left ventricle/myocardium frontier. We need "
+            f"to identify at least 2 such markers to determine the base of the left ventricle."
+        )
+
+    if np.all(x_coords == x_coords.mean()):
+        # Edge case where the base points are aligned vertically
+        # Divide frontier into bottom and top halves.
+        coord_mask = y_coords > y_coords.mean()
+        left_point_idx = y_coords[coord_mask].argmin()
+        right_point_idx = y_coords[~coord_mask].argmax()
+    else:
+        # Normal case where there is a clear divide between left and right markers at the base
+        # Divide frontier into left and right halves.
+        coord_mask = x_coords < x_coords.mean()
+        left_point_idx = y_coords[coord_mask].argmax()
+        right_point_idx = y_coords[~coord_mask].argmax()
+    return (
+        np.array([y_coords[coord_mask][left_point_idx], x_coords[coord_mask][left_point_idx]]),
+        np.array([y_coords[~coord_mask][right_point_idx], x_coords[~coord_mask][right_point_idx]]),
+    )
+
+
+def epi_base(
+    segmentation: np.ndarray, labels: int | Sequence[int]
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Finds the left/right markers at the base of the epicardium.
+
+    Args:
+        segmentation: (H, W), Segmentation map.
+        labels: Labels of the classes that are part of the epicardium.
+
+    Returns:
+        Coordinates of the left/right markers at the base of the epicardium.
+    """
+    structure_mask = np.isin(segmentation, labels)
+
+    # Find the center point of the segmentation
+    center = ndimage.center_of_mass(structure_mask)
+
+    # Extract all the points on the contour of the structure of interest
+    # Use `level=0.9` to force the contour to be closer to the structure of interest than the background
+    contour = find_contours(structure_mask, level=0.9)[0]
+
+    # Shift the grid center to the center of the mask
+    contour_centered = contour - center
+
+    # Convert contour points from Cartesian grid to Polar grid
+    theta, rho = cart2pol(contour_centered[:, 1], contour_centered[:, 0])
+
+    # Sort theta and rho arrays
+    theta_sort_indices = theta.argsort()
+    theta_sorted, rho_sorted = theta[theta_sort_indices], rho[theta_sort_indices]
+
+    # Smooth the signal to avoid finding peaks for small localities
+    rho_sorted_gaussian_filtered = gaussian_filter1d(rho_sorted, len(contour) * 5e-3)
+
+    # Detect peaks that correspond to endo/epi base and apex
+    peaks, properties = find_peaks(rho_sorted_gaussian_filtered, height=0)
+
+    # Discard apex peak by only keeping peaks found in the lower half of the mask
+    # (by discarding peaks found where theta > 0)
+    lower_half_peaks_mask = theta_sorted[peaks] > 0
+    peaks = peaks[lower_half_peaks_mask]
+
+    if (num_corners := len(peaks)) > 2:
+        # Extract the heights of each peak and discard the values associated with discarded peaks
+        peaks_heights = properties["peak_heights"]
+        peaks_heights = peaks_heights[lower_half_peaks_mask]
+
+        # Identify the indices of the 2 highest peaks in the list of peaks
+        highest_peaks = peaks_heights.argsort()[-2:]
+        # Sort the indices of the 2 highest peaks to make sure they stay ordered by ascending theta
+        # (so that the peak of the right corner comes first) regardless of their heights
+        highest_peaks = sorted(highest_peaks)
+
+        # Extract the peaks corresponding to the right and left corners
+        peaks = peaks[highest_peaks]
+    elif num_corners < 2:
+        raise RuntimeError(
+            f"Identified {num_corners} corner(s) for the endo/epi. We needed to identify at least "
+            f"2 corners to determine control points along the contour of the endo/epi."
+        )
+
+    # Map the indices of the peaks in polar coordinates back to the indices in the list of contour points
+    contour_indices = theta_sort_indices[peaks]
+    # Since the peaks were ordered by ascending theta in polar coordinates, the peak corresponding to the right
+    # corner is always first
+    right_corner, left_corner = contour[contour_indices]
+    return left_corner, right_corner
+
+
 def endo_epi_control_points(
     segmentation: np.ndarray,
-    labels: Union[int, Sequence[int]],
+    lv_labels: int | Sequence[int],
+    myo_labels: int | Sequence[int],
+    structure: Literal["endo", "epi"],
     num_control_points: int,
-    voxelspacing: tuple[float, float] = None,
+    voxelspacing: np.ndarray | Tuple[float, float] = (1, 1),
 ) -> np.ndarray:
     """Lists uniformly distributed control points along the contour of the endocardium/epicardium.
 
     Args:
         segmentation: (H, W), Segmentation map.
-        labels: Labels of the classes that are part of the endocardium/epicardium.
-        num_control_points: Number of control points to sample along the contour of the endocardium/epicardium.
+        lv_labels: Labels of the classes that are part of the left ventricle.
+        myo_labels: Labels of the classes that are part of the myocardium.
+        structure: Structure for which to identify the control points.
+        num_control_points: Number of control points to sample along the contour of the endocardium/epicardium. The
+            number of control points should be odd to be divisible evenly between the base -> apex and apex -> base
+            segments.
         voxelspacing: Size of the segmentation's voxels along each (height, width) dimension (in mm).
 
     Returns:
         Coordinates of the control points along the contour of the endocardium/epicardium.
     """
-    if voxelspacing is None:
-        voxelspacing = (1, 1)
     voxelspacing = np.array(voxelspacing)
 
     # Find the points along the contour of the endo/epi excluding the base
-    contour = _endo_epi_contour(segmentation, labels)
+    # "Backend" function used to find the control points at the base of the structure depends on the structure
+    if structure == "endo":
+        struct_labels = lv_labels
+        contour = _endo_epi_contour(
+            segmentation,
+            struct_labels,
+            functools.partial(endo_base, lv_labels=lv_labels, myo_labels=myo_labels),
+        )
+    elif structure == "epi":
+        struct_labels = [lv_labels, myo_labels]
+        contour = _endo_epi_contour(
+            segmentation,
+            struct_labels,
+            functools.partial(epi_base, labels=struct_labels),
+        )
+    else:
+        raise ValueError(f"Unexpected value for 'mode': {structure}. Use either 'endo' or 'epi'.")
+
+    # Identify the apex from the points within the contour
+    apex = _endo_epi_apex(segmentation, struct_labels)
 
     # Round the contour's coordinates, so they don't fall between pixels anymore
     contour = contour.round().astype(int)
 
-    # Compute the geometric distances between each point along the contour and the previous one.
-    # This allows to then simply compute the cumulative distance from the left corner to each contour point
-    contour_dist_to_prev = [0.0] + [
-        np.linalg.norm((p1 - p0) * voxelspacing) for p0, p1 in itertools.pairwise(contour)
-    ]
-    contour_cum_dist = np.cumsum(contour_dist_to_prev)
+    # Break the contour down into independent segments (base -> apex, apex -> base) along which to uniformly
+    # distribute control points
+    apex_idx_in_contour = np.linalg.norm((contour - apex) * voxelspacing, axis=1).argmin()
+    segments = [0, apex_idx_in_contour, len(contour) - 1]
 
-    # Select points along the contour that are equidistant along the contour (by selecting points that are closest
-    # to where steps of `perimeter / num_control_points` would expect to find points)
-    control_points_step = np.linspace(0, contour_cum_dist[-1], num=num_control_points)
-    control_points_indices = [
-        np.argmin(np.abs(point_cum_dist - contour_cum_dist))
-        for point_cum_dist in control_points_step
-    ]
+    if (num_control_points - 1) % (num_segments := len(segments) - 1):
+        raise ValueError(
+            f"The number of requested control points: {num_control_points}, cannot be divided evenly across the "
+            f"{num_segments} contour segments. Please set a number of control points that, when subtracted by 1, "
+            f"is divisible by {num_segments}."
+        )
+    num_control_points_per_segment = (num_control_points - 1) // num_segments
+
+    # Simplify the general case for handling th
+    control_points_indices = [0]
+    for segment_start, segment_stop in itertools.pairwise(segments):
+        # Slice segment so that both the start and stop points are included in the segment
+        segment = contour[segment_start : segment_stop + 1]
+
+        # Compute the geometric distances between each point along the segment and the previous point.
+        # This allows to then simply compute the cumulative distance from the left corner to each segment point
+        segment_dist_to_prev = [0.0] + [
+            np.linalg.norm((p1 - p0) * voxelspacing) for p0, p1 in itertools.pairwise(segment)
+        ]
+        segment_cum_dist = np.cumsum(segment_dist_to_prev)
+
+        # Select points along the segment that are equidistant (by selecting points that are closest to where
+        # steps of `perimeter / num_control_points` would expect to find points)
+        control_points_step = np.linspace(
+            0, segment_cum_dist[-1], num=num_control_points_per_segment + 1
+        )
+        segment_control_points = [
+            segment_start + np.argmin(np.abs(point_cum_dist - segment_cum_dist))
+            for point_cum_dist in control_points_step
+        ]
+        # Skip the first control point in the current segment, because its already included as the last control
+        # point of the previous segment
+        control_points_indices += segment_control_points[1:]
+
     return np.roll(contour[control_points_indices], 1, 1)
 
 
 def extract_control_points_and_save_as_json(
     seg_path: PathLike,
     output_folder: PathLike,
-    num_points: int = 15,
+    num_points: int = 11,
     json_name: Optional[str] = None,
+    export_gif: bool = True,
+    bmode_path: Optional[PathLike] = None,
 ) -> None:
     """Extract endocardium and/or epicardium control points from segmentation and export the point
     coordinates to a .json file.
@@ -235,33 +449,34 @@ def extract_control_points_and_save_as_json(
 
     for _, seg in enumerate(seg_array):
         endo_points.append(
-            (endo_epi_control_points(seg, 1, num_points, spacing) * spacing).tolist()
+            (endo_epi_control_points(seg, 1, 2, "endo", num_points, spacing)).tolist()
         )
 
         if 2 in np.unique(seg):
             epi_points.append(
-                (endo_epi_control_points(seg, [1, 2], num_points, spacing) * spacing).tolist()
+                (endo_epi_control_points(seg, 1, 2, "epi", num_points, spacing)).tolist()
             )
         else:
             epi_points.append([])
 
         dummy_points.append([])
 
-    os.makedirs(output_folder, exist_ok=True)
+    json_folder = os.path.join(output_folder, "control_points")
+    os.makedirs(json_folder, exist_ok=True)
 
     if json_name is None:
         json_name = os.path.basename(seg_path)[:-7] + ".json"
     else:
         json_name = json_name + ".json"
 
-    json_path = os.path.join(output_folder, json_name)
+    json_path = os.path.join(json_folder, json_name)
 
     json_dict = {}
     json_dict["contourCheck"] = 0
     json_dict["imageQuality"] = 0
     json_dict["ecg"] = []
-    json_dict["left_ventricle_endo"] = endo_points
-    json_dict["left_ventricle_epi"] = epi_points
+    json_dict["left_ventricle_endo"] = (np.array(endo_points) * spacing).tolist()
+    json_dict["left_ventricle_epi"] = (np.array(epi_points) * spacing).tolist()
     json_dict["right_ventricle"] = dummy_points
 
     if os.path.isfile(json_path):
@@ -269,6 +484,43 @@ def extract_control_points_and_save_as_json(
 
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(json_dict, f, separators=(",", ":"))
+
+    if export_gif:
+        endo_points = np.array(endo_points)
+        epi_points = np.array(epi_points)
+        point_colors = np.array([[144, 238, 144], [255, 182, 193]])
+        # Create mask for control points
+        control_points_mask = np.zeros([2, *seg_array.shape])
+        for frame in range(seg_array.shape[0]):
+            # Mark endo points in the mask
+            control_points_mask[0, frame, endo_points[frame, :, 1], endo_points[frame, :, 0]] = 1
+            if 2 in np.unique(seg_array):
+                # Mark epi points in the mask
+                control_points_mask[1, frame, epi_points[frame, :, 1], epi_points[frame, :, 0]] = 1
+        # Create pseudo 3D disk structure for dilatation
+        points_struct = np.stack([np.zeros(disk(3).shape), disk(3), np.zeros(disk(3).shape)])
+        for i in range(control_points_mask.shape[0]):
+            # Dilate the control points so that they occupy a few pixels (to make them more visible)
+            control_points_mask[i] = ndimage.binary_dilation(control_points_mask[i], points_struct)
+        control_points_mask = control_points_mask.astype(bool)
+
+        # Get bmode data
+        if bmode_path is not None:
+            bmode_itk = sitk.ReadImage(bmode_path)
+            bmode_array = sitk.GetArrayFromImage(bmode_itk)
+        else:
+            bmode_array = np.zeros(seg_array.shape)
+        overlay = overlay_mask_on_image(bmode_array, seg_array) * 255
+
+        # Update the pixel values of control points
+        for structure in np.unique(seg_array)[1:]:
+            overlay[control_points_mask[structure - 1]] = point_colors[structure - 1]
+
+        # Export overlay to gif
+        gif_folder = os.path.join(output_folder, "gif")
+        os.makedirs(gif_folder, exist_ok=True)
+        gif_path = os.path.join(gif_folder, json_name[:-5] + ".gif")
+        array2gif(overlay, gif_path)
 
 
 def nifti2mhd(
@@ -305,35 +557,40 @@ def nifti2mhd(
 
 if __name__ == "__main__":
     import SimpleITK as sitk
-    from matplotlib import pyplot as plt
 
-    from ascent.utils.visualization import imagesc, overlay_mask_on_image
+    from ascent.utils.visualization import imagesc
 
-    bmode_path = "C:/Users/ling/Desktop/A3C-nnUNet-results/nifti/bmode/0027_A3C_bmode.nii.gz"
-    seg_path = "C:/Users/ling/Desktop/A3C-nnUNet-results/nifti/post_processed_masks/0027_A3C_post_mask.nii.gz"
-    output_folder = "C:/Users/ling/Desktop/new_A3C_data/control_points"
-    json_name = os.path.basename(seg_path)[:8]
-    # extract_control_points_and_save_as_json(seg_path, output_folder, json_name=json_name)
-    # nifti2mhd(bmode_path, output_folder)
-    frame = 20
+    for i in [27]:
+        bmode_path = (
+            f"C:/Users/ling/Desktop/A3C-nnUNet-results/nifti/bmode/{i:04}_A3C_bmode.nii.gz"
+        )
+        seg_path = f"C:/Users/ling/Desktop/A3C-nnUNet-results/nifti/post_processed_masks/{i:04}_A3C_post_mask.nii.gz"
+        output_folder = "C:/Users/ling/Desktop/new_A3C_data"
+        mhd_folder = "C:/Users/ling/Desktop/new_A3C_data/bmode"
+        json_name = os.path.basename(seg_path)[:8]
+        extract_control_points_and_save_as_json(
+            seg_path, output_folder, json_name=json_name, bmode_path=bmode_path
+        )
+        nifti2mhd(bmode_path, mhd_folder)
+    # frame = 20
 
-    seg_itk = sitk.ReadImage(seg_path)
-    seg_array = sitk.GetArrayFromImage(seg_itk)
+    # seg_itk = sitk.ReadImage(seg_path)
+    # seg_array = sitk.GetArrayFromImage(seg_itk)
 
-    bmode_itk = sitk.ReadImage(bmode_path)
-    bmode_array = sitk.GetArrayFromImage(bmode_itk)
+    # bmode_itk = sitk.ReadImage(bmode_path)
+    # bmode_array = sitk.GetArrayFromImage(bmode_itk)
 
-    overlaid = overlay_mask_on_image(bmode_array, seg_array)
+    # overlaid = overlay_mask_on_image(bmode_array, seg_array)
 
-    spacing = seg_itk.GetSpacing()
+    # spacing = seg_itk.GetSpacing()
 
-    for frame in range(5):
-        endo_points = endo_epi_control_points(seg_array[frame], 1, 12, spacing[:-1])
-        epi_points = endo_epi_control_points(seg_array[frame], [1, 2], 12, spacing[:-1])
+    # for frame in range(5):
+    #     endo_points = endo_epi_control_points(seg_array[frame], 1, 2, "endo", 11, spacing[:-1])
+    #     epi_points = endo_epi_control_points(seg_array[frame], 1, 2, "epi", 11, spacing[:-1])
 
-        plt.figure(figsize=(18, 6), dpi=300)
-        ax = plt.subplot(1, 3, 1)
-        imagesc(ax, overlaid[frame], show_colorbar=False)
-        ax.scatter(endo_points[:, 0], endo_points[:, 1], c="r", s=4)
-        ax.scatter(epi_points[:, 0], epi_points[:, 1], c="b", s=4)
-        plt.show()
+    #     plt.figure(figsize=(18, 6), dpi=300)
+    #     ax = plt.subplot(1, 3, 1)
+    #     imagesc(ax, overlaid[frame], show_colorbar=False)
+    #     ax.scatter(endo_points[:, 0], endo_points[:, 1], c="r", s=4)
+    #     ax.scatter(epi_points[:, 0], epi_points[:, 1], c="b", s=4)
+    #     plt.show()
