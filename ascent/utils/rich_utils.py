@@ -99,11 +99,3 @@ def enforce_tags(cfg: DictConfig, save_to_file: bool = False) -> None:
             tags.append(tag)
         with open(Path(cfg.paths.output_dir, "tags.log"), "w") as file:
             rich.print(tags, file=file)
-
-
-if __name__ == "__main__":
-    from hydra import compose, initialize
-
-    with initialize(version_base="1.2", config_path="../../configs"):
-        cfg = compose(config_name="train.yaml", return_hydra_config=False, overrides=[])
-        print_config_tree(cfg, resolve=False, save_to_file=False)
