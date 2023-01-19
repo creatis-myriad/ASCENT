@@ -1,42 +1,28 @@
-import pyrootutils
-
-root = pyrootutils.setup_root(
-    search_from=__file__,
-    indicator=[".git", "pyproject.toml"],
-    pythonpath=True,
-    dotenv=True,
-)
-
-
-# ------------------------------------------------------------------------------------ #
-# `pyrootutils.setup_root(...)` is recommended at the top of each start file
-# to make the environment more robust and consistent
-#
-# the line above searches for ".git" or "pyproject.toml" in present and parent dirs
-# to determine the project root dir
-#
-# adds root dir to the PYTHONPATH (if `pythonpath=True`)
-# so this file can be run from any place without installing project as a package
-#
-# sets PROJECT_ROOT environment variable which is used in "configs/paths/default.yaml"
-# this makes all paths relative to the project root
-#
-# additionally loads environment variables from ".env" file (if `dotenv=True`)
-#
-# you can get away without using `pyrootutils.setup_root(...)` if you:
-# 1. move this file to the project root dir or install project as a package
-# 2. modify paths in "configs/paths/default.yaml" to not use PROJECT_ROOT
-# 3. always run this file from the project root dir
-#
-# https://github.com/ashleve/pyrootutils
-# ------------------------------------------------------------------------------------ #
-
 from typing import List, Tuple
 
 import hydra
+import pyrootutils
 from omegaconf import DictConfig
 from pytorch_lightning import LightningDataModule, LightningModule, Trainer
 from pytorch_lightning.loggers import LightningLoggerBase
+
+pyrootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
+# ------------------------------------------------------------------------------------ #
+# the setup_root above is equivalent to:
+# - adding project root dir to PYTHONPATH
+#       (so you don't need to force user to install project as a package)
+#       (necessary before importing any local modules e.g. `from src import utils`)
+# - setting up PROJECT_ROOT environment variable
+#       (which is used as a base for paths in "configs/paths/default.yaml")
+#       (this way all filepaths are the same no matter where you run the code)
+# - loading environment variables from ".env" in root dir
+#
+# you can remove it if you:
+# 1. either install project as a package or move entry files to project root dir
+# 2. set `root_dir` to "." in "configs/paths/default.yaml"
+#
+# more info: https://github.com/ashleve/pyrootutils
+# ------------------------------------------------------------------------------------ #
 
 from ascent import utils
 
