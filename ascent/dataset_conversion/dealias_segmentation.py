@@ -58,7 +58,7 @@ def rename_case(
 
 def convert_to_nnUNet(
     data_dir: Union[Path, str],
-    dataset_name: Union[Path, str],
+    dataset_name: str,
     output_dir: Union[Path, str],
     multiply: bool,
     label_is_vel: bool = True,
