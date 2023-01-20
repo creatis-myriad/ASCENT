@@ -30,8 +30,8 @@ pyrootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 # ------------------------------------------------------------------------------------ #
 
 from ascent import utils
-from ascent.datamodules.components.transforms import Preprocessd
 from ascent.utils.file_and_folder_operations import load_pickle, subfiles
+from ascent.utils.transforms import Preprocessd
 
 log = utils.get_pylogger(__name__)
 
