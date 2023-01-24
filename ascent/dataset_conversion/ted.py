@@ -134,13 +134,16 @@ def convert_to_nnUNet(
 
 
 def convert_to_CAMUS_submission(
-    predictions_dir: Union[Path, str], output_dir: Union[Path, str]
+    predictions_dir: Union[Path, str],
+    output_dir: Union[Path, str],
+    la_predictions_dir: Union[Path, str],
 ) -> None:
     """Convert predictions to correct format for submission.
 
     Args:
         predictions_dir: Path to the prediction folder.
         output_dir: Path to the output folder to save the converted predictions.
+        la_predictions_dir: Path to 2D nnUNet's predictions to retrieve the left atrium segmentations.
     """
     os.makedirs(output_dir, exist_ok=True)
     for case in tqdm(os.listdir(predictions_dir)):
@@ -152,7 +155,7 @@ def convert_to_CAMUS_submission(
             image_array = sitk.GetArrayFromImage(image)
             spacing = image.GetSpacing()
             ori_spacing = [0.308, 0.154, 1.54]
-            if not np.all(np.array(spacing) == np.array(ori_spacing)):
+            if not np.all(np.array(np.round(spacing, 3)) == np.array(ori_spacing)):
                 shape = image.GetSize()
                 image_array = image_array.transpose(2, 1, 0)
                 image_array = image_array[None]
@@ -165,8 +168,21 @@ def convert_to_CAMUS_submission(
                 image_array = resized[0]
                 spacing = ori_spacing
 
-            ed_frame = sitk.GetImageFromArray(image_array[0:1].astype(np.uint8))
-            es_frame = sitk.GetImageFromArray(image_array[-2:-1].astype(np.uint8))
+            la_ed_frame = sitk.GetArrayFromImage(
+                sitk.ReadImage(os.path.join(la_predictions_dir, f"{case_identifier}_ED.mhd"))
+            )
+            la_es_frame = sitk.GetArrayFromImage(
+                sitk.ReadImage(os.path.join(la_predictions_dir, f"{case_identifier}_ES.mhd"))
+            )
+
+            ed_frame_array = image_array[0:1].astype(np.uint8)
+            es_frame_array = image_array[-1:].astype(np.uint8)
+
+            ed_frame_array[np.logical_and(ed_frame_array == 0, la_ed_frame == 3)] = 3
+            es_frame_array[np.logical_and(es_frame_array == 0, la_es_frame == 3)] = 3
+
+            ed_frame = sitk.GetImageFromArray(ed_frame_array)
+            es_frame = sitk.GetImageFromArray(es_frame_array)
             ed_frame.SetSpacing(spacing)
             es_frame.SetSpacing(spacing)
             sitk.WriteImage(ed_frame, os.path.join(output_dir, f"{case_identifier}_ED.mhd"))
@@ -205,7 +221,8 @@ if __name__ == "__main__":
         dataset_name,
     )
 
-    # # Convert predictions in Nifti format to raw/mhd
-    # prediction_dir = "C:/Users/ling/Desktop/camus_sequence_test/inference_raw"
-    # submission_dir = "C:/Users/ling/Desktop/camus_sequence_test/submission"
-    # convert_to_CAMUS_submission(prediction_dir, submission_dir)
+    # Convert predictions in Nifti format to raw/mhd
+    prediction_dir = "C:/Users/ling/Desktop/camus_sequence_test/inference_raw"
+    submission_dir = "C:/Users/ling/Desktop/camus_sequence_test/submission"
+    la_predictions_dir = "C:/Users/ling/Desktop/camus_test/submission"
+    convert_to_CAMUS_submission(prediction_dir, submission_dir, la_predictions_dir)
