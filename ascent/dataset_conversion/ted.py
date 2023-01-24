@@ -222,7 +222,7 @@ if __name__ == "__main__":
     )
 
     # Convert predictions in Nifti format to raw/mhd
-    prediction_dir = "C:/Users/ling/Desktop/camus_sequence_test/inference_raw"
-    submission_dir = "C:/Users/ling/Desktop/camus_sequence_test/submission"
+    prediction_dir = "C:/Users/ling/Desktop/camus_sequence_test/inference_raw_cardinal"
+    submission_dir = "C:/Users/ling/Desktop/camus_sequence_test/submission_cardinal"
     la_predictions_dir = "C:/Users/ling/Desktop/camus_test/submission"
     convert_to_CAMUS_submission(prediction_dir, submission_dir, la_predictions_dir)
