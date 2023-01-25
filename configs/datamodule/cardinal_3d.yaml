@@ -3,5 +3,5 @@ defaults:
 
 batch_size: 2
 dataset_name: CARDINAL
-do_dummy_2D_data_aug: True
+do_dummy_2D_data_aug: False
 num_workers: 12
