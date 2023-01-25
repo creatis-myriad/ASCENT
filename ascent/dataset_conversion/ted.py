@@ -18,7 +18,7 @@ def convert_to_nnUNet(
     views: list = ["2CH", "4CH"],
     resize: bool = False,
 ) -> None:
-    """Convert Camus dataset to nnUNet's format.
+    """Convert TED dataset to nnUNet's format.
 
     Args:
         data_dir: Path to the dataset.
@@ -155,7 +155,7 @@ def convert_to_CAMUS_submission(
             image_array = sitk.GetArrayFromImage(image)
             spacing = image.GetSpacing()
             ori_spacing = [0.308, 0.154, 1.54]
-            if not np.all(np.array(np.round(spacing, 3)) == np.array(ori_spacing)):
+            if not np.all(np.array(np.round(spacing, 3))[:-1] == np.array(ori_spacing)[:-1]):
                 shape = image.GetSize()
                 image_array = image_array.transpose(2, 1, 0)
                 image_array = image_array[None]
@@ -166,7 +166,7 @@ def convert_to_CAMUS_submission(
                 )
                 resized = resample_label(image_array, ori_shape, True)
                 image_array = resized[0]
-                spacing = ori_spacing
+            spacing = ori_spacing
 
             la_ed_frame = sitk.GetArrayFromImage(
                 sitk.ReadImage(os.path.join(la_predictions_dir, f"{case_identifier}_ED.mhd"))
@@ -193,10 +193,10 @@ def convert_to_CAMUS_submission(
 
 if __name__ == "__main__":
     base = "C:/Users/ling/Desktop/Camus/4CH_full_cycle"
-    output_dir = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/TED256/raw"
+    output_dir = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/TED/raw"
     os.makedirs(output_dir, exist_ok=True)
 
-    dataset_name = "TED256"
+    dataset_name = "TED"
 
     imagesTr = os.path.join(output_dir, "imagesTr")
     labelsTr = os.path.join(output_dir, "labelsTr")
@@ -209,7 +209,7 @@ if __name__ == "__main__":
     os.makedirs(labelsTs, exist_ok=True)
 
     # Convert train data to nnUNet's format
-    convert_to_nnUNet(base, output_dir, sequence=True, views=["4CH"], resize=True)
+    convert_to_nnUNet(base, output_dir, sequence=True, views=["4CH"], resize=False)
 
     # Generate dataset.json
     generate_dataset_json(
@@ -221,8 +221,8 @@ if __name__ == "__main__":
         dataset_name,
     )
 
-    # Convert predictions in Nifti format to raw/mhd
-    prediction_dir = "C:/Users/ling/Desktop/camus_sequence_test/inference_raw_cardinal"
-    submission_dir = "C:/Users/ling/Desktop/camus_sequence_test/submission_cardinal"
-    la_predictions_dir = "C:/Users/ling/Desktop/camus_test/submission"
-    convert_to_CAMUS_submission(prediction_dir, submission_dir, la_predictions_dir)
+    # # Convert predictions in Nifti format to raw/mhd
+    # prediction_dir = "C:/Users/ling/Desktop/camus_sequence_test/nnUNet_3D_processed"
+    # submission_dir = "C:/Users/ling/Desktop/camus_sequence_test/submission_cardinal"
+    # la_predictions_dir = "C:/Users/ling/Desktop/camus_test/submission"
+    # convert_to_CAMUS_submission(prediction_dir, submission_dir, la_predictions_dir)
