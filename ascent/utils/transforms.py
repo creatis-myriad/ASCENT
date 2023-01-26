@@ -385,7 +385,7 @@ class Preprocessd(MapTransform):
         def check(spacing):
             return np.max(spacing) / np.min(spacing) >= 3
 
-        return bool(check(spacing) or check(self.target_spacing))
+        return bool(check(spacing) or bool(check(self.target_spacing)))
 
     def __call__(self, data: dict[str, str]):
         # load data
@@ -440,16 +440,12 @@ class Preprocessd(MapTransform):
                     image[c] = np.clip(image[c], lower_bound, upper_bound)
                     image[c] = (image[c] - mean_intensity) / std_intensity
                 elif not scheme == "noNorm":
-                    mask = np.ones(image.shape[1:], dtype=bool)
-                    image[c][mask] = (image[c][mask] - image[c][mask].mean()) / (
-                        image[c][mask].std() + 1e-8
-                    )
-                    # image[c] = (image[c] - image[c].mean()) / (image[c].std() + 1e-8)
+                    image[c] = (image[c] - image[c].mean()) / (image[c].std() + 1e-8)
 
-        d["image"] = image
+        d["image"] = image.astype(np.float32)
 
         if "label" in self.keys:
-            d["label"] = label
+            d["label"] = label.astype(np.uint8)
 
         d["image_meta_dict"] = image_meta_dict
 
