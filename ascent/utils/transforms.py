@@ -370,7 +370,7 @@ class Preprocessd(MapTransform):
         """
         super().__init__(keys)
         self.keys = keys
-        self.target_spacing = target_spacing
+        self.target_spacing = np.array(target_spacing)
         self.intensity_properties = intensity_properties
         self.do_resample = do_resample
         self.do_normalize = do_normalize
@@ -411,7 +411,7 @@ class Preprocessd(MapTransform):
         anisotropy_flag = False
 
         image = image.cpu().detach().numpy()
-        if image_meta_dict.get("resample_flag"):
+        if image_meta_dict.get("resampling_flag"):
             if not np.all(image_meta_dict.get("original_spacing") == self.target_spacing):
                 # resample
                 resample_shape = self.calculate_new_shape(
