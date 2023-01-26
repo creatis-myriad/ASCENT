@@ -410,7 +410,7 @@ class Preprocessd(MapTransform):
 
         anisotropy_flag = False
 
-        image = image.numpy()
+        image = image.cpu().detach().numpy()
         if image_meta_dict.get("resample_flag"):
             if not np.all(image_meta_dict.get("original_spacing") == self.target_spacing):
                 # resample
@@ -420,6 +420,7 @@ class Preprocessd(MapTransform):
                 anisotropy_flag = self.check_anisotrophy(image_meta_dict.get("original_spacing"))
                 image = resample_image(image, resample_shape, anisotropy_flag)
                 if "label" in self.keys:
+                    label = label.cpu().detach().numpy()
                     label = resample_label(label, resample_shape, anisotropy_flag)
 
         image_meta_dict["anisotropy_flag"] = anisotropy_flag
@@ -440,7 +441,11 @@ class Preprocessd(MapTransform):
                     image[c] = np.clip(image[c], lower_bound, upper_bound)
                     image[c] = (image[c] - mean_intensity) / std_intensity
                 elif not scheme == "noNorm":
-                    image[c] = (image[c] - image[c].mean()) / (image[c].std() + 1e-8)
+                    mask = np.ones(image.shape[1:], dtype=bool)
+
+                    image[c][mask] = (image[c][mask] - image[c][mask].mean()) / (
+                        image[c][mask].std() + 1e-8
+                    )
 
         d["image"] = image.astype(np.float32)
 
