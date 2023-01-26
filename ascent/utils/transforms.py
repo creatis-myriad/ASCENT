@@ -440,7 +440,11 @@ class Preprocessd(MapTransform):
                     image[c] = np.clip(image[c], lower_bound, upper_bound)
                     image[c] = (image[c] - mean_intensity) / std_intensity
                 elif not scheme == "noNorm":
-                    image[c] = (image[c] - image[c].mean()) / (image[c].std() + 1e-8)
+                    mask = np.ones(image.shape[1:], dtype=bool)
+                    image[c][mask] = (image[c][mask] - image[c][mask].mean()) / (
+                        image[c][mask].std() + 1e-8
+                    )
+                    # image[c] = (image[c] - image[c].mean()) / (image[c].std() + 1e-8)
 
         d["image"] = image
 
