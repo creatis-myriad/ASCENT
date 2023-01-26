@@ -441,7 +441,7 @@ class nnUNetLitModule(LightningModule):
             image: Image to predict.
 
         Returns:
-            Logits of prediction.
+            Aggregated prediciton softmax.
 
         Raises:
             NotImplementedError: If the patch shape is not 2D nor 3D.
@@ -522,7 +522,7 @@ class nnUNetLitModule(LightningModule):
             image: Image to predict.
 
         Returns:
-            Logits of prediction.
+            Aggregated prediciton softmax.
 
         Raises:
             ValueError: If image is not 3D.
@@ -544,7 +544,7 @@ class nnUNetLitModule(LightningModule):
         """Recover prediction to its original shape in case of resampling.
 
         Args:
-            prediciton: Predicted logits. (c, W, H, D)
+            prediciton: Aggregated prediciton softmax. (c, W, H, D)
             new_shape: Shape for resampling. (W, H, D)
             anisotropy_flag: Whether to use anisotropic resampling.
 
