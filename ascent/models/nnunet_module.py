@@ -245,7 +245,7 @@ class nnUNetLitModule(LightningModule):
         print(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
 
         num_classes = preds.shape[1]
-        preds = softmax_helper(preds)
+        # preds = softmax_helper(preds)
         pred_seg = preds.argmax(1)
         label = label[:, 0]
         axes = tuple(range(1, len(label.shape)))
@@ -353,7 +353,7 @@ class nnUNetLitModule(LightningModule):
 
         properties_dict = self.get_properties(image_meta_dict)
 
-        preds = softmax_helper(preds)
+        # preds = softmax_helper(preds)
         preds = preds.squeeze(0).cpu().detach().numpy()
         original_shape = properties_dict.get("original_shape")
         if len(preds.shape[1:]) == len(original_shape) - 1:
@@ -469,7 +469,7 @@ class nnUNetLitModule(LightningModule):
             image: Image to predict.
 
         Returns:
-            Logits averaged over the number of flips.
+            Aggregated prediciton softmax over number of flips.
         """
         preds = self.predict(image)
         for flip_idx in self.tta_flips:
@@ -486,14 +486,14 @@ class nnUNetLitModule(LightningModule):
             image: Image to predict.
 
         Returns:
-            Logits of prediction.
+            Aggregated prediciton softmax.
 
         Raises:
             ValueError: If image is not 2D.
         """
         if not len(image.shape) == 4:
             raise ValueError("image must be (b, c, w, h)")
-        return self.sliding_window_inference(image)
+        return softmax_helper(self.sliding_window_inference(image))
 
     def predict_3D_3Dconv_tiled(
         self, image: Union[Tensor, MetaTensor]
@@ -504,14 +504,14 @@ class nnUNetLitModule(LightningModule):
             image: Image to predict.
 
         Returns:
-            Logits of prediction.
+            Aggregated prediciton softmax.
 
         Raises:
             ValueError: If image is not 3D.
         """
         if not len(image.shape) == 5:
             raise ValueError("image must be (b, c, w, h, d)")
-        return self.sliding_window_inference(image)
+        return softmax_helper(self.sliding_window_inference(image))
 
     def predict_3D_2Dconv_tiled(
         self, image: Union[Tensor, MetaTensor]
