@@ -415,7 +415,8 @@ class Preprocessd(MapTransform):
             if not np.all(image_meta_dict.get("original_spacing") == self.target_spacing):
                 # resample
                 resample_shape = self.calculate_new_shape(
-                    image_meta_dict.get("original_spacing"), image_meta_dict.get("original_shape")
+                    image_meta_dict.get("original_spacing"),
+                    image_meta_dict.get("shape_after_cropping"),
                 )
                 anisotropy_flag = self.check_anisotrophy(image_meta_dict.get("original_spacing"))
                 image = resample_image(image, resample_shape, anisotropy_flag)
