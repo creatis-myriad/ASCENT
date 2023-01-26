@@ -32,8 +32,10 @@ def resample_image(
     Returns:
         Resampled image.
     """
+    dtype_data = image.dtype
     shape = np.array(image[0].shape)
     if not np.all(shape == np.array(new_shape)):
+        image = image.astype(float)
         resized_channels = []
         if anisotropy_flag:
             print("Anisotropic image, using separate z resampling")
@@ -50,7 +52,7 @@ def resample_image(
                         clip=True,
                         anti_aliasing=False,
                     )
-                    resized_slices.append(image_c_2d_slice)
+                    resized_slices.append(image_c_2d_slice.astype(dtype_data))
                 resized = np.stack(resized_slices, axis=-1)
                 resized = resize(
                     resized,
@@ -61,7 +63,7 @@ def resample_image(
                     clip=True,
                     anti_aliasing=False,
                 )
-                resized_channels.append(resized)
+                resized_channels.append(resized.astype(dtype_data))
         else:
             print("Not using separate z resampling")
             for image_c in image:
@@ -74,9 +76,9 @@ def resample_image(
                     clip=True,
                     anti_aliasing=False,
                 )
-                resized_channels.append(resized)
+                resized_channels.append(resized.astype(dtype_data))
         reshaped = np.stack(resized_channels, axis=0)
-        return reshaped
+        return reshaped.astype(dtype_data)
     else:
         print("No resampling necessary")
         return image
