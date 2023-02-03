@@ -1,7 +1,0 @@
-defaults:
-  - nnunet
-
-batch_size: 2
-dataset_name: CARDINAL3
-do_dummy_2D_data_aug: False
-num_workers: 12

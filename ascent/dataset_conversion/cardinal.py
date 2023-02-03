@@ -61,10 +61,10 @@ def convert_to_nnUNet(
         for view in views:
             case_identifier = f"{case}_{view}"
             image = sitk.ReadImage(os.path.join(data_dir, f"{case_identifier}_bmode.nii.gz"))
-            image.SetSpacing([*image.GetSpacing()[:-1], 1.54])
+            image.SetSpacing([*image.GetSpacing()[:-1], 1.0])
             if os.path.isfile(os.path.join(data_dir, f"{case_identifier}_mask.nii.gz")):
                 label = sitk.ReadImage(os.path.join(data_dir, f"{case_identifier}_mask.nii.gz"))
-                label.SetSpacing([*label.GetSpacing()[:-1], 1.54])
+                label.SetSpacing([*label.GetSpacing()[:-1], 1.0])
             else:
                 label = None
 
@@ -76,9 +76,7 @@ def convert_to_nnUNet(
                 image_array = sitk.GetArrayFromImage(image).transpose(2, 1, 0)
                 image_array = image_array[None]
                 resized_image_array = resample_image(image_array, new_shape, True)
-                image = sitk.GetImageFromArray(
-                    resized_image_array[0].transpose(2, 1, 0).astype(np.uint8)
-                )
+                image = sitk.GetImageFromArray(resized_image_array[0].transpose(2, 1, 0))
                 image.SetSpacing(new_spacing)
 
             sitk.WriteImage(image, os.path.join(images_out_dir, f"{case_identifier}_0000.nii.gz"))
@@ -95,7 +93,6 @@ def convert_to_nnUNet(
 def convert_to_CAMUS_submission(
     predictions_dir: Union[Path, str],
     output_dir: Union[Path, str],
-    la_predictions_dir: Union[Path, str],
 ) -> None:
     """Convert predictions to correct format for submission.
 
@@ -119,26 +116,17 @@ def convert_to_CAMUS_submission(
                 image_array = image_array.transpose(2, 1, 0)
                 image_array = image_array[None]
                 ori_shape = (
-                    (np.array(spacing) * np.array(shape) / np.array(ori_spacing))
-                    .astype(np.int8)
+                    np.round(np.array(spacing) * np.array(shape) / np.array(ori_spacing))
+                    .astype(int)
                     .tolist()
                 )
                 resized = resample_label(image_array, ori_shape, True)
                 image_array = resized[0]
+                image_array = image_array.transpose(2, 1, 0)
             spacing = ori_spacing
-
-            la_ed_frame = sitk.GetArrayFromImage(
-                sitk.ReadImage(os.path.join(la_predictions_dir, f"{case_identifier}_ED.mhd"))
-            )
-            la_es_frame = sitk.GetArrayFromImage(
-                sitk.ReadImage(os.path.join(la_predictions_dir, f"{case_identifier}_ES.mhd"))
-            )
 
             ed_frame_array = image_array[0:1].astype(np.uint8)
             es_frame_array = image_array[-1:].astype(np.uint8)
-
-            ed_frame_array[np.logical_and(ed_frame_array == 0, la_ed_frame == 3)] = 3
-            es_frame_array[np.logical_and(es_frame_array == 0, la_es_frame == 3)] = 3
 
             ed_frame = sitk.GetImageFromArray(ed_frame_array)
             es_frame = sitk.GetImageFromArray(es_frame_array)
@@ -150,13 +138,50 @@ def convert_to_CAMUS_submission(
             sitk.WriteImage(image, os.path.join(output_dir, f"{case_identifier}.mhd"))
 
 
+def convert_to_CARDINAL_evaluation(
+    predictions_dir: Union[Path, str],
+    output_dir: Union[Path, str],
+) -> None:
+    """Convert predictions to correct format for submission.
+
+    Args:
+        predictions_dir: Path to the prediction folder.
+        output_dir: Path to the output folder to save the converted predictions.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    for case in tqdm(os.listdir(predictions_dir)):
+        case_path = os.path.join(predictions_dir, case)
+        image = sitk.ReadImage(case_path)
+
+        image_array = sitk.GetArrayFromImage(image)
+        spacing = image.GetSpacing()
+        ori_spacing = [0.308, 0.308, 1.0]
+        if not np.all(np.array(np.round(spacing, 3))[:-1] == np.array(ori_spacing)[:-1]):
+            shape = image.GetSize()
+            image_array = image_array.transpose(2, 1, 0)
+            image_array = image_array[None]
+            ori_shape = (
+                np.round(np.array(spacing) * np.array(shape) / np.array(ori_spacing))
+                .astype(int)
+                .tolist()
+            )
+            resized = resample_label(image_array, ori_shape, True)
+            image_array = resized[0]
+            image_array = image_array.transpose(2, 1, 0)
+        spacing = ori_spacing
+
+        resized_image = sitk.GetImageFromArray(image_array)
+        resized_image.SetSpacing(spacing)
+        sitk.WriteImage(resized_image, os.path.join(output_dir, case))
+
+
 if __name__ == "__main__":
     base = "C:/Users/ling/Desktop/Dataset/Bmode/Cardinal"
-    output_dir = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/CARDINAL2/raw"
-    txt_file = "C:/Users/ling/Desktop/Dataset/Bmode/Cardinal/A2C_100_patients.txt"
+    output_dir = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/CARDINAL/raw"
+    # txt_file = "C:/Users/ling/Desktop/Dataset/Bmode/Cardinal/A2C_100_patients.txt"
     os.makedirs(output_dir, exist_ok=True)
 
-    dataset_name = "TED + Cardinal_100_A2C"
+    dataset_name = "Cardinal"
 
     imagesTr = os.path.join(output_dir, "imagesTr")
     labelsTr = os.path.join(output_dir, "labelsTr")
@@ -169,7 +194,7 @@ if __name__ == "__main__":
     os.makedirs(labelsTs, exist_ok=True)
 
     # Convert train data to nnUNet's format
-    convert_to_nnUNet(base, output_dir, views=["A2C"], resize=False, txt_file=txt_file)
+    convert_to_nnUNet(base, output_dir, views=["A2C", "A4C"], resize=True, txt_file=None)
 
     # Generate dataset.json
     generate_dataset_json(
@@ -182,7 +207,11 @@ if __name__ == "__main__":
     )
 
     # Convert predictions in Nifti format to raw/mhd
-    prediction_dir = "C:/Users/ling/Desktop/camus_sequence_test/nnUNet_3D_processed"
-    submission_dir = "C:/Users/ling/Desktop/camus_sequence_test/submission_cardinal"
-    la_predictions_dir = "C:/Users/ling/Desktop/camus_test/submission"
-    convert_to_CAMUS_submission(prediction_dir, submission_dir, la_predictions_dir)
+    prediction_dir = "C:/Users/ling/Desktop/camus_sequence_test/lstm_processed"
+    submission_dir = "C:/Users/ling/Desktop/camus_sequence_test/submission_lstm"
+    convert_to_CAMUS_submission(prediction_dir, submission_dir)
+
+    # Resize the predictions in Nifti format if they do not have their original spacing
+    prediction_dir = "C:/Users/ling/Desktop/camus_sequence_test/inference_patient88"
+    submission_dir = "C:/Users/ling/Desktop/camus_sequence_test/inference_patient88"
+    convert_to_CARDINAL_evaluation(prediction_dir, submission_dir)

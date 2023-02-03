@@ -42,7 +42,7 @@ def convert_to_nnUNet(
         folder
         for folder in os.listdir(data_dir)
         if os.path.isdir(os.path.join(data_dir, folder))
-        and folder not in ["patient0027", "patient0047", "patient0051", "patient0228"]
+        # and folder not in ["patient0027", "patient0047", "patient0051", "patient0228"]
     ]
     for case in tqdm(dirs):
         case_path = os.path.join(data_dir, case)
@@ -70,7 +70,7 @@ def convert_to_nnUNet(
                             image_array = image_array[None]
                             resized_image_array = resample_image(image_array, new_shape, True)
                             image = sitk.GetImageFromArray(
-                                resized_image_array[0].transpose(2, 1, 0).astype(np.uint8)
+                                resized_image_array[0].transpose(2, 1, 0)
                             )
                             image.SetSpacing(new_spacing)
 
@@ -136,7 +136,6 @@ def convert_to_nnUNet(
 def convert_to_CAMUS_submission(
     predictions_dir: Union[Path, str],
     output_dir: Union[Path, str],
-    la_predictions_dir: Union[Path, str],
 ) -> None:
     """Convert predictions to correct format for submission.
 
@@ -168,18 +167,8 @@ def convert_to_CAMUS_submission(
                 image_array = resized[0]
             spacing = ori_spacing
 
-            la_ed_frame = sitk.GetArrayFromImage(
-                sitk.ReadImage(os.path.join(la_predictions_dir, f"{case_identifier}_ED.mhd"))
-            )
-            la_es_frame = sitk.GetArrayFromImage(
-                sitk.ReadImage(os.path.join(la_predictions_dir, f"{case_identifier}_ES.mhd"))
-            )
-
             ed_frame_array = image_array[0:1].astype(np.uint8)
             es_frame_array = image_array[-1:].astype(np.uint8)
-
-            ed_frame_array[np.logical_and(ed_frame_array == 0, la_ed_frame == 3)] = 3
-            es_frame_array[np.logical_and(es_frame_array == 0, la_es_frame == 3)] = 3
 
             ed_frame = sitk.GetImageFromArray(ed_frame_array)
             es_frame = sitk.GetImageFromArray(es_frame_array)
@@ -221,8 +210,7 @@ if __name__ == "__main__":
         dataset_name,
     )
 
-    # # Convert predictions in Nifti format to raw/mhd
-    # prediction_dir = "C:/Users/ling/Desktop/camus_sequence_test/nnUNet_3D_processed"
-    # submission_dir = "C:/Users/ling/Desktop/camus_sequence_test/submission_cardinal"
-    # la_predictions_dir = "C:/Users/ling/Desktop/camus_test/submission"
-    # convert_to_CAMUS_submission(prediction_dir, submission_dir, la_predictions_dir)
+    # Convert predictions in Nifti format to raw/mhd
+    prediction_dir = "C:/Users/ling/Desktop/camus_sequence_test/ted"
+    submission_dir = "C:/Users/ling/Desktop/camus_sequence_test/submission_ted"
+    convert_to_CAMUS_submission(prediction_dir, submission_dir)

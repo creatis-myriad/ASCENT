@@ -1,15 +1,15 @@
 # @package _global_
 
 defaults:
-  - override /datamodule: cardinal3_2d
-  - override /model: cardinal3_2d
+  - override /datamodule: cardinal_2d
+  - override /model: cardinal_2d
   - override /callbacks: nnunet
   - override /logger: wandb
   - override /trainer: nnunet
   - override /hydra: nnunet
 
 tags: ["${model.name}_${nnUNet_variant}", "Fold${fold}"]
-task_name: "CARDINAL3"
+task_name: "CARDINAL"
 fold: 0
 train: True
 test: True

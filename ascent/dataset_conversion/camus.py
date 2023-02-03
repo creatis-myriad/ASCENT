@@ -2,9 +2,12 @@ import os
 from pathlib import Path
 from typing import Union
 
+import numpy as np
 import SimpleITK as sitk
 from tqdm import tqdm
 from utils import generate_dataset_json
+
+from ascent.preprocessing.preprocessing import resample_image, resample_label
 
 
 def convert_to_nnUNet(
@@ -13,6 +16,7 @@ def convert_to_nnUNet(
     test: bool = False,
     sequence: bool = False,
     views: list = ["2CH", "4CH"],
+    resize: bool = False,
 ) -> None:
     """Convert Camus dataset to nnUNet's format.
 
@@ -22,13 +26,18 @@ def convert_to_nnUNet(
         test: Whether is test dataset.
         sequence: Whether to convert the whole sequence or 2CH/4CH ED/ES only. (images only)
         views: Views to be converted.
+        resize: Whether to resize images to 256x256xT.
     """
     if not test:
         images_out_dir = os.path.join(output_dir, "imagesTr")
         labels_out_dir = os.path.join(output_dir, "labelsTr")
     else:
-        images_out_dir = os.path.join(output_dir, "imagesTs")
-        labels_out_dir = os.path.join(output_dir, "labelsTs")
+        if not resize:
+            images_out_dir = os.path.join(output_dir, "imagesTs")
+            labels_out_dir = os.path.join(output_dir, "labelsTs")
+        else:
+            images_out_dir = os.path.join(output_dir, "imagesTs256")
+            labels_out_dir = os.path.join(output_dir, "labelsTs256")
 
     os.makedirs(images_out_dir, exist_ok=True)
     os.makedirs(labels_out_dir, exist_ok=True)
@@ -67,10 +76,31 @@ def convert_to_nnUNet(
                         )
                     else:
                         label = None
+                    if resize:
+                        ori_shape = image.GetSize()
+                        ori_spacing = image.GetSpacing()
+                        new_shape = [256, 256, ori_shape[-1]]
+                        new_spacing = (
+                            np.array(ori_spacing) * np.array(ori_shape) / np.array(new_shape)
+                        )
+                        image_array = sitk.GetArrayFromImage(image).transpose(2, 1, 0)
+                        image_array = image_array[None]
+                        resized_image_array = resample_image(image_array, new_shape, True)
+                        image = sitk.GetImageFromArray(resized_image_array[0].transpose(2, 1, 0))
+                        image.SetSpacing(new_spacing)
+
                     sitk.WriteImage(
                         image, os.path.join(images_out_dir, f"{case_identifier}_0000.nii.gz")
                     )
                     if label is not None:
+                        if resize:
+                            label_array = sitk.GetArrayFromImage(label).transpose(2, 1, 0)
+                            label_array = label_array[None]
+                            resized_label_array = resample_label(label_array, new_shape, True)
+                            label = sitk.GetImageFromArray(
+                                resized_label_array[0].transpose(2, 1, 0)
+                            )
+                            label.SetSpacing(new_spacing)
                         sitk.WriteImage(
                             label, os.path.join(labels_out_dir, f"{case_identifier}.nii.gz")
                         )
@@ -125,7 +155,7 @@ if __name__ == "__main__":
     )
 
     # Convert test data to nnUNet's format
-    convert_to_nnUNet(test_data, output_dir, test=True)
+    convert_to_nnUNet(test_data, output_dir, sequence=True, test=True, resize=False)
 
     # Convert predictions in Nifti format to raw/mhd
     prediction_dir = "C:/Users/ling/Desktop/camus_test/inference_raw"
