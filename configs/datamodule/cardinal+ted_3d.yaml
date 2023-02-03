@@ -3,5 +3,5 @@ defaults:
 
 batch_size: 2
 dataset_name: CARDINAL+TED
-do_dummy_2D_data_aug: False
+do_dummy_2D_data_aug: True
 num_workers: 12
