@@ -19,7 +19,12 @@ from monai.transforms.utils import generate_spatial_bounding_box
 from monai.utils import convert_to_dst_type, convert_to_tensor
 from torch import Tensor
 
-from ascent.preprocessing.preprocessing import resample_image, resample_label
+from ascent.preprocessing.preprocessing import (
+    check_anisotropy,
+    get_lowres_axis,
+    resample_image,
+    resample_label,
+)
 from ascent.utils.file_and_folder_operations import load_pickle
 
 
@@ -381,12 +386,6 @@ class Preprocessd(MapTransform):
         new_shape = (spacing_ratio * np.array(shape)).astype(int).tolist()
         return new_shape
 
-    def check_anisotrophy(self, spacing):
-        def check(spacing):
-            return np.max(spacing) / np.min(spacing) >= 3
-
-        return bool(check(spacing) or bool(check(self.target_spacing)))
-
     def __call__(self, data: dict[str, str]):
         # load data
         d = dict(data)
@@ -418,11 +417,28 @@ class Preprocessd(MapTransform):
                     image_meta_dict.get("original_spacing"),
                     image_meta_dict.get("shape_after_cropping"),
                 )
-                anisotropy_flag = self.check_anisotrophy(image_meta_dict.get("original_spacing"))
-                image = resample_image(image, resample_shape, anisotropy_flag)
+
+                if check_anisotropy(image_meta_dict.get("original_spacing")):
+                    anisotropy_flag = True
+                    axis = get_lowres_axis(image_meta_dict.get("original_spacing"))
+                elif check_anisotropy(self.target_spacing):
+                    anisotropy_flag = True
+                    axis = get_lowres_axis(self.target_spacing)
+                else:
+                    anisotropy_flag = False
+                    axis = None
+
+                if axis is not None:
+                    if len(axis) == 2:
+                        # this happens for spacings like (0.24, 1.25, 1.25) for example. In that case
+                        # we do not want to resample separately in the out of plane axis
+                        anisotropy_flag = False
+
+                image_meta_dict["spacing_after_resampling"] = self.target_spacing
+                image = resample_image(image, resample_shape, anisotropy_flag, axis, 3, 0)
                 if "label" in self.keys:
                     label = label.cpu().detach().numpy()
-                    label = resample_label(label, resample_shape, anisotropy_flag)
+                    label = resample_label(label, resample_shape, anisotropy_flag, axis, 1, 0)
 
         image_meta_dict["anisotropy_flag"] = anisotropy_flag
 

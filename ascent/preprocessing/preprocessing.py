@@ -2,7 +2,7 @@ import itertools
 import os
 import pickle  # nosec B403
 from collections import OrderedDict
-from typing import Callable, Union
+from typing import Callable, Optional, Union
 
 import numpy as np
 from einops.einops import rearrange
@@ -19,8 +19,42 @@ from ascent.utils.file_and_folder_operations import load_json, subfiles
 log = utils.get_pylogger(__name__)
 
 
+def check_anisotropy(spacing: list[float, ...], anisotropy_threshold: int = 3) -> bool:
+    """Check whether the spacing is anisotropic.
+
+    The anisotropy threshold of 3 is used as indicated in nnUNet.
+
+    Args:
+        spacing: Spacing to check its anisotropy.
+        anisotropy_threshold: Threshold to consider the spacing as anisotropic.
+
+    Returns:
+        Anisotropy flag.
+    """
+    do_separate_z = (np.max(spacing) / np.min(spacing)) > anisotropy_threshold
+    return do_separate_z
+
+
+def get_lowres_axis(spacing: list[float, ...]) -> np.ndarray:
+    """Find which axis(axes) is(are) anisotropic in given spacing.
+
+    Args:
+        spacing: Spacing to get the lowest resolution axis(axes).
+
+    Returns:
+        Lowest resolution axis numpy array.
+    """
+    axis = np.where(max(spacing) / np.array(spacing) == 1)[0]  # find which axis is anisotropic
+    return axis
+
+
 def resample_image(
-    image: np.ndarray, new_shape: Union[list, tuple], anisotropy_flag: bool
+    image: np.ndarray,
+    new_shape: Union[list, tuple],
+    anisotropy_flag: bool,
+    lowres_axis: Optional[np.ndarray] = None,
+    interp_order: int = 3,
+    order_z: int = 0,
 ) -> np.ndarray:
     """Resample an image.
 
@@ -28,6 +62,9 @@ def resample_image(
         image: Image numpy array to be resampled.
         new_shape: Shape after resampling.
         anisotropy_flag: Whether the image is anisotropic.
+        lowres_axis: Axis of lowest resolution.
+        interp_order: Interpolation order of skimage.transform.resize.
+        order_z: Interpolation order for the lowest resolution axis in case of anisotropic image.
 
     Returns:
         Resampled image.
@@ -39,14 +76,26 @@ def resample_image(
         resized_channels = []
         if anisotropy_flag:
             print("Anisotropic image, using separate z resampling")
+            axis = lowres_axis[0]
+            if axis == 0:
+                new_shape_2d = new_shape[1:]
+            elif axis == 1:
+                new_shape_2d = new_shape[[0, 2]]
+            else:
+                new_shape_2d = new_shape[:-1]
             for image_c in image:
                 resized_slices = []
-                for i in range(image_c.shape[-1]):
-                    image_c_2d_slice = image_c[:, :, i]
+                for i in range(shape[axis]):
+                    if axis == 0:
+                        image_c_2d_slice = image_c[i]
+                    elif axis == 1:
+                        image_c_2d_slice = image_c[:, i]
+                    else:
+                        image_c_2d_slice = image_c[:, :, i]
                     image_c_2d_slice = resize(
                         image_c_2d_slice,
-                        new_shape[:-1],
-                        order=3,
+                        new_shape_2d,
+                        order=interp_order,
                         mode="edge",
                         cval=0,
                         clip=True,
@@ -54,15 +103,16 @@ def resample_image(
                     )
                     resized_slices.append(image_c_2d_slice.astype(dtype_data))
                 resized = np.stack(resized_slices, axis=-1)
-                resized = resize(
-                    resized,
-                    new_shape,
-                    order=0,
-                    mode="constant",
-                    cval=0,
-                    clip=True,
-                    anti_aliasing=False,
-                )
+                if not shape[axis] == new_shape[axis]:
+                    resized = resize(
+                        resized,
+                        new_shape,
+                        order=order_z,
+                        mode="constant",
+                        cval=0,
+                        clip=True,
+                        anti_aliasing=False,
+                    )
                 resized_channels.append(resized.astype(dtype_data))
         else:
             print("Not using separate z resampling")
@@ -70,7 +120,7 @@ def resample_image(
                 resized = resize(
                     image_c,
                     new_shape,
-                    order=3,
+                    order=interp_order,
                     mode="edge",
                     cval=0,
                     clip=True,
@@ -85,7 +135,12 @@ def resample_image(
 
 
 def resample_label(
-    label: np.ndarray, new_shape: Union[list, tuple], anisotropy_flag: bool
+    label: np.ndarray,
+    new_shape: Union[list, tuple],
+    anisotropy_flag: bool,
+    lowres_axis: Optional[np.ndarray] = None,
+    interp_order: int = 1,
+    order_z: int = 0,
 ) -> np.ndarray:
     """Resample a label.
 
@@ -93,6 +148,9 @@ def resample_label(
         label: Label numpy array to be resampled.
         new_shape: Shape after resampling.
         anisotropy_flag: Whether the label is anisotropic.
+        lowres_axis: Axis of lowest resolution.
+        interp_order: Interpolation order of skimage.transform.resize.
+        order_z: Interpolation order for the lowest resolution axis in case of anisotropic label.
 
     Returns:
         Resampled label.
@@ -103,35 +161,58 @@ def resample_label(
         n_class = np.max(label)
         if anisotropy_flag:
             print("Anisotropic label, using separate z resampling")
-            shape_2d = new_shape[:-1]
-            depth = label.shape[-1]
-            reshaped_2d = np.zeros((*shape_2d, depth), dtype=np.uint8)
+            axis = lowres_axis[0]
+            depth = shape[axis]
+            if axis == 0:
+                new_shape_2d = new_shape[1:]
+                reshaped_2d = np.zeros((depth, *new_shape_2d), dtype=np.uint8)
+            elif axis == 1:
+                new_shape_2d = new_shape[[0, 2]]
+                reshaped_2d = np.zeros((new_shape_2d[0], depth, new_shape_2d[1]), dtype=np.uint8)
+            else:
+                new_shape_2d = new_shape[:-1]
+                reshaped_2d = np.zeros((*new_shape_2d, depth), dtype=np.uint8)
 
             for class_ in range(1, int(n_class) + 1):
                 for depth_ in range(depth):
-                    mask = label[0, :, :, depth_] == class_
+                    if axis == 0:
+                        mask = label[0, depth_] == class_
+                    elif axis == 1:
+                        mask = label[0, :, depth_] == class_
+                    else:
+                        mask = label[0, :, :, depth_] == class_
                     resized_2d = resize(
                         mask.astype(float),
-                        shape_2d,
-                        order=1,
+                        new_shape_2d,
+                        order=interp_order,
                         mode="edge",
                         cval=0,
                         clip=True,
                         anti_aliasing=False,
                     )
-                    reshaped_2d[:, :, depth_][resized_2d >= 0.5] = class_
-            for class_ in range(1, int(n_class) + 1):
-                mask = reshaped_2d == class_
-                resized = resize(
-                    mask.astype(float),
-                    new_shape,
-                    order=0,
-                    mode="constant",
-                    cval=0,
-                    clip=True,
-                    anti_aliasing=False,
-                )
-                reshaped[resized >= 0.5] = class_
+                    if axis == 0:
+                        reshaped_2d[depth_][resized_2d >= 0.5] = class_
+                    elif axis == 1:
+                        reshaped_2d[
+                            :,
+                            depth_,
+                        ][resized_2d >= 0.5] = class_
+                    else:
+                        reshaped_2d[:, :, depth_][resized_2d >= 0.5] = class_
+
+            if not shape[axis] == new_shape[axis]:
+                for class_ in range(1, int(n_class) + 1):
+                    mask = reshaped_2d == class_
+                    resized = resize(
+                        mask.astype(float),
+                        new_shape,
+                        order=order_z,
+                        mode="constant",
+                        cval=0,
+                        clip=True,
+                        anti_aliasing=False,
+                    )
+                    reshaped[resized >= 0.5] = class_
         else:
             print("Not using separate z resampling")
             for class_ in range(1, int(n_class) + 1):
@@ -139,7 +220,7 @@ def resample_label(
                 resized = resize(
                     mask.astype(float),
                     new_shape,
-                    order=1,
+                    order=interp_order,
                     mode="edge",
                     cval=0,
                     clip=True,
@@ -461,26 +542,6 @@ class SegPreprocessor:
         all_classes = [int(i) for i in classes.keys() if int(i) > 0]
         return all_classes
 
-    def _check_anisotropy(
-        self,
-        spacing: list[float, ...],
-    ) -> bool:
-        """Check whether the spacing is anisotropic.
-
-        The anisotropy threshold of 3 is used as indicated in nnUNet.
-
-        Args:
-            spacing: New calculated spacing for data resampling.
-
-        Returns:
-            Anisotropy flag.
-        """
-
-        def check(spacing):
-            return np.max(spacing) / np.min(spacing) >= 3
-
-        return check(spacing) or check(self.target_spacing)
-
     def _calculate_new_shape(
         self,
         spacing: list[float, ...],
@@ -618,12 +679,27 @@ class SegPreprocessor:
 
             before = {"spacing": properties["original_spacing"], "data.shape": data.shape}
 
-            anisotropy_flag = bool(self._check_anisotropy(properties["original_spacing"]))
+            if check_anisotropy(properties["original_spacing"]):
+                anisotropy_flag = True
+                axis = get_lowres_axis(properties["original_spacing"])
+            elif check_anisotropy(self.target_spacing):
+                anisotropy_flag = True
+                axis = get_lowres_axis(self.target_spacing)
+            else:
+                anisotropy_flag = False
+                axis = None
+
+            if axis is not None:
+                if len(axis) == 2:
+                    # this happens for spacings like (0.24, 1.25, 1.25) for example. In that case
+                    # we do not want to resample separately in the out of plane axis
+                    anisotropy_flag = False
+
             new_shape = self._calculate_new_shape(
                 properties["original_spacing"], properties["shape_after_cropping"]
             )
-            data = resample_image(data, new_shape, anisotropy_flag)
-            seg = resample_label(seg, new_shape, anisotropy_flag)
+            data = resample_image(data, new_shape, anisotropy_flag, axis, 3, 0)
+            seg = resample_label(seg, new_shape, anisotropy_flag, axis, 1, 0)
             properties["anisotropy_flag"] = anisotropy_flag
             properties["shape_after_resampling"] = np.array(data[0].shape)
             properties["spacing_after_resampling"] = np.array(self.target_spacing)
@@ -820,7 +896,7 @@ class SegPreprocessor:
         log.info(f"Preprocessed folder: {self.preprocessed_folder}")
         # get target spacing
         self.target_spacing = self._get_target_spacing(datalist, transforms)
-        log.info("Target spacing: {np.array(self.target_spacing)}.")
+        log.info(f"Target spacing: {np.array(self.target_spacing)}.")
 
         # get intensity properties if input contains CT data
         if "CT" in self.modalities.values():
@@ -987,12 +1063,28 @@ class RegPreprocessor(SegPreprocessor):
 
             before = {"spacing": properties["original_spacing"], "data.shape": data.shape}
 
-            anisotropy_flag = bool(self._check_anisotropy(properties["original_spacing"]))
+            if check_anisotropy(properties["original_spacing"]):
+                anisotropy_flag = True
+                axis = get_lowres_axis(properties["original_spacing"])
+            elif check_anisotropy(self.target_spacing):
+                anisotropy_flag = True
+                axis = get_lowres_axis(self.target_spacing)
+            else:
+                anisotropy_flag = False
+                axis = None
+
+            if axis is not None:
+                if len(axis) == 2:
+                    # this happens for spacings like (0.24, 1.25, 1.25) for example. In that case
+                    # we do not want to resample separately in the out of plane axis
+                    anisotropy_flag = False
+
             new_shape = self._calculate_new_shape(
                 properties["original_spacing"], properties["shape_after_cropping"]
             )
-            data = resample_image(data, new_shape, anisotropy_flag)
-            seg = resample_image(seg.astype(np.float32), new_shape, anisotropy_flag)
+            data = resample_image(data, new_shape, anisotropy_flag, axis, 3, 0)
+            seg = resample_image(seg.astype(np.float32), new_shape, anisotropy_flag, axis, 3, 0)
+
             properties["anisotropy_flag"] = anisotropy_flag
             properties["shape_after_resampling"] = np.array(data[0].shape)
             properties["spacing_after_resampling"] = np.array(self.target_spacing)
@@ -1163,13 +1255,32 @@ class DealiasPreprocessor(RegPreprocessor):
 
             before = {"spacing": properties["original_spacing"], "data.shape": data.shape}
 
-            anisotropy_flag = bool(self._check_anisotropy(properties["original_spacing"]))
+            if check_anisotropy(properties["original_spacing"]):
+                anisotropy_flag = True
+                axis = get_lowres_axis(properties["original_spacing"])
+            elif check_anisotropy(self.target_spacing):
+                anisotropy_flag = True
+                axis = get_lowres_axis(self.target_spacing)
+            else:
+                anisotropy_flag = False
+                axis = None
+
+            if axis is not None:
+                if len(axis) == 2:
+                    # this happens for spacings like (0.24, 1.25, 1.25) for example. In that case
+                    # we do not want to resample separately in the out of plane axis
+                    anisotropy_flag = False
+
             new_shape = self._calculate_new_shape(
                 properties["original_spacing"], properties["shape_after_cropping"]
             )
-            data = resample_image(data, new_shape, anisotropy_flag)
-            seg[:-1] = resample_image(seg[:-1].astype(np.float32), new_shape, anisotropy_flag)
-            seg[-1:] = resample_label(seg[-1:].astype(np.uint32), new_shape, anisotropy_flag)
+            data = resample_image(data, new_shape, anisotropy_flag, axis, 3, 0)
+            seg[:-1] = resample_image(
+                seg[:-1].astype(np.float32), new_shape, anisotropy_flag, axis, 3, 0
+            )
+            seg[-1:] = resample_label(
+                seg[-1:].astype(np.uint32), new_shape, anisotropy_flag, axis, 1, 0
+            )
 
             properties["anisotropy_flag"] = anisotropy_flag
             properties["shape_after_resampling"] = np.array(data[0].shape)

@@ -11,9 +11,13 @@ import torch.nn as nn
 from einops.einops import rearrange
 from monai.data import MetaTensor
 from pytorch_lightning import LightningModule
-from skimage.transform import resize
 from torch import Tensor
 
+from ascent.preprocessing.preprocessing import (
+    check_anisotropy,
+    get_lowres_axis,
+    resample_image,
+)
 from ascent.utils.file_and_folder_operations import save_pickle
 from ascent.utils.inferers import SlidingWindowInferer
 from ascent.utils.softmax import softmax_helper
@@ -289,9 +293,23 @@ class nnUNetLitModule(LightningModule):
                 preds = preds[..., None]
             if properties_dict.get("resampling_flag"):
                 shape_after_cropping = properties_dict.get("shape_after_cropping")
-                preds = self.recovery_prediction(
-                    preds, shape_after_cropping, properties_dict.get("anisotropy_flag")
-                )
+                if check_anisotropy(properties_dict.get("original_spacing")):
+                    anisotropy_flag = True
+                    axis = get_lowres_axis(properties_dict.get("original_spacing"))
+                elif check_anisotropy(properties_dict.get("spacing_after_resampling")):
+                    anisotropy_flag = True
+                    axis = get_lowres_axis(properties_dict.get("spacing_after_resampling"))
+                else:
+                    anisotropy_flag = False
+                    axis = None
+
+                if axis is not None:
+                    if len(axis) == 2:
+                        # this happens for spacings like (0.24, 1.25, 1.25) for example. In that case
+                        # we do not want to resample separately in the out of plane axis
+                        anisotropy_flag = False
+
+                preds = resample_image(preds, shape_after_cropping, anisotropy_flag, axis, 1, 0)
 
             box_start, box_end = properties_dict.get("crop_bbox")
             min_w, min_h, min_d = box_start
@@ -360,9 +378,24 @@ class nnUNetLitModule(LightningModule):
             preds = preds[..., None]
         if properties_dict.get("resampling_flag"):
             shape_after_cropping = properties_dict.get("shape_after_cropping")
-            preds = self.recovery_prediction(
-                preds, shape_after_cropping, properties_dict.get("anisotropy_flag")
-            )
+
+            if check_anisotropy(properties_dict.get("original_spacing")):
+                anisotropy_flag = True
+                axis = get_lowres_axis(properties_dict.get("original_spacing"))
+            elif check_anisotropy(properties_dict.get("spacing_after_resampling")):
+                anisotropy_flag = True
+                axis = get_lowres_axis(properties_dict.get("spacing_after_resampling"))
+            else:
+                anisotropy_flag = False
+                axis = None
+
+            if axis is not None:
+                if len(axis) == 2:
+                    # this happens for spacings like (0.24, 1.25, 1.25) for example. In that case
+                    # we do not want to resample separately in the out of plane axis
+                    anisotropy_flag = False
+
+            preds = resample_image(preds, shape_after_cropping, anisotropy_flag, axis, 1, 0)
 
         box_start, box_end = properties_dict.get("crop_bbox")
         min_w, min_h, min_d = box_start
@@ -535,68 +568,6 @@ class nnUNetLitModule(LightningModule):
             preds[..., depth] = self.predict_2D_2Dconv_tiled(image[..., depth])
         return preds
 
-    @staticmethod
-    def recovery_prediction(
-        prediction: np.ndarray,
-        new_shape: Union[tuple, list],
-        anisotropy_flag: bool,
-    ) -> np.array:
-        """Recover prediction to its original shape in case of resampling.
-
-        Args:
-            prediciton: Aggregated prediciton softmax. (c, W, H, D)
-            new_shape: Shape for resampling. (W, H, D)
-            anisotropy_flag: Whether to use anisotropic resampling.
-
-        Returns:
-            (c, W, H, D) Resampled prediction.
-        """
-        shape = np.array(prediction[0].shape)
-        if np.any(shape != np.array(new_shape)):
-            resized_channels = []
-            if anisotropy_flag:
-                for image_c in prediction:
-                    resized_slices = []
-                    for i in range(image_c.shape[-1]):
-                        image_c_2d_slice = image_c[:, :, i]
-                        image_c_2d_slice = resize(
-                            image_c_2d_slice,
-                            new_shape[:-1],
-                            order=1,
-                            mode="edge",
-                            cval=0,
-                            clip=True,
-                            anti_aliasing=False,
-                        )
-                        resized_slices.append(image_c_2d_slice)
-                    resized = np.stack(resized_slices, axis=-1)
-                    resized = resize(
-                        resized,
-                        new_shape,
-                        order=0,
-                        mode="constant",
-                        cval=0,
-                        clip=True,
-                        anti_aliasing=False,
-                    )
-                    resized_channels.append(resized)
-            else:
-                for image_c in prediction:
-                    resized = resize(
-                        image_c,
-                        new_shape,
-                        order=3,
-                        mode="edge",
-                        cval=0,
-                        clip=True,
-                        anti_aliasing=False,
-                    )
-                    resized_channels.append(resized)
-            reshaped = np.stack(resized_channels, axis=0)
-            return reshaped
-        else:
-            return prediction
-
     def get_tta_flips(self) -> list[list[int]]:
         """Get the all possible flips for test time augmentation.
 
@@ -658,6 +629,9 @@ class nnUNetLitModule(LightningModule):
         properties_dict["crop_bbox"] = image_meta_dict["crop_bbox"][0].tolist()
         properties_dict["case_identifier"] = image_meta_dict["case_identifier"][0]
         properties_dict["original_spacing"] = image_meta_dict["original_spacing"][0].tolist()
+        properties_dict["spacing_after_resampling"] = image_meta_dict["spacing_after_resampling"][
+            0
+        ].tolist()
 
         return properties_dict
 
