@@ -102,7 +102,7 @@ def resample_image(
                         anti_aliasing=False,
                     )
                     resized_slices.append(image_c_2d_slice.astype(dtype_data))
-                resized = np.stack(resized_slices, axis=-1)
+                resized = np.stack(resized_slices, axis=axis)
                 if not shape[axis] == new_shape[axis]:
                     resized = resize(
                         resized,
