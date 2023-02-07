@@ -193,10 +193,7 @@ def resample_label(
                     if axis == 0:
                         reshaped_2d[depth_][resized_2d >= 0.5] = class_
                     elif axis == 1:
-                        reshaped_2d[
-                            :,
-                            depth_,
-                        ][resized_2d >= 0.5] = class_
+                        reshaped_2d[:, depth_][resized_2d >= 0.5] = class_
                     else:
                         reshaped_2d[:, :, depth_][resized_2d >= 0.5] = class_
 
@@ -213,6 +210,8 @@ def resample_label(
                         anti_aliasing=False,
                     )
                     reshaped[resized >= 0.5] = class_
+            else:
+                reshaped = reshaped_2d.astype(np.uint8)
         else:
             print("Not using separate z resampling")
             for class_ in range(1, int(n_class) + 1):
