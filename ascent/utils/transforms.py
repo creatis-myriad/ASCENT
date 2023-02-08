@@ -551,6 +551,9 @@ class LoadNpyd(MapTransform):
                         d["image_meta_dict"]["shape_after_resampling"] = image_meta_dict[
                             "shape_after_resampling"
                         ]
+                        d["image_meta_dict"]["spacing_after_resampling"] = image_meta_dict[
+                            "spacing_after_resampling"
+                        ]
                         d["image_meta_dict"]["anisotropy_flag"] = image_meta_dict[
                             "anisotropy_flag"
                         ]
@@ -631,6 +634,9 @@ class DealiasLoadNpyd(MapTransform):
                     if d["image_meta_dict"]["resampling_flag"]:
                         d["image_meta_dict"]["shape_after_resampling"] = image_meta_dict[
                             "shape_after_resampling"
+                        ]
+                        d["image_meta_dict"]["spacing_after_resampling"] = image_meta_dict[
+                            "spacing_after_resampling"
                         ]
                         d["image_meta_dict"]["anisotropy_flag"] = image_meta_dict[
                             "anisotropy_flag"
