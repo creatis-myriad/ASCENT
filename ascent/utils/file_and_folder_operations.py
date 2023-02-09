@@ -1,6 +1,7 @@
 import json
 import os
 import pickle  # nosec B403
+from pathlib import Path
 from typing import List
 
 
@@ -62,3 +63,15 @@ def subfiles(
     if sort:
         res.sort()
     return res
+
+
+def remove_suffixes(filename: Path) -> Path:
+    """Removes all the suffixes from `filename`, unlike `stem` which only removes the last suffix.
+
+    Args:
+        filename: Filename from which to remove all extensions.
+
+    Returns:
+        Filename without its extensions.
+    """
+    return Path(str(filename).removesuffix("".join(filename.suffixes)))

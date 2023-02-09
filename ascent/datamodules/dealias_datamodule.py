@@ -115,7 +115,7 @@ class DealiasDataModule(nnUNetDataModule):
         )
 
         if self.hparams.do_dummy_2D_data_aug and self.threeD:
-            other_transforms.append(Convert2Dto3Dd(keys=["image", "label", "seg"], in_channels=2))
+            other_transforms.append(Convert2Dto3Dd(keys=["image", "label", "seg"], num_channel=2))
 
         if self.hparams.in_channels > 1:
             other_transforms.extend(
