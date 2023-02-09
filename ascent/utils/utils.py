@@ -2,7 +2,7 @@ import time
 import warnings
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Callable, List
+from typing import Any, Callable, Dict, List
 
 import hydra
 from omegaconf import DictConfig
@@ -17,36 +17,42 @@ log = pylogger.get_pylogger(__name__)
 
 def task_wrapper(task_func: Callable) -> Callable:
     """Optional decorator that wraps the task function in extra utilities.
-
     Makes multirun more resistant to failure.
-
     Utilities:
     - Calling the `utils.extras()` before the task is started
-    - Calling the `utils.close_loggers()` after the task is finished
+    - Calling the `utils.close_loggers()` after the task is finished or failed
     - Logging the exception if occurs
-    - Logging the task total execution time
     - Logging the output dir
     """
 
     def wrap(cfg: DictConfig):
 
-        # apply extra utilities
-        extras(cfg)
-
         # execute the task
         try:
-            start_time = time.time()
-            metric_dict, object_dict = task_func(cfg=cfg)
-        except Exception as ex:
-            log.exception("")  # save exception to `.log` file
-            raise ex
-        finally:
-            path = Path(cfg.paths.output_dir, "exec_time.log")
-            content = f"'{cfg.task_name}' execution time: {time.time() - start_time} (s)"
-            save_file(path, content)  # save task execution time (even if exception occurs)
-            close_loggers()  # close loggers (even if exception occurs so multirun won't fail)
 
-        log.info(f"Output dir: {cfg.paths.output_dir}")
+            # apply extra utilities
+            extras(cfg)
+
+            metric_dict, object_dict = task_func(cfg=cfg)
+
+        # things to do if exception occurs
+        except Exception as ex:
+
+            # save exception to `.log` file
+            log.exception("")
+
+            # when using hydra plugins like Optuna, you might want to disable raising exception
+            # to avoid multirun failure
+            raise ex
+
+        # things to always do after either success or exception
+        finally:
+
+            # display output dir path in terminal
+            log.info(f"Output dir: {cfg.paths.output_dir}")
+
+            # close loggers (even if exception occurs so multirun won't fail)
+            close_loggers()
 
         return metric_dict, object_dict
 
@@ -55,7 +61,6 @@ def task_wrapper(task_func: Callable) -> Callable:
 
 def extras(cfg: DictConfig) -> None:
     """Applies optional utilities before the task is started.
-
     Utilities:
     - Ignoring python warnings
     - Setting tags from command line
@@ -83,19 +88,12 @@ def extras(cfg: DictConfig) -> None:
         rich_utils.print_config_tree(cfg, resolve=True, save_to_file=True)
 
 
-@rank_zero_only
-def save_file(path: str, content: str) -> None:
-    """Save file in rank zero mode (only on one process in multi-GPU setup)."""
-    with open(path, "w+") as file:
-        file.write(content)
-
-
 def instantiate_callbacks(callbacks_cfg: DictConfig) -> List[Callback]:
     """Instantiates callbacks from config."""
     callbacks: List[Callback] = []
 
     if not callbacks_cfg:
-        log.warning("Callbacks config is empty.")
+        log.warning("No callback configs found! Skipping..")
         return callbacks
 
     if not isinstance(callbacks_cfg, DictConfig):
@@ -114,7 +112,7 @@ def instantiate_loggers(logger_cfg: DictConfig) -> List[LightningLoggerBase]:
     logger: List[LightningLoggerBase] = []
 
     if not logger_cfg:
-        log.warning("Logger config is empty.")
+        log.warning("No logger configs found! Skipping...")
         return logger
 
     if not isinstance(logger_cfg, DictConfig):
@@ -130,9 +128,8 @@ def instantiate_loggers(logger_cfg: DictConfig) -> List[LightningLoggerBase]:
 
 @rank_zero_only
 def log_hyperparameters(object_dict: dict) -> None:
-    """Controls which config parts are saved by lightning loggers.
+    """Controls which config parts are saved by lightning loggers. Additionally saves:
 
-    Additionally saves:
     - Number of model parameters
     """
 
@@ -169,7 +166,8 @@ def log_hyperparameters(object_dict: dict) -> None:
     hparams["seed"] = cfg.get("seed")
 
     # send hparams to all loggers
-    trainer.logger.log_hyperparams(hparams)
+    for logger in trainer.loggers:
+        logger.log_hyperparams(hparams)
 
 
 def get_metric_value(metric_dict: dict, metric_name: str) -> float:
@@ -203,3 +201,10 @@ def close_loggers() -> None:
         if wandb.run:
             log.info("Closing wandb!")
             wandb.finish()
+
+
+@rank_zero_only
+def save_file(path: str, content: str) -> None:
+    """Save file in rank zero mode (only on one process in multi-GPU setup)."""
+    with open(path, "w+") as file:
+        file.write(content)
