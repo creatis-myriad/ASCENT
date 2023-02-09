@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 import SimpleITK as sitk
 from tqdm import tqdm
@@ -11,7 +11,7 @@ def rename_case(
     case_folder: Union[Path, str],
     imagesTr: Union[Path, str],
     labelsTr: Union[Path, str],
-    case_identifier: str,
+    case_identifier: Optional[str] = None,
     multiply: bool = False,
     label_is_vel: bool = True,
 ) -> None:
@@ -26,6 +26,8 @@ def rename_case(
         label_is_vel: Whether the label is velocity.
     """
     case = os.path.basename(case_folder)
+    if case_identifier is None:
+        case_identifier = f"{case}_3CH"
     velocity = sitk.ReadImage(os.path.join(case_folder, f"{case}_3CH.nii.gz"))
     power = sitk.ReadImage(os.path.join(case_folder, f"{case}_3CH_power.nii.gz"))
     gt_seg = sitk.ReadImage(os.path.join(case_folder, f"{case}_3CH_seg.nii.gz"))

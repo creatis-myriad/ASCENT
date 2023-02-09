@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 import SimpleITK as sitk
 from tqdm import tqdm
@@ -11,7 +11,7 @@ def rename_case(
     case_folder: Union[Path, str],
     imagesTr: Union[Path, str],
     labelsTr: Union[Path, str],
-    case_identifier: str,
+    case_identifier: Optional[str] = None,
     multiply: bool = False,
 ) -> None:
     """Rename case filename from Doppler dataset to nnUNet's format.
@@ -24,6 +24,8 @@ def rename_case(
         multiply: Whether to multiply Doppler velocity with Doppler power.
     """
     case = os.path.basename(case_folder)
+    if case_identifier is None:
+        case_identifier = f"{case}_3CH"
     velocity = sitk.ReadImage(os.path.join(case_folder, f"{case}_3CH.nii.gz"))
     power = sitk.ReadImage(os.path.join(case_folder, f"{case}_3CH_power.nii.gz"))
     gt = sitk.ReadImage(os.path.join(case_folder, f"{case}_3CH_gt.nii.gz"))
