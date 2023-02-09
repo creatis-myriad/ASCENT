@@ -29,6 +29,7 @@ class Robust2DUnwrap(nn.Module):
         mu: float = 0.1,
         wrap_param: float = 1.0,
         normalize: bool = False,
+        in_channels: int = 1,
     ) -> None:
         super().__init__()
         """ Define the sparse finite difference matrices (for faster matrix multiplication) and
@@ -39,6 +40,7 @@ class Robust2DUnwrap(nn.Module):
             mu: Initial regularization weight.
             wrap_param: Wrapping parameter.
             normalize: Whether to normalize the wrapped tensor between -1 and 1.
+            in_channels: Number of input channels.
         """
         # learnable weight for regularization
         self.mu = nn.Parameter(torch.tensor([float(mu)], requires_grad=True))
@@ -48,6 +50,7 @@ class Robust2DUnwrap(nn.Module):
 
         self.wrap_param = wrap_param
         self.normalize = normalize
+        self.in_channels = in_channels
 
         # create sparse differentiation matrix; A1, A2 = (m*n, m*n) sparse array
         self.A1 = kron(identity(self.N, format="csr"), self.differentiation_matrix(self.M))

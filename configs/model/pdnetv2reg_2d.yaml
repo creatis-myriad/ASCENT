@@ -1,0 +1,16 @@
+defaults:
+  - nnunet
+  - override net: pdnetv2
+  - override optimizer: adam
+  - override scheduler: coslr
+  - override loss: smooth_l1
+
+_target_: ascent.models.nnunet_reg_module.nnUNetRegLitModule
+name: PDNetV2Reg
+
+optimizer:
+  weight_decay: 0.001
+
+net:
+  num_classes: 1
+  out_conv: False

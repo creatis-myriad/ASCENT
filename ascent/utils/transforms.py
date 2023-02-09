@@ -631,11 +631,11 @@ if __name__ == "__main__":
     #     "images", np.array([0.5, 0.5, 1]), None, True, True, {0: "noNorm", 1: "noNorm"}
     # )
     # batch = load({"image": LoadImage(image_path)})
-    data_path = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/DEALIAS/preprocessed/data_and_properties/Dealias_0035.npy"
+    data_path = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/DEALIASC/preprocessed/data_and_properties/Dealias_0001.npy"
     # data_path = "C:/Users/ling/Desktop/Thesis/REPO/ascent/data/CAMUS/cropped/NewCamus_0001.npz"
     # prop = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/CAMUS/preprocessed/data_and_properties/NewCamus_0001.pkl"
     data = LoadNpyd(["data"], test=False, seg_label=False)({"data": data_path})
-    aliased, gt_seg, gt_v = ArtfclAliasing(prob=1)(data["image"][..., 61], data["label"][..., 61])
+    aliased, gt_seg, gt_v = ArtfclAliasing(prob=1)(data["image"][..., 20], data["label"][..., 20])
 
     ori_vel = data["image"][0, :, :, 61].array.transpose()
     ori_gt = data["label"][0, :, :, 61].array.transpose()

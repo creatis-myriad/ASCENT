@@ -24,6 +24,7 @@ class PDNet(nn.Module):
         patch_size: list[int, ...],
         negative_slope: float = 1e-2,
         variant: Literal[0, 1, 2, 3] = 0,
+        out_conv: bool = True,
     ) -> None:
         """Initialize class instance.
 
@@ -36,6 +37,7 @@ class PDNet(nn.Module):
             patch_size: Input patch size.
             negative_slope: Negative slope used in LeakyRELU.
             variant: Variant of PDNet.
+            out_conv: Whether to apply convolution to the output.
 
         Raises:
             NotImplementedError: Error when input patch size is neither 2D nor 3D.
@@ -52,6 +54,7 @@ class PDNet(nn.Module):
         self.patch_size = patch_size
         self.negative_slope = negative_slope
         self.variant = variant
+        self.out_conv = out_conv
 
         # to keep the compatibility with nnUNetLitModule
         self.deep_supervision = False
@@ -178,14 +181,17 @@ class PDNet(nn.Module):
 
             self.lrelu = nn.LeakyReLU(self.negative_slope, inplace=True)
 
-        self.output_conv = Conv2d(
-            1,
-            self.num_classes,
-            self.kernel_size,
-            self.stride,
-            self.padding,
-            bias=self.bias,
-        )
+        if self.out_conv:
+            self.output_conv = Conv2d(
+                1,
+                self.num_classes,
+                self.kernel_size,
+                self.stride,
+                self.padding,
+                bias=self.bias,
+            )
+
+        self.apply(self.initialize_weights)
 
     @staticmethod
     def wrap(x: Tensor, wrap_param: float = 1.0, normalize: bool = False) -> Tensor:
@@ -280,9 +286,105 @@ class PDNet(nn.Module):
                 # residual connection
                 primal = primal + update
 
-        out = self.output_conv(primal[:, 0:1, ...])
+        out = primal[:, 0:1, ...]
+        if self.out_conv:
+            out = self.output_conv(out)
 
         return out
+
+    def debug(self, input_data: Tensor) -> Tensor:  # noqa: D102
+        primal = torch.concat(
+            [torch.zeros(input_data.shape[0], 1, *input_data.shape[2:], device=input_data.device)]
+            * self.n_primal,
+            dim=1,
+        )
+        dual = torch.concat(
+            [torch.zeros(input_data.shape[0], 1, *input_data.shape[2:], device=input_data.device)]
+            * self.n_dual,
+            dim=1,
+        )
+
+        results = []
+
+        if self.variant in [0, 1]:
+            for i in range(self.iterations):
+                # dual iterates
+                eval_pt = primal[:, 1:2, ...]
+
+                eval_op = self.wrap(eval_pt)
+                if self.variant == 0:
+                    update = torch.concat([dual, eval_op, input_data], dim=1)
+                else:
+                    update = torch.concat([dual, eval_op - input_data], dim=1)
+                update = self.conv_dual_1[i](update)
+                update = self.lrelu[i](update)
+                update = self.conv_dual_2[i](update)
+                update = self.lrelu[i](update)
+                update = self.conv_dual_3[i](update)
+
+                # residual connection
+                dual = dual + update
+
+                # primal iterates
+                eval_op = dual[:, 0:1, ...]
+                update = torch.concat([primal, eval_op], dim=1)
+
+                update = self.conv_primal_1[i](update)
+                update = self.lrelu[i](update)
+                update = self.conv_primal_2[i](update)
+                update = self.lrelu[i](update)
+                update = self.conv_primal_3[i](update)
+
+                # residual connection
+                primal = primal + update
+
+                results.append([primal[:, 1:2, ...], primal[:, 0:1, ...], dual[:, 0:1, ...]])
+        elif self.variant in [2, 3]:
+            for i in range(self.iterations):
+                # dual iterates
+                eval_pt = primal[:, 1:2, ...]
+
+                eval_op = self.wrap(eval_pt)
+                if self.variant == 2:
+                    update = torch.concat([dual, eval_op, input_data], dim=1)
+                else:
+                    update = torch.concat([dual, eval_op - input_data], dim=1)
+                update = self.conv_dual_1(update)
+                update = self.lrelu(update)
+                update = self.conv_dual_2(update)
+                update = self.lrelu(update)
+                update = self.conv_dual_3(update)
+
+                # residual connection
+                dual = dual + update
+
+                # primal iterates
+                eval_op = dual[:, 0:1, ...]
+                update = torch.concat([primal, eval_op], dim=1)
+
+                update = self.conv_primal_1(update)
+                update = self.lrelu(update)
+                update = self.conv_primal_2(update)
+                update = self.lrelu(update)
+                update = self.conv_primal_3(update)
+
+                # residual connection
+                primal = primal + update
+
+                results.append([primal[:, 1:2, ...], primal[:, 0:1, ...], dual[:, 0:1, ...]])
+
+        out = primal[:, 0:1, ...]
+        if self.out_conv:
+            out = self.output_conv(out)
+
+        return out, results
+
+    def initialize_weights(self, module: nn.Module) -> None:
+        """Initialize the weights of all nn Modules using Kaimimg normal initialization."""
+        if isinstance(module, (nn.Conv3d, nn.Conv2d, nn.ConvTranspose3d, nn.ConvTranspose2d)):
+            module.weight = nn.init.kaiming_normal_(module.weight, a=self.negative_slope)
+            if module.bias is not None:
+                module.bias = nn.init.constant_(module.bias, 0)
 
 
 class PDNetV2(nn.Module):
@@ -305,6 +407,7 @@ class PDNetV2(nn.Module):
         patch_size: list[int, ...],
         kernels: list[Sequence[tuple[int]]],
         strides: list[Sequence[tuple[int]]],
+        out_conv: bool = True,
     ) -> None:
         """Initialize class instance.
 
@@ -319,6 +422,7 @@ class PDNetV2(nn.Module):
                 of each double convolutions block.
             strides: List of list containing convolution strides of the first convolution layer
                 of each double convolutions block.
+            out_conv: Whether to apply convolution to the output.
 
         Raises:
             NotImplementedError: Error when input patch size is neither 2D nor 3D.
@@ -333,6 +437,8 @@ class PDNetV2(nn.Module):
         self.in_channels = in_channels
         self.num_classes = num_classes
         self.patch_size = patch_size
+        self.negative_slope = 1e-2
+        self.out_conv = out_conv
 
         # to keep the compatibility with nnUNetLitModule
         self.deep_supervision = False
@@ -347,7 +453,10 @@ class PDNetV2(nn.Module):
             dual_channels, n_dual, patch_size, kernels, strides, deep_supervision=False
         )
 
-        self.output_conv = Conv2d(1, self.num_classes, 3, 1, 1, bias=False)
+        if self.out_conv:
+            self.output_conv = Conv2d(1, self.num_classes, 3, 1, 1, bias=False)
+
+        self.apply(self.initialize_weights)
 
     @staticmethod
     def wrap(x: Tensor, wrap_param: float = 1.0, normalize: bool = False) -> Tensor:
@@ -398,10 +507,61 @@ class PDNetV2(nn.Module):
             # residual connection
             primal = primal + update
 
+        out = primal[:, 0:1, ...]
         # convolution to get output having same number of channels as the segmentation class
-        out = self.output_conv(primal[:, 0:1, ...])
+        if self.out_conv:
+            out = self.output_conv(out)
 
         return out
+
+    def debug(self, input_data: Tensor) -> Tensor:  # noqa: D102
+        primal = torch.concat(
+            [torch.zeros(input_data.shape[0], 1, *input_data.shape[2:], device=input_data.device)]
+            * self.n_primal,
+            dim=1,
+        )
+        dual = torch.concat(
+            [torch.zeros(input_data.shape[0], 1, *input_data.shape[2:], device=input_data.device)]
+            * self.n_dual,
+            dim=1,
+        )
+
+        results = []
+
+        for i in range(self.iterations):
+            # dual iterates
+            eval_pt = primal[:, 1:2, ...]
+            eval_op = self.wrap(eval_pt)
+            update = torch.concat([dual, eval_op - input_data], dim=1)
+            update = self.unet_dual(update)
+
+            # residual connection
+            dual = dual + update
+
+            # primal iterates
+            eval_op = dual[:, 0:1, ...]
+            update = torch.concat([primal, eval_op], dim=1)
+
+            update = self.unet_primal(update)
+
+            # residual connection
+            primal = primal + update
+
+            results.append([primal[:, 1:2, ...], primal[:, 0:1, ...], dual[:, 0:1, ...]])
+
+        out = primal[:, 0:1, ...]
+        # convolution to get output having same number of channels as the segmentation class
+        if self.out_conv:
+            out = self.output_conv(out)
+
+        return out, results
+
+    def initialize_weights(self, module: nn.Module) -> None:
+        """Initialize the weights of all nn Modules using Kaimimg normal initialization."""
+        if isinstance(module, (nn.Conv3d, nn.Conv2d, nn.ConvTranspose3d, nn.ConvTranspose2d)):
+            module.weight = nn.init.kaiming_normal_(module.weight, a=self.negative_slope)
+            if module.bias is not None:
+                module.bias = nn.init.constant_(module.bias, 0)
 
 
 if __name__ == "__main__":
