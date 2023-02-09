@@ -11,6 +11,11 @@ from torch import Tensor
 from torchmetrics.functional import mean_squared_error
 
 from ascent.models.nnunet_module import nnUNetLitModule
+from ascent.preprocessing.preprocessing import (
+    check_anisotropy,
+    get_lowres_axis,
+    resample_image,
+)
 
 
 class nnUNetRegLitModule(nnUNetLitModule):
@@ -59,6 +64,17 @@ class nnUNetRegLitModule(nnUNetLitModule):
             logger=True,
             batch_size=self.trainer.datamodule.hparams.batch_size,
         )
+
+        self.log(
+            "val/mse",
+            metric,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=self.trainer.datamodule.hparams.batch_size,
+        )
+
         self.log(
             "val/mse_MA",
             self.val_eval_criterion_MA,
@@ -99,9 +115,23 @@ class nnUNetRegLitModule(nnUNetLitModule):
                 preds = preds[..., None]
             if properties_dict.get("resampling_flag"):
                 shape_after_cropping = properties_dict.get("shape_after_cropping")
-                preds = self.recovery_prediction(
-                    preds, shape_after_cropping, properties_dict.get("anisotropy_flag")
-                )
+                if check_anisotropy(properties_dict.get("original_spacing")):
+                    anisotropy_flag = True
+                    axis = get_lowres_axis(properties_dict.get("original_spacing"))
+                elif check_anisotropy(properties_dict.get("spacing_after_resampling")):
+                    anisotropy_flag = True
+                    axis = get_lowres_axis(properties_dict.get("spacing_after_resampling"))
+                else:
+                    anisotropy_flag = False
+                    axis = None
+
+                if axis is not None:
+                    if len(axis) == 2:
+                        # this happens for spacings like (0.24, 1.25, 1.25) for example. In that case
+                        # we do not want to resample separately in the out of plane axis
+                        anisotropy_flag = False
+
+                preds = resample_image(preds, shape_after_cropping, anisotropy_flag, axis, 1, 0)
 
             final_preds = np.zeros([preds.shape[0], *original_shape])
 
@@ -154,9 +184,23 @@ class nnUNetRegLitModule(nnUNetLitModule):
             preds = preds[..., None]
         if properties_dict.get("resampling_flag"):
             shape_after_cropping = properties_dict.get("shape_after_cropping")
-            preds = self.recovery_prediction(
-                preds, shape_after_cropping, properties_dict.get("anisotropy_flag")
-            )
+            if check_anisotropy(properties_dict.get("original_spacing")):
+                anisotropy_flag = True
+                axis = get_lowres_axis(properties_dict.get("original_spacing"))
+            elif check_anisotropy(properties_dict.get("spacing_after_resampling")):
+                anisotropy_flag = True
+                axis = get_lowres_axis(properties_dict.get("spacing_after_resampling"))
+            else:
+                anisotropy_flag = False
+                axis = None
+
+            if axis is not None:
+                if len(axis) == 2:
+                    # this happens for spacings like (0.24, 1.25, 1.25) for example. In that case
+                    # we do not want to resample separately in the out of plane axis
+                    anisotropy_flag = False
+
+            preds = resample_image(preds, shape_after_cropping, anisotropy_flag, axis, 1, 0)
 
         final_preds = np.zeros([preds.shape[0], *original_shape])
 

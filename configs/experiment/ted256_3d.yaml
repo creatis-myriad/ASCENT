@@ -1,19 +1,19 @@
 # @package _global_
 
 defaults:
-  - override /datamodule: camus_2d
-  - override /model: camus_2d
+  - override /datamodule: ted256_3d
+  - override /model: ted256_3d
   - override /callbacks: nnunet
   - override /logger: wandb
   - override /trainer: nnunet
   - override /hydra: nnunet
 
 tags: ["${model.name}_${nnUNet_variant}", "Fold${fold}"]
-task_name: "CAMUS"
+task_name: "TED256"
 fold: 0
 train: True
 test: True
-nnUNet_variant: 2D
+nnUNet_variant: 3D
 best_model: False
 logger:
   wandb:

@@ -19,7 +19,12 @@ from monai.transforms.utils import generate_spatial_bounding_box
 from monai.utils import convert_to_dst_type, convert_to_tensor
 from torch import Tensor
 
-from ascent.preprocessing.preprocessing import resample_image, resample_label
+from ascent.preprocessing.preprocessing import (
+    check_anisotropy,
+    get_lowres_axis,
+    resample_image,
+    resample_label,
+)
 from ascent.utils.file_and_folder_operations import load_pickle
 
 
@@ -370,7 +375,7 @@ class Preprocessd(MapTransform):
         """
         super().__init__(keys)
         self.keys = keys
-        self.target_spacing = target_spacing
+        self.target_spacing = np.array(target_spacing)
         self.intensity_properties = intensity_properties
         self.do_resample = do_resample
         self.do_normalize = do_normalize
@@ -380,12 +385,6 @@ class Preprocessd(MapTransform):
         spacing_ratio = np.array(spacing) / np.array(self.target_spacing)
         new_shape = (spacing_ratio * np.array(shape)).astype(int).tolist()
         return new_shape
-
-    def check_anisotrophy(self, spacing):
-        def check(spacing):
-            return np.max(spacing) / np.min(spacing) >= 3
-
-        return bool(check(spacing) or check(self.target_spacing))
 
     def __call__(self, data: dict[str, str]):
         # load data
@@ -410,17 +409,36 @@ class Preprocessd(MapTransform):
 
         anisotropy_flag = False
 
-        image = image.numpy()
-        if image_meta_dict.get("resample_flag"):
+        image = image.cpu().detach().numpy()
+        if image_meta_dict.get("resampling_flag"):
             if not np.all(image_meta_dict.get("original_spacing") == self.target_spacing):
                 # resample
                 resample_shape = self.calculate_new_shape(
-                    image_meta_dict.get("original_spacing"), image_meta_dict.get("original_shape")
+                    image_meta_dict.get("original_spacing"),
+                    image_meta_dict.get("shape_after_cropping"),
                 )
-                anisotropy_flag = self.check_anisotrophy(image_meta_dict.get("original_spacing"))
-                image = resample_image(image, resample_shape, anisotropy_flag)
+
+                if check_anisotropy(image_meta_dict.get("original_spacing")):
+                    anisotropy_flag = True
+                    axis = get_lowres_axis(image_meta_dict.get("original_spacing"))
+                elif check_anisotropy(self.target_spacing):
+                    anisotropy_flag = True
+                    axis = get_lowres_axis(self.target_spacing)
+                else:
+                    anisotropy_flag = False
+                    axis = None
+
+                if axis is not None:
+                    if len(axis) == 2:
+                        # this happens for spacings like (0.24, 1.25, 1.25) for example. In that case
+                        # we do not want to resample separately in the out of plane axis
+                        anisotropy_flag = False
+
+                image_meta_dict["spacing_after_resampling"] = self.target_spacing
+                image = resample_image(image, resample_shape, anisotropy_flag, axis, 3, 0)
                 if "label" in self.keys:
-                    label = resample_label(label, resample_shape, anisotropy_flag)
+                    label = label.cpu().detach().numpy()
+                    label = resample_label(label, resample_shape, anisotropy_flag, axis, 1, 0)
 
         image_meta_dict["anisotropy_flag"] = anisotropy_flag
 
@@ -440,12 +458,16 @@ class Preprocessd(MapTransform):
                     image[c] = np.clip(image[c], lower_bound, upper_bound)
                     image[c] = (image[c] - mean_intensity) / std_intensity
                 elif not scheme == "noNorm":
-                    image[c] = (image[c] - image[c].mean()) / (image[c].std() + 1e-8)
+                    mask = np.ones(image.shape[1:], dtype=bool)
 
-        d["image"] = image
+                    image[c][mask] = (image[c][mask] - image[c][mask].mean()) / (
+                        image[c][mask].std() + 1e-8
+                    )
+
+        d["image"] = image.astype(np.float32)
 
         if "label" in self.keys:
-            d["label"] = label
+            d["label"] = label.astype(np.uint8)
 
         d["image_meta_dict"] = image_meta_dict
 
@@ -529,6 +551,9 @@ class LoadNpyd(MapTransform):
                         d["image_meta_dict"]["shape_after_resampling"] = image_meta_dict[
                             "shape_after_resampling"
                         ]
+                        d["image_meta_dict"]["spacing_after_resampling"] = image_meta_dict[
+                            "spacing_after_resampling"
+                        ]
                         d["image_meta_dict"]["anisotropy_flag"] = image_meta_dict[
                             "anisotropy_flag"
                         ]
@@ -610,6 +635,9 @@ class DealiasLoadNpyd(MapTransform):
                         d["image_meta_dict"]["shape_after_resampling"] = image_meta_dict[
                             "shape_after_resampling"
                         ]
+                        d["image_meta_dict"]["spacing_after_resampling"] = image_meta_dict[
+                            "spacing_after_resampling"
+                        ]
                         d["image_meta_dict"]["anisotropy_flag"] = image_meta_dict[
                             "anisotropy_flag"
                         ]
@@ -631,11 +659,11 @@ if __name__ == "__main__":
     #     "images", np.array([0.5, 0.5, 1]), None, True, True, {0: "noNorm", 1: "noNorm"}
     # )
     # batch = load({"image": LoadImage(image_path)})
-    data_path = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/DEALIAS/preprocessed/data_and_properties/Dealias_0035.npy"
+    data_path = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/DEALIASC/preprocessed/data_and_properties/Dealias_0001.npy"
     # data_path = "C:/Users/ling/Desktop/Thesis/REPO/ascent/data/CAMUS/cropped/NewCamus_0001.npz"
     # prop = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/CAMUS/preprocessed/data_and_properties/NewCamus_0001.pkl"
     data = LoadNpyd(["data"], test=False, seg_label=False)({"data": data_path})
-    aliased, gt_seg, gt_v = ArtfclAliasing(prob=1)(data["image"][..., 61], data["label"][..., 61])
+    aliased, gt_seg, gt_v = ArtfclAliasing(prob=1)(data["image"][..., 20], data["label"][..., 20])
 
     ori_vel = data["image"][0, :, :, 61].array.transpose()
     ori_gt = data["label"][0, :, :, 61].array.transpose()

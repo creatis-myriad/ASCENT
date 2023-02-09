@@ -54,8 +54,8 @@ class nnUNetDataModule(LightningDataModule):
         pin_memory: bool = True,
         test_splits: bool = True,
         seg_label: bool = True,
-    ) -> None:
-        """Initializes class instance.
+    ):
+        """Initialize class instance.
 
         Args:
             data_dir: Path to the data directory.
@@ -361,7 +361,7 @@ class nnUNetDataModule(LightningDataModule):
 
         if self.hparams.do_dummy_2D_data_aug and self.threeD:
             other_transforms.append(
-                Convert2Dto3Dd(keys=["image", "label"], in_channels=self.hparams.in_channels)
+                Convert2Dto3Dd(keys=["image", "label"], num_channel=self.hparams.in_channels)
             )
 
         other_transforms.extend(
@@ -383,7 +383,7 @@ class nnUNetDataModule(LightningDataModule):
         if self.threeD:
             other_transforms.append(RandFlipd(["image", "label"], spatial_axis=[2], prob=0.5))
 
-        val_transforms = shared_train_val_transforms
+        val_transforms = shared_train_val_transforms.copy()
 
         if not self.threeD:
             val_transforms.append(MayBeSqueezed(keys=["image", "label"], dim=-1))
