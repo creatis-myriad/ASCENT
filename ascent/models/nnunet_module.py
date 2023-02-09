@@ -249,7 +249,6 @@ class nnUNetLitModule(LightningModule):
         print(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
 
         num_classes = preds.shape[1]
-        # preds = softmax_helper(preds)
         pred_seg = preds.argmax(1)
         label = label[:, 0]
         axes = tuple(range(1, len(label.shape)))
@@ -371,7 +370,6 @@ class nnUNetLitModule(LightningModule):
 
         properties_dict = self.get_properties(image_meta_dict)
 
-        # preds = softmax_helper(preds)
         preds = preds.squeeze(0).cpu().detach().numpy()
         original_shape = properties_dict.get("original_shape")
         if len(preds.shape[1:]) == len(original_shape) - 1:
