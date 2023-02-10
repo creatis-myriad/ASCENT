@@ -448,9 +448,8 @@ class Preprocessd(MapTransform):
                 if scheme == "CT":
                     # clip to lb and ub from train data foreground and use foreground mn and sd from
                     # training data
-                    assert (
-                        self.intensity_properties is not None
-                    ), "ERROR: if there is a CT then we need intensity properties"
+                    if self.intensity_properties is None:
+                        raise ValueError("if there is a CT then we need intensity properties")
                     mean_intensity = self.intensity_properties[c]["mean"]
                     std_intensity = self.intensity_properties[c]["sd"]
                     lower_bound = self.intensity_properties[c]["percentile_00_5"]

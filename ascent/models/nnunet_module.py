@@ -13,11 +13,7 @@ from monai.data import MetaTensor
 from pytorch_lightning import LightningModule
 from torch import Tensor
 
-from ascent.preprocessing.preprocessing import (
-    check_anisotropy,
-    get_lowres_axis,
-    resample_image,
-)
+from ascent.preprocessing.preprocessing import check_anisotropy, get_lowres_axis, resample_image
 from ascent.utils.file_and_folder_operations import save_pickle
 from ascent.utils.inferers import SlidingWindowInferer
 from ascent.utils.softmax import softmax_helper
@@ -700,12 +696,7 @@ if __name__ == "__main__":
     import pyrootutils
     from hydra import compose, initialize
     from omegaconf import OmegaConf
-    from pytorch_lightning import (
-        Callback,
-        LightningDataModule,
-        LightningModule,
-        Trainer,
-    )
+    from pytorch_lightning import Callback, LightningDataModule, LightningModule, Trainer
 
     from ascent import utils
 

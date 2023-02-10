@@ -4,6 +4,7 @@ from typing import Optional, Union
 
 import SimpleITK as sitk
 from tqdm import tqdm
+
 from utils import generate_dataset_json
 
 

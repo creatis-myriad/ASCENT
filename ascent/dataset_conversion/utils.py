@@ -23,9 +23,7 @@ def generate_dataset_json(
     output_file: str,
     imagesTr_dir: str,
     imagesTs_dir: Optional[str],
-    modalities: tuple[
-        str,
-    ],
+    modalities: tuple[str, ...],
     labels: dict[int, str],
     dataset_name: str,
     sort_keys: bool = True,

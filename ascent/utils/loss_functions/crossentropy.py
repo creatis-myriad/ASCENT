@@ -12,6 +12,7 @@ class RobustCrossEntropyLoss(nn.CrossEntropyLoss):
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:  # noqa: D102
         if len(target.shape) == len(input.shape):
-            assert target.shape[1] == 1
+            if not (shape := target.shape[1]) == 1:
+                raise ValueError(f"target should have only one channel, got {shape} instead.")
             target = target[:, 0]
         return super().forward(input, target.long())

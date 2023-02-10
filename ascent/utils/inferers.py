@@ -295,10 +295,11 @@ def sliding_window_inference(
 def compute_steps_for_sliding_window(
     patch_size: Tuple[int, ...], image_size: Tuple[int, ...], step_size: float
 ) -> List[List[int]]:
-    assert [
-        i >= j for i, j in zip(image_size, patch_size)
-    ], "image size must be as large or larger than patch_size"
-    assert 0 < step_size <= 1, "step_size must be larger than 0 and smaller or equal to 1"
+    for i, j in zip(image_size, patch_size):
+        if i < j:
+            raise ValueError("image size must be as large or larger than patch_size")
+    if step_size <= 0 or step_size > 1:
+        raise ValueError("step_size must be larger than 0 and smaller or equal to 1")
 
     # our step width is patch_size*step_size at most, but can be narrower. For example if we have image size of
     # 110, patch size of 64 and step_size of 0.5, then we want to make 3 steps starting at coordinate 0, 23, 46
@@ -379,7 +380,7 @@ class SlidingWindowInferer(Inferer):
         progress: whether to print a tqdm progress bar.
         cache_roi_weight_map: whether to precompute the ROI weight map.
         cpu_thresh: when provided, dynamically switch to stitching on cpu (to save gpu memory)
-            when input image volume is larger than this threshold (in pixels/volxels).
+            when input image volume is larger than this threshold (in pixels/voxels).
             Otherwise use ``"device"``. Thus, the output may end-up on either cpu or gpu.
 
     Note:

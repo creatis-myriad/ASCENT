@@ -637,7 +637,6 @@ class SegPreprocessor:
             if "CT" in self.modalities[i]:
                 use_nonzero_mask_for_norm[i] = False
             else:
-
                 if np.median(self.all_size_reductions) < 3 / 4.0:
                     print("Using nonzero mask for normalization")
                     use_nonzero_mask_for_norm[i] = True
@@ -750,17 +749,21 @@ class SegPreprocessor:
         Returns:
             - Normalized image.
             - Label.
+
+        Raises:
+            ValueError: If ``use_nonzero_mask`` does not have the same length as ``data``.
+            ValueError: If ``intensity_properties`` is none when there is CT input.
         """
-        assert len(self.use_nonzero_mask) == len(data)
+        if not len(self.use_nonzero_mask) == len(data):
+            raise ValueError("use_nonzero_mask flags should have the same length as data")
         print("Normalization...")
         for c in range(len(data)):
             scheme = self.modalities[c]
             if scheme == "CT":
                 # clip to lb and ub from train data foreground and use foreground mn and sd from
                 # training data
-                assert (
-                    self.intensity_properties is not None
-                ), "ERROR: if there is a CT then we need intensity properties"
+                if self.intensity_properties is None:
+                    raise ValueError("if there is a CT then we need intensity properties")
                 mean_intensity = self.intensity_properties[c]["mean"]
                 std_intensity = self.intensity_properties[c]["sd"]
                 lower_bound = self.intensity_properties[c]["percentile_00_5"]
@@ -899,7 +902,7 @@ class SegPreprocessor:
 
         # get intensity properties if input contains CT data
         if "CT" in self.modalities.values():
-            log.info("CT input, calculating intensity propoerties...")
+            log.info("CT input, calculating intensity properties...")
             self.intensity_properties = self._collect_intensities(datalist, transforms)
         else:
             self.intensity_properties = None
@@ -1145,7 +1148,7 @@ class RegPreprocessor(SegPreprocessor):
 
         # get intensity properties if input contains CT data
         if "CT" in self.modalities.values():
-            log.info("CT input, calculating intensity propoerties...")
+            log.info("CT input, calculating intensity properties...")
             self.intensity_properties = self._collect_intensities(datalist, transforms)
         else:
             self.intensity_properties = None

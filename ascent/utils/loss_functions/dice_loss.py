@@ -273,7 +273,8 @@ class DC_and_CE_loss(nn.Module):
         """
         super().__init__()
         if ignore_label is not None:
-            assert not square_dice, "not implemented"
+            if square_dice:
+                raise NotImplementedError("square_dice is not supported with ignore_label.")
             ce_kwargs["reduction"] = "none"
         self.log_dice = log_dice
         self.weight_dice = weight_dice
