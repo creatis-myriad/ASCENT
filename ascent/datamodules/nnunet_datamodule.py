@@ -8,7 +8,7 @@ import torch
 from joblib import Parallel, delayed
 from monai.data import CacheDataset, DataLoader, IterableDataset
 from monai.transforms import (
-    CenterSpatialCrop,
+    CenterSpatialCropd,
     Compose,
     EnsureChannelFirstd,
     RandAdjustContrastd,
@@ -362,7 +362,7 @@ class nnUNetDataModule(LightningDataModule):
 
         other_transforms.extend(
             [
-                CenterSpatialCrop(["image", "label"], self.crop_patch_size),
+                CenterSpatialCropd(["image", "label"], self.crop_patch_size),
                 RandGaussianNoised(keys=["image"], std=0.01, prob=0.15),
                 RandGaussianSmoothd(
                     keys=["image"],
