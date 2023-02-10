@@ -32,7 +32,7 @@ class Robust2DUnwrap(nn.Module):
         in_channels: int = 1,
     ) -> None:
         super().__init__()
-        """ Define the sparse finite difference matrices (for faster matrix multiplication) and
+        """Define the sparse finite difference matrices (for faster matrix multiplication) and
         fully connected layers.
 
         Args:

@@ -14,12 +14,7 @@ from monai.transforms import (
 )
 
 from ascent.datamodules.nnunet_datamodule import nnUNetDataModule
-from ascent.utils.transforms import (
-    Convert2Dto3Dd,
-    Convert3Dto2Dd,
-    LoadNpyd,
-    MayBeSqueezed,
-)
+from ascent.utils.transforms import Convert2Dto3Dd, Convert3Dto2Dd, LoadNpyd, MayBeSqueezed
 
 
 class nnUNetRegDataModule(nnUNetDataModule):

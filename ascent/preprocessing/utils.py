@@ -118,9 +118,7 @@ def pad_shape(
     shape: tuple[int, ...],
     must_be_divisible_by: Union[
         tuple[int, ...],
-        list[
-            int,
-        ],
+        list[int, ...],
         np.ndarray[int, ...],
     ],
 ) -> tuple[int, ...]:
@@ -137,7 +135,11 @@ def pad_shape(
     if not isinstance(must_be_divisible_by, (tuple, list, np.ndarray)):
         must_be_divisible_by = [must_be_divisible_by] * len(shape)
     else:
-        assert len(must_be_divisible_by) == len(shape)
+        if not len(must_be_divisible_by) == len(shape):
+            raise ValueError(
+                f"must_be_divisible_by {len(must_be_divisible_by)} does not have the length as ",
+                f"shape {len(shape)}",
+            )
 
     new_shp = [
         shape[i] + must_be_divisible_by[i] - shape[i] % must_be_divisible_by[i]

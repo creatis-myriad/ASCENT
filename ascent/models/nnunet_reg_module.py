@@ -11,11 +11,7 @@ from torch import Tensor
 from torchmetrics.functional import mean_squared_error
 
 from ascent.models.nnunet_module import nnUNetLitModule
-from ascent.preprocessing.preprocessing import (
-    check_anisotropy,
-    get_lowres_axis,
-    resample_image,
-)
+from ascent.preprocessing.preprocessing import check_anisotropy, get_lowres_axis, resample_image
 
 
 class nnUNetRegLitModule(nnUNetLitModule):
@@ -276,12 +272,7 @@ if __name__ == "__main__":
     import pyrootutils
     from hydra import compose, initialize
     from omegaconf import OmegaConf
-    from pytorch_lightning import (
-        Callback,
-        LightningDataModule,
-        LightningModule,
-        Trainer,
-    )
+    from pytorch_lightning import Callback, LightningDataModule, LightningModule, Trainer
 
     from ascent import utils
 

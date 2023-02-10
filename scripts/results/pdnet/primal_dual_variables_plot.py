@@ -1,9 +1,5 @@
-from typing import Literal, Sequence
-
 import torch
 from monai.transforms import CenterSpatialCropd, SpatialPadd
-from torch import Tensor, nn
-from torch.nn import Conv2d
 
 from ascent.utils.softmax import softmax_helper
 from ascent.utils.transforms import LoadNpyd

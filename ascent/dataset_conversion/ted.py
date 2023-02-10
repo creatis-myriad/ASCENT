@@ -5,9 +5,9 @@ from typing import Union
 import numpy as np
 import SimpleITK as sitk
 from tqdm import tqdm
-from utils import generate_dataset_json
 
 from ascent.preprocessing.preprocessing import resample_image, resample_label
+from utils import generate_dataset_json
 
 
 def convert_to_nnUNet(

@@ -28,12 +28,7 @@ from ascent import utils
 from ascent.utils.data_loading import get_case_identifiers_from_npz_folders
 from ascent.utils.dataset import nnUNet_Iterator
 from ascent.utils.file_and_folder_operations import load_pickle, save_pickle, subfiles
-from ascent.utils.transforms import (
-    Convert2Dto3Dd,
-    Convert3Dto2Dd,
-    LoadNpyd,
-    MayBeSqueezed,
-)
+from ascent.utils.transforms import Convert2Dto3Dd, Convert3Dto2Dd, LoadNpyd, MayBeSqueezed
 
 log = utils.get_pylogger(__name__)
 
