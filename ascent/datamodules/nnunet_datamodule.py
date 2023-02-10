@@ -381,6 +381,7 @@ class nnUNetDataModule(LightningDataModule):
             other_transforms.append(RandFlipd(["image", "label"], spatial_axis=[2], prob=0.5))
 
         val_transforms = shared_train_val_transforms.copy()
+        val_transforms.append(CenterSpatialCropd(["image", "label"], self.crop_patch_size))
 
         if not self.threeD:
             val_transforms.append(MayBeSqueezed(keys=["image", "label"], dim=-1))
