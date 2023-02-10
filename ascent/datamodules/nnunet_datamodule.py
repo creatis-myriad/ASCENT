@@ -8,6 +8,7 @@ import torch
 from joblib import Parallel, delayed
 from monai.data import CacheDataset, DataLoader, IterableDataset
 from monai.transforms import (
+    CenterSpatialCrop,
     Compose,
     EnsureChannelFirstd,
     RandAdjustContrastd,
@@ -295,7 +296,7 @@ class nnUNetDataModule(LightningDataModule):
             if self.hparams.do_dummy_2D_data_aug:
                 zoom_inter_mode = rot_inter_mode = "bicubic"
                 range_x = [-180.0 / 180 * np.pi, 180.0 / 180 * np.pi]
-                range_y = range_z = 0.0
+                range_y = range_z = [-30.0 / 180 * np.pi, 30.0 / 180 * np.pi]
 
         else:
             zoom_inter_mode = rot_inter_mode = "bicubic"
@@ -309,14 +310,14 @@ class nnUNetDataModule(LightningDataModule):
             EnsureChannelFirstd(keys=["image", "label"]),
             SpatialPadd(
                 keys=["image", "label"],
-                spatial_size=self.crop_patch_size,
+                spatial_size=[376, 376, 24],
                 mode="constant",
                 value=0,
             ),
             RandCropByPosNegLabeld(
                 keys=["image", "label"],
                 label_key="label",
-                spatial_size=self.crop_patch_size,
+                spatial_size=[376, 376, 24],
                 pos=0.33,
                 neg=0.67,
                 num_samples=1,
@@ -361,6 +362,7 @@ class nnUNetDataModule(LightningDataModule):
 
         other_transforms.extend(
             [
+                CenterSpatialCrop(["image", "label"], self.crop_patch_size),
                 RandGaussianNoised(keys=["image"], std=0.01, prob=0.15),
                 RandGaussianSmoothd(
                     keys=["image"],
