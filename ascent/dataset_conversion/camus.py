@@ -155,7 +155,7 @@ if __name__ == "__main__":
     )
 
     # Convert test data to nnUNet's format
-    convert_to_nnUNet(test_data, output_dir, sequence=True, test=True, resize=False)
+    convert_to_nnUNet(test_data, output_dir, sequence=False, test=True, resize=False)
 
     # Convert predictions in Nifti format to raw/mhd
     prediction_dir = "C:/Users/ling/Desktop/camus_test/inference_raw"
