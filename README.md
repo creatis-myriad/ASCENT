@@ -80,7 +80,8 @@ Several new commands will be added to the virtual environment once the installat
 
 ## Data
 
-Next, download the [Camus](https://www.creatis.insa-lyon.fr/Challenge/camus/) dataset. You have to reformat the dataset to new format and place the converted dataset in the `data/` folder.
+Before doing any preprocessing and training, you must first reformat the dataset to the appropriate format and place the converted dataset in the `data/` folder.
+Here is an example of the converted [CAMUS](https://www.creatis.insa-lyon.fr/Challenge/camus/) dataset using this [conversion script](https://github.com/HangJung97/ASCENT/blob/main/ascent/dataset_conversion/camus.py).
 
 > **Note**
 > Refer to [here](#define-custom-data-and-logs-path) if you want to have a different `data/` folder location.
@@ -89,18 +90,18 @@ The reformatted dataset should look like this:
 
 ```
 data/
-├── CAMUS
+├── CAMUS_challenge
 │   ├──raw/
 │   │  ├──imagesTr/
-│   │  │  ├──CAMUS_0001_0000.nii.gz
-│   │  │  ├──CAMUS_0002_0000.nii.gz
-│   │  │  ├──CAMUS_0003_0000.nii.gz
+│   │  │  ├──patient0001_2CH_ED_0000.nii.gz
+│   │  │  ├──patient0001_2CH_ES_0000.nii.gz
+│   │  │  ├──patient0001_4CH_ED_0000.nii.gz
 │   │  │  └── ...
 │   │  │
 │   │  ├──labelsTr/
-│   │  │  ├──CAMUS_0001.nii.gz
-│   │  │  ├──CAMUS_0002.nii.gz
-│   │  │  ├──CAMUS_0003.nii.gz
+│   │  │  ├──patient0001_2CH_ED.nii.gz
+│   │  │  ├──patient0001_2CH_ES.nii.gz
+│   │  │  ├──patient0001_4CH_ED.nii.gz
 │   │  │  └── ...
 │   │  │
 │   │  ├──imagesTs/
@@ -122,7 +123,7 @@ ASCENT preprocesses and determines the optimized hyperparameters according to nn
 ascent_preprocess_and_plan dataset=XXX
 ```
 
-XXX refers to the dataset name, e.g. CAMUS.
+XXX refers to the dataset name, e.g. CAMUS_challenge.
 
 It is possible to preprocess multiple dataset at once using the `--multirun` flag of Hydra:
 
@@ -151,22 +152,22 @@ With the preprocessing being done, you can now train the model. For all experime
 Below is an example to train a 2D model on CAMUS dataset with the pre-determined hyperparameters:
 
 ```bash
-ascent_train experiment=camus_2d logger=tensorboard
+ascent_train experiment=camus_challenge_2d logger=tensorboard
 
 # train on cpu
-ascent_train experiment=camus_2d trainer.accelerator=cpu logger=tensorboard
+ascent_train experiment=camus_challenge_2d trainer.accelerator=cpu logger=tensorboard
 ```
 
 You can override any parameter from command line like this:
 
 ```bash
-ascent_train experiment=camus_2d trainer.max_epochs=20 datamodule.batch_size=8 logger=tensorboard
+ascent_train experiment=camus_challenge_2d trainer.max_epochs=20 datamodule.batch_size=8 logger=tensorboard
 ```
 
 If you want to check if all the configurations are correct without running the experiment, simply run:
 
 ```bash
-ascent_train experiment=camus_2d --cfg --resolve
+ascent_train experiment=camus_challenge_2d --cfg --resolve
 ```
 
 Hydra creates new output directory for every executed run. Default ASCENT's nnUNet logging structure is as follows:
@@ -196,7 +197,7 @@ Hydra creates new output directory for every executed run. Default ASCENT's nnUN
 At the end of the training, the prediction on validation or test data will be executed and saved in the output folder, named as `validation_raw` or `testing_raw`. To disable this, override `test=False`:
 
 ```bash
-ascent_train experiment=camus_2d test=False logger=tensorboard
+ascent_train experiment=camus_challenge_2d test=False logger=tensorboard
 ```
 
 > **Note**
@@ -207,7 +208,7 @@ ascent_train experiment=camus_2d test=False logger=tensorboard
 If you skipped the evaluation on validation or test data during, you may evaluate your model afterwards by specifying the `fold` and the `ckpt_path` using `ascent_evaluate`:
 
 ```bash
-ascent_evaluate experiment=camus_2d  fold=0 ckpt_path="/path/to/ckpt" logger=tensorboard
+ascent_evaluate experiment=camus_challenge_2d  fold=0 ckpt_path="/path/to/ckpt" logger=tensorboard
 ```
 
 This will create a new output directory containing the prediction folder.
@@ -217,7 +218,7 @@ This will create a new output directory containing the prediction folder.
 To run inference on unseen data, you may use the `ascent_predict`:
 
 ```bash
-ascent_predict dataset=CAMUS model=camus_2d ckpt_path=/path/to/checkpoint input_folder=/path/to/input/folder/ output_folder=/path/to/output/folder
+ascent_predict dataset=CAMUS model=camus_challenge_2d ckpt_path=/path/to/checkpoint input_folder=/path/to/input/folder/ output_folder=/path/to/output/folder
 ```
 
 By default, ASCENT applies test time augmentation during inference. To disable this, override `tta=False`. If you wish to save the predicted softmax probabilities as well, activate the `save_npz=True` flag.
@@ -239,7 +240,7 @@ You can simply override `logger` to use your logger of preference:
 
 ```bash
 # to use the default tensorboard logger of PyTorch Lightning
-ascent_train experiment=camus_2d logger=tensorboard
+ascent_train experiment=camus_challenge_2d logger=tensorboard
 ```
 
 ## Define custom data and logs path
@@ -258,7 +259,7 @@ After that, you must override `paths=custom` in all your commands, e.g.:
 
 ```bash
 # to use custom data and logs paths
-ascent_train experiment=camus_2d paths=custom
+ascent_train experiment=camus_challenge_2d paths=custom
 ```
 
 # Resources
