@@ -16,6 +16,10 @@ from torch import Tensor
 from ascent.preprocessing.preprocessing import check_anisotropy, get_lowres_axis, resample_image
 from ascent.utils.file_and_folder_operations import save_pickle
 from ascent.utils.inferers import SlidingWindowInferer
+from ascent.utils.sliding_window_prediction import (
+    compute_gaussian,
+    predict_sliding_window_return_logits,
+)
 from ascent.utils.softmax import softmax_helper
 from ascent.utils.tensor_utils import sum_tensor
 
@@ -344,29 +348,44 @@ class nnUNetLitModule(LightningModule):
 
     def on_predict_start(self) -> None:  # noqa: D102
         super().on_predict_start()
-        if self.trainer.datamodule is None:
-            sw_batch_size = 2
-        else:
-            sw_batch_size = self.trainer.datamodule.hparams.batch_size
+        # if self.trainer.datamodule is None:
+        #     sw_batch_size = 2
+        # else:
+        #     sw_batch_size = self.trainer.datamodule.hparams.batch_size
 
-        self.inferer = SlidingWindowInferer(
-            roi_size=self.patch_size,
-            sw_batch_size=sw_batch_size,
-            overlap=self.hparams.sliding_window_overlap,
-            mode=self.hparams.sliding_window_importance_map,
-            cache_roi_weight_map=True,
-        )
+        self.inference_gaussian = torch.from_numpy(compute_gaussian(self.patch_size)).half()
+        self.inference_gaussian = self.inference_gaussian.to(self.device)
+
+        # self.inferer = SlidingWindowInferer(
+        #     roi_size=self.patch_size,
+        #     sw_batch_size=sw_batch_size,
+        #     overlap=self.hparams.sliding_window_overlap,
+        #     mode=self.hparams.sliding_window_importance_map,
+        #     cache_roi_weight_map=True,
+        # )
 
     def predict_step(self, batch: dict[str, Tensor], batch_idx: int):  # noqa: D102
         img, image_meta_dict = batch["image"], batch["image_meta_dict"]
 
         start_time = time.time()
-        preds = self.tta_predict(img) if self.hparams.tta else self.predict(img)
+        # preds = self.tta_predict(img) if self.hparams.tta else self.predict(img)
+        preds = predict_sliding_window_return_logits(
+            self.net,
+            img,
+            1,
+            self.patch_size,
+            mirror_axes=[0, 1, 2],
+            tile_step_size=self.hparams.sliding_window_overlap,
+            use_gaussian=True,
+            precomputed_gaussian=self.inference_gaussian,
+            perform_everything_on_gpu=True,
+            verbose=True,
+        )
         print(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
 
         properties_dict = self.get_properties(image_meta_dict)
 
-        preds = preds.squeeze(0).cpu().detach().numpy()
+        preds = softmax_helper(preds).squeeze(0).cpu().detach().numpy()
         original_shape = properties_dict.get("original_shape")
         if len(preds.shape[1:]) == len(original_shape) - 1:
             preds = preds[..., None]
