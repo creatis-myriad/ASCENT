@@ -372,7 +372,7 @@ class nnUNetLitModule(LightningModule):
         preds = predict_sliding_window_return_logits(
             self.net,
             img[0],
-            1,
+            3,
             self.patch_size,
             mirror_axes=[0, 1, 2],
             tile_step_size=self.hparams.sliding_window_overlap,
