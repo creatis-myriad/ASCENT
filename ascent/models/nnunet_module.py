@@ -20,7 +20,7 @@ from ascent.utils.sliding_window_prediction import (
     compute_gaussian,
     predict_sliding_window_return_logits,
 )
-from ascent.utils.softmax import softmax_helper
+from ascent.utils.softmax import softmax_helper, softmax_helper_dim0
 from ascent.utils.tensor_utils import sum_tensor
 
 
@@ -371,7 +371,7 @@ class nnUNetLitModule(LightningModule):
         # preds = self.tta_predict(img) if self.hparams.tta else self.predict(img)
         preds = predict_sliding_window_return_logits(
             self.net,
-            img,
+            img[0],
             1,
             self.patch_size,
             mirror_axes=[0, 1, 2],
@@ -385,7 +385,7 @@ class nnUNetLitModule(LightningModule):
 
         properties_dict = self.get_properties(image_meta_dict)
 
-        preds = softmax_helper(preds).squeeze(0).cpu().detach().numpy()
+        preds = softmax_helper_dim0(preds).cpu().detach().numpy()
         original_shape = properties_dict.get("original_shape")
         if len(preds.shape[1:]) == len(original_shape) - 1:
             preds = preds[..., None]
