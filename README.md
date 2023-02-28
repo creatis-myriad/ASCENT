@@ -218,7 +218,7 @@ This will create a new output directory containing the prediction folder.
 To run inference on unseen data, you may use the `ascent_predict`:
 
 ```bash
-ascent_predict dataset=CAMUS model=camus_challenge_2d ckpt_path=/path/to/checkpoint input_folder=/path/to/input/folder/ output_folder=/path/to/output/folder
+ascent_predict dataset=CAMUS_challenge model=camus_challenge_2d ckpt_path=/path/to/checkpoint input_folder=/path/to/input/folder/ output_folder=/path/to/output/folder
 ```
 
 By default, ASCENT applies test time augmentation during inference. To disable this, override `tta=False`. If you wish to save the predicted softmax probabilities as well, activate the `save_npz=True` flag.
