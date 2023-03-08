@@ -223,7 +223,7 @@ def predict(cfg: DictConfig) -> Tuple[dict, dict]:
     return metric_dict, object_dict
 
 
-@hydra.main(version_base="1.2", config_path="../configs", config_name="predict.yaml")
+@hydra.main(version_base="1.3.2", config_path="../configs", config_name="predict.yaml")
 def main(cfg: DictConfig) -> None:
     predict(cfg)
 
