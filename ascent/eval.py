@@ -1,3 +1,4 @@
+from abc import ABC
 from typing import List, Tuple
 
 import hydra
@@ -29,62 +30,71 @@ from ascent import utils
 log = utils.get_pylogger(__name__)
 
 
-@utils.task_wrapper
-def evaluate(cfg: DictConfig) -> Tuple[dict, dict]:
-    """Evaluates given checkpoint on a datamodule testset.
+class AscentEvaluator(ABC):
+    """Abstract evaluator that runs the main testing loop using Lightning Trainer."""
 
-    This method is wrapped in optional @task_wrapper decorator which applies extra utilities
-    before and after the call.
+    @staticmethod
+    @utils.task_wrapper
+    def evaluate(cfg: DictConfig) -> Tuple[dict, dict]:
+        """Evaluates given checkpoint on a datamodule testset.
 
-    Args:
-        cfg (DictConfig): Configuration composed by Hydra.
+        This method is wrapped in optional @task_wrapper decorator which applies extra utilities
+        before and after the call.
 
-    Returns:
-        Tuple[dict, dict]: Dict with metrics and dict with all instantiated objects.
+        Args:
+            cfg (DictConfig): Configuration composed by Hydra.
 
-    Raises:
-        ValueError: Error when checkpoint path is not provided.
-    """
-    if not cfg.ckpt_path:
-        raise ValueError("ckpt_path must not be provided!")
+        Returns:
+            Tuple[dict, dict]: Dict with metrics and dict with all instantiated objects.
 
-    log.info(f"Instantiating datamodule <{cfg.datamodule._target_}>")
-    datamodule: LightningDataModule = hydra.utils.instantiate(cfg.datamodule)
+        Raises:
+            ValueError: Error when checkpoint path is not provided.
+        """
+        if not cfg.ckpt_path:
+            raise ValueError("ckpt_path must not be provided!")
 
-    log.info(f"Instantiating model <{cfg.model._target_}>")
-    model: LightningModule = hydra.utils.instantiate(cfg.model)
+        log.info(f"Instantiating datamodule <{cfg.datamodule._target_}>")
+        datamodule: LightningDataModule = hydra.utils.instantiate(cfg.datamodule)
 
-    log.info("Instantiating loggers...")
-    logger: List[Logger] = utils.instantiate_loggers(cfg.get("logger"))
+        log.info(f"Instantiating model <{cfg.model._target_}>")
+        model: LightningModule = hydra.utils.instantiate(cfg.model)
 
-    log.info(f"Instantiating trainer <{cfg.trainer._target_}>")
-    trainer: Trainer = hydra.utils.instantiate(cfg.trainer, logger=logger)
+        log.info("Instantiating loggers...")
+        logger: List[Logger] = utils.instantiate_loggers(cfg.get("logger"))
 
-    object_dict = {
-        "cfg": cfg,
-        "datamodule": datamodule,
-        "model": model,
-        "logger": logger,
-        "trainer": trainer,
-    }
+        log.info(f"Instantiating trainer <{cfg.trainer._target_}>")
+        trainer: Trainer = hydra.utils.instantiate(cfg.trainer, logger=logger)
 
-    if logger:
-        log.info("Logging hyperparameters!")
-        utils.log_hyperparameters(object_dict)
+        object_dict = {
+            "cfg": cfg,
+            "datamodule": datamodule,
+            "model": model,
+            "logger": logger,
+            "trainer": trainer,
+        }
 
-    log.info("Starting testing!")
-    log.info(f"Using checkpoint: {cfg.ckpt_path}")
-    trainer.test(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
+        if logger:
+            log.info("Logging hyperparameters!")
+            utils.log_hyperparameters(object_dict)
 
-    metric_dict = trainer.callback_metrics
+        log.info("Starting testing!")
+        log.info(f"Using checkpoint: {cfg.ckpt_path}")
+        trainer.test(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
 
-    return metric_dict, object_dict
+        metric_dict = trainer.callback_metrics
+
+        return metric_dict, object_dict
+
+    @staticmethod
+    @hydra.main(version_base="1.3.2", config_path="../configs", config_name="eval")
+    def main(cfg: DictConfig) -> None:
+        AscentEvaluator.evaluate(cfg)
 
 
-@hydra.main(version_base="1.3.2", config_path="../configs", config_name="eval.yaml")
-def main(cfg: DictConfig) -> None:
-    evaluate(cfg)
+def main():
+    """Run the script."""
+    AscentEvaluator.main()
 
 
 if __name__ == "__main__":
-    main()
+    AscentEvaluator.main()

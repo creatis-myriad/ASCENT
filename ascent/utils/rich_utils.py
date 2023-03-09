@@ -38,6 +38,13 @@ def print_config_tree(
         save_to_file (bool, optional): Whether to export config to the hydra output folder.
     """
 
+    # to force the interpolation of tags
+    if cfg.get("tags"):
+        tags = []
+        for tag in cfg.tags:
+            tags.append(tag)
+        cfg.tags = tags
+
     style = "dim"
     tree = rich.tree.Tree("CONFIG", style=style, guide_style=style)
 
