@@ -55,13 +55,11 @@ class nnUNetDataModule(LightningDataModule):
         Args:
             data_dir: Path to the data directory.
             dataset_name: Name of dataset to be used.
-            train_split_ratio: Data split ratio for training.
             fold: Fold to be used for training, validation or test.
             batch_size: Batch size to be used for training and validation.
             patch_size: Patch size to crop the data..
             in_channels: Number of input channels.
             do_dummy_2D_data_aug: Whether to apply 2D transformation on 3D dataset.
-            do_test: Whether to run inference on test dataset and compute test scores.
             num_workers: Number of subprocesses to use for data loading.
             pin_memory: Whether to pin memory to GPU.
             test_splits: Whether to split data into train/val/test (0.8/0.1/0.1).
@@ -156,9 +154,9 @@ class nnUNetDataModule(LightningDataModule):
         """Load data.
 
         More detailed steps:
-        1. Split the dataset into 5 train, validation and test folds (80:10:10) if it was not done.
-        2. Use the specified fold for training. Create random 80:10:10 split if requested fold is
-           larger than the length of saved splits.
+        1. Split the dataset into train, validation (and test) folds if it was not done.
+        2. Use the specified fold for training. Create random 80:10:10 or 80:20 split if requested
+           fold is larger than the length of saved splits.
         3. Set variables: `self.data_train`, `self.data_val`, `self.data_test`, `self.data_predict`.
 
         This method is called by lightning with both `trainer.fit()` and `trainer.test()`, so be
@@ -176,17 +174,19 @@ class nnUNetDataModule(LightningDataModule):
                 if self.hparams.test_splits:
                     test_keys = splits[self.hparams.fold]["test"]
                     log.info(
-                        f"This split has {len(train_keys)} training, {len(val_keys)} validation, and {len(test_keys)} testing cases."
+                        f"This split has {len(train_keys)} training, {len(val_keys)} validation,"
+                        f" and {len(test_keys)} testing cases."
                     )
                 else:
                     log.info(
-                        f"This split has {len(train_keys)} training and {len(val_keys)} validation cases."
+                        f"This split has {len(train_keys)} training and {len(val_keys)} validation"
+                        f" cases."
                     )
             else:
                 log.warning(
                     f"You requested fold {self.hparams.fold} for training but splits "
-                    "contain only {len(splits)} folds. I am now creating a "
-                    "random (but seeded) 80:10:10 split!"
+                    f"contain only {len(splits)} folds. I am now creating a "
+                    f"random (but seeded) 80:10:10 split!"
                 )
                 # if we request a fold that is not in the split file, create a random 80:10:10 split
                 keys = np.sort(list(get_case_identifiers_from_npz_folders(self.full_data_dir)))
@@ -198,12 +198,14 @@ class nnUNetDataModule(LightningDataModule):
                         val_and_test_keys, test_size=0.5, random_state=(12345 + self.hparams.fold)
                     )
                     log.info(
-                        f"This random 80:10:10 split has {len(train_keys)} training, {len(val_keys)} validation, and {len(test_keys)} testing cases."
+                        f"This random 80:10:10 split has {len(train_keys)} training, {len(val_keys)}"
+                        f" validation, and {len(test_keys)} testing cases."
                     )
                 else:
                     val_keys = val_and_test_keys
                     log.info(
-                        f"This random 80:20 split has {len(train_keys)} training and {len(val_keys)} validation cases."
+                        f"This random 80:20 split has {len(train_keys)} training and {len(val_keys)}"
+                        f" validation cases."
                     )
 
             self.train_files = [

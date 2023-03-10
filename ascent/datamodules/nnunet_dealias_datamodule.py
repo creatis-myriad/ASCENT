@@ -42,7 +42,8 @@ class nnUNetDealiasDataModule(nnUNetDataModule):
         Args:
             alias_transform: Whether to apply artificial aliasing augmentation.
             separate_transform: Whether to apply separate on Doppler power and velocity.
-            exclude_Dpower: Whether to include Doppler power in case of velocity-power concatenated input.
+            exclude_Dpower: Whether to include Doppler power in case of velocity-power concatenated
+                input.
         """
         super().__init__(**kwargs)
 
