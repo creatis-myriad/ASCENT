@@ -461,14 +461,17 @@ class nnUNetLitModule(LightningModule):
             return c_norm * loss
         return self.loss(preds, label)
 
-    def predict(self, image: Union[Tensor, MetaTensor]) -> Union[Tensor, MetaTensor]:
+    def predict(
+        self, image: Union[Tensor, MetaTensor], apply_softmax: [Optional] = True
+    ) -> Union[Tensor, MetaTensor]:
         """Predict 2D/3D images with sliding window inference.
 
         Args:
             image: Image to predict.
+            apply_softmax: Whether to apply softmax to prediction.
 
         Returns:
-            Aggregated prediciton softmax.
+            Aggregated prediction over all sliding windows.
 
         Raises:
             NotImplementedError: If the patch shape is not 2D nor 3D.
@@ -476,27 +479,30 @@ class nnUNetLitModule(LightningModule):
         """
         if len(image.shape) == 5:
             if len(self.patch_size) == 3:
-                return self.predict_3D_3Dconv_tiled(image)
+                return self.predict_3D_3Dconv_tiled(image, apply_softmax)
             elif len(self.patch_size) == 2:
-                return self.predict_3D_2Dconv_tiled(image)
+                return self.predict_3D_2Dconv_tiled(image, apply_softmax)
             else:
                 raise NotImplementedError
         if len(image.shape) == 4:
             if len(self.patch_size) == 2:
-                return self.predict_2D_2Dconv_tiled(image)
+                return self.predict_2D_2Dconv_tiled(image, apply_softmax)
             elif len(self.patch_size) == 3:
                 raise ValueError("You can't predict a 2D image with 3D model. You dummy.")
             else:
                 raise NotImplementedError
 
-    def tta_predict(self, image: Union[Tensor, MetaTensor]) -> Union[Tensor, MetaTensor]:
+    def tta_predict(
+        self, image: Union[Tensor, MetaTensor], apply_softmax: [Optional] = True
+    ) -> Union[Tensor, MetaTensor]:
         """Predict with test time augmentation.
 
         Args:
             image: Image to predict.
+            apply_softmax: Whether to apply softmax to prediction.
 
         Returns:
-            Aggregated prediciton softmax over number of flips.
+            Aggregated prediction over number of flips.
         """
         preds = self.predict(image)
         for flip_idx in self.tta_flips:
@@ -505,51 +511,62 @@ class nnUNetLitModule(LightningModule):
         return preds
 
     def predict_2D_2Dconv_tiled(
-        self, image: Union[Tensor, MetaTensor]
+        self, image: Union[Tensor, MetaTensor], apply_softmax: [Optional] = True
     ) -> Union[Tensor, MetaTensor]:
         """Predict 2D image with 2D model.
 
         Args:
             image: Image to predict.
+            apply_softmax: Whether to apply softmax to prediction.
 
         Returns:
-            Aggregated prediciton softmax.
+            Aggregated prediction over all sliding windows.
 
         Raises:
             ValueError: If image is not 2D.
         """
         if not len(image.shape) == 4:
             raise ValueError("image must be (b, c, w, h)")
-        return softmax_helper(self.sliding_window_inference(image))
+
+        if apply_softmax:
+            return softmax_helper(self.sliding_window_inference(image))
+        else:
+            return self.sliding_window_inference(image)
 
     def predict_3D_3Dconv_tiled(
-        self, image: Union[Tensor, MetaTensor]
+        self, image: Union[Tensor, MetaTensor], apply_softmax: [Optional] = True
     ) -> Union[Tensor, MetaTensor]:
         """Predict 3D image with 3D model.
 
         Args:
             image: Image to predict.
+            apply_softmax: Whether to apply softmax to prediction.
 
         Returns:
-            Aggregated prediciton softmax.
+            Aggregated prediction over all sliding windows.
 
         Raises:
             ValueError: If image is not 3D.
         """
         if not len(image.shape) == 5:
             raise ValueError("image must be (b, c, w, h, d)")
-        return softmax_helper(self.sliding_window_inference(image))
+
+        if apply_softmax:
+            return softmax_helper(self.sliding_window_inference(image))
+        else:
+            return self.sliding_window_inference(image)
 
     def predict_3D_2Dconv_tiled(
-        self, image: Union[Tensor, MetaTensor]
+        self, image: Union[Tensor, MetaTensor], apply_softmax: [Optional] = True
     ) -> Union[Tensor, MetaTensor]:
         """Predict 3D image with 2D model.
 
         Args:
             image: Image to predict.
+            apply_softmax: Whether to apply softmax to prediction.
 
         Returns:
-            Aggregated prediciton softmax.
+            Aggregated prediction over all sliding windows.
 
         Raises:
             ValueError: If image is not 3D.
@@ -559,7 +576,7 @@ class nnUNetLitModule(LightningModule):
         preds_shape = (image.shape[0], self.num_classes, *image.shape[2:])
         preds = torch.zeros(preds_shape, dtype=image.dtype, device=image.device)
         for depth in range(image.shape[-1]):
-            preds[..., depth] = self.predict_2D_2Dconv_tiled(image[..., depth])
+            preds[..., depth] = self.predict_2D_2Dconv_tiled(image[..., depth], apply_softmax)
         return preds
 
     def get_tta_flips(self) -> list[list[int]]:
