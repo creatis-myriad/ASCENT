@@ -20,7 +20,7 @@ classifiers=[
 ]
 packages = [
     { include = "ascent" },
-    { include = "configs" },
+    { include = "hydra_plugins" },
 ]
 
 [tool.poetry.dependencies]

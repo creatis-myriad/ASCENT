@@ -249,10 +249,10 @@ In some cases, you may want to specify your own data and logs paths instead of u
 
 ```bash
 # custom data path
-DATA_PATH="path/to/data"
+ASCENT_DATA_PATH="path/to/data"
 
 # custom logs path
-LOGS_PATH="paths/to/logs"
+ASCENT_LOGS_PATH="paths/to/logs"
 ```
 
 After that, you must override `paths=custom` in all your commands, e.g.:

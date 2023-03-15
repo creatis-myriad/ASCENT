@@ -1,44 +1,25 @@
 import os
-from abc import ABC
 from copy import deepcopy
 from pathlib import Path
 from typing import Callable, Tuple, Union
 
 import hydra
 import numpy as np
-import pyrootutils
 from monai.data import CacheDataset, DataLoader
 from monai.transforms import Compose, EnsureChannelFirstd, LoadImaged, ToTensord
 from omegaconf import DictConfig
 from pytorch_lightning import LightningModule, Trainer
 
-pyrootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
-# ------------------------------------------------------------------------------------ #
-# the setup_root above is equivalent to:
-# - adding project root dir to PYTHONPATH
-#       (so you don't need to force user to install project as a package)
-#       (necessary before importing any local modules e.g. `from src import utils`)
-# - setting up PROJECT_ROOT environment variable
-#       (which is used as a base for paths in "configs/paths/default.yaml")
-#       (this way all filepaths are the same no matter where you run the code)
-# - loading environment variables from ".env" in root dir
-#
-# you can remove it if you:
-# 1. either install project as a package or move entry files to project root dir
-# 2. set `root_dir` to "." in "configs/paths/default.yaml"
-#
-# more info: https://github.com/ashleve/pyrootutils
-# ------------------------------------------------------------------------------------ #
-
 from ascent import utils
+from ascent.train import AscentTrainer
 from ascent.utils.file_and_folder_operations import load_pickle, subfiles
 from ascent.utils.transforms import Preprocessd
 
 log = utils.get_pylogger(__name__)
 
 
-class AscentPredictor(ABC):
-    """Abstract predictor that runs the main predict loop using Lightning Trainer."""
+class AscentPredictor(AscentTrainer):
+    """Ascent predictor that runs the main predict loop using Lightning Trainer."""
 
     @staticmethod
     def check_input_folder_and_return_datalist(
@@ -88,16 +69,19 @@ class AscentPredictor(ABC):
                     remaining.remove(expected_output_file)
 
         log.info(
-            f"Found {len(maybe_case_ids)} unique case ids, here are some examples: {np.random.choice(maybe_case_ids, min(len(maybe_case_ids), 10))}."
+            f"Found {len(maybe_case_ids)} unique case ids, here are some examples: "
+            f"{np.random.choice(maybe_case_ids, min(len(maybe_case_ids), 10))}."
         )
 
         log.info(
-            "If they don't look right, make sure to double check your filenames. They must end with _0000.nii.gz etc."
+            "If they don't look right, make sure to double check your filenames. They must end with "
+            "_0000.nii.gz etc."
         )
 
         if len(remaining) > 0:
             log.warning(
-                f"Found {len(remaining)} unexpected remaining files in the folder. Here are some examples: {np.random.choice(remaining, min(len(remaining), 10))}."
+                f"Found {len(remaining)} unexpected remaining files in the folder. Here are some "
+                f"examples: {np.random.choice(remaining, min(len(remaining), 10))}."
             )
 
         if len(missing) > 0:
@@ -162,8 +146,9 @@ class AscentPredictor(ABC):
         return Compose(load_transforms + sample_transforms)
 
     @staticmethod
+    @hydra.main(version_base="1.3", config_path="configs", config_name="predict")
     @utils.task_wrapper
-    def predict(cfg: DictConfig) -> Tuple[dict, dict]:
+    def run_system(cfg: DictConfig) -> Tuple[dict, dict]:
         """Predict unseen cases with a given checkpoint.
 
         Currently, this method only supports inference for nnUNet models.
@@ -228,11 +213,6 @@ class AscentPredictor(ABC):
         metric_dict = trainer.callback_metrics
 
         return metric_dict, object_dict
-
-    @staticmethod
-    @hydra.main(version_base="1.3.2", config_path="../configs", config_name="predict")
-    def main(cfg: DictConfig) -> None:
-        AscentPredictor.predict(cfg)
 
 
 def main():

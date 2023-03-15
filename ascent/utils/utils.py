@@ -1,4 +1,5 @@
 import warnings
+from functools import wraps
 from importlib.util import find_spec
 from typing import Callable, List
 
@@ -23,6 +24,7 @@ def task_wrapper(task_func: Callable) -> Callable:
     - Logging the output dir
     """
 
+    @wraps(task_func)
     def wrap(cfg: DictConfig):
         # execute the task
         try:
