@@ -87,7 +87,11 @@ class nnUNetRegLitModule(nnUNetLitModule):
         img, label, image_meta_dict = batch["image"], batch["label"], batch["image_meta_dict"]
 
         start_time = time.time()
-        preds = self.tta_predict(img) if self.hparams.tta else self.predict(img)
+        preds = (
+            self.tta_predict(img, apply_softmax=False)
+            if self.hparams.tta
+            else self.predict(img, apply_softmax=False)
+        )
         print(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
 
         test_mse = mean_squared_error(preds, label)
@@ -169,7 +173,11 @@ class nnUNetRegLitModule(nnUNetLitModule):
         img, image_meta_dict = batch["image"], batch["image_meta_dict"]
 
         start_time = time.time()
-        preds = self.tta_predict(img) if self.hparams.tta else self.predict(img)
+        preds = (
+            self.tta_predict(img, apply_softmax=False)
+            if self.hparams.tta
+            else self.predict(img, apply_softmax=False)
+        )
         print(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
 
         properties_dict = self.get_properties(image_meta_dict)
