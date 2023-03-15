@@ -1,33 +1,14 @@
 from abc import ABC
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 import hydra
-import pyrootutils
 import pytorch_lightning as pl
 import torch
 from omegaconf import DictConfig
 from pytorch_lightning import Callback, LightningDataModule, LightningModule, Trainer
 from pytorch_lightning.loggers import CometLogger, Logger
 
-pyrootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
-# ------------------------------------------------------------------------------------ #
-# the setup_root above is equivalent to:
-# - adding project root dir to PYTHONPATH
-#       (so you don't need to force user to install project as a package)
-#       (necessary before importing any local modules e.g. `from src import utils`)
-# - setting up PROJECT_ROOT environment variable
-#       (which is used as a base for paths in "configs/paths/default.yaml")
-#       (this way all filepaths are the same no matter where you run the code)
-# - loading environment variables from ".env" in root dir
-#
-# you can remove it if you:
-# 1. either install project as a package or move entry files to project root dir
-# 2. set `root_dir` to "." in "configs/paths/default.yaml"
-#
-# more info: https://github.com/ashleve/pyrootutils
-# ------------------------------------------------------------------------------------ #
-
-from ascent import utils
+from ascent import setup_root, utils
 
 log = utils.get_pylogger(__name__)
 
@@ -35,9 +16,26 @@ log = utils.get_pylogger(__name__)
 class AscentTrainer(ABC):
     """Abstract trainer that runs the main training loop using Lightning Trainer."""
 
+    @classmethod
+    def main(cls) -> None:
+        """Runs the requested experiment."""
+        # Set up the environment
+        cls.pre_run_routine()
+
+        # Run the system with config loaded by @hydra.main
+        cls.run_system()
+
+    @classmethod
+    def pre_run_routine(cls) -> None:
+        """Sets-up the environment before running the training/testing."""
+        # Load environment variables from `.env` file if it exists
+        # Load before hydra main to allow for setting environment variables with ${oc.env:ENV_NAME}
+        setup_root()
+
     @staticmethod
+    @hydra.main(version_base="1.3", config_path="configs", config_name="train")
     @utils.task_wrapper
-    def train(cfg: DictConfig) -> Tuple[dict, dict]:
+    def run_system(cfg: DictConfig) -> Tuple[dict, dict]:
         """Trains the model. Can additionally evaluate on a testset, using best weights obtained
         during training.
 
@@ -132,20 +130,6 @@ class AscentTrainer(ABC):
         metric_dict = {**train_metrics, **test_metrics}
 
         return metric_dict, object_dict
-
-    @staticmethod
-    @hydra.main(version_base="1.3.2", config_path="../configs", config_name="train")
-    def main(cfg: DictConfig) -> Optional[float]:
-        # train the model
-        metric_dict, _ = AscentTrainer.train(cfg)
-
-        # safely retrieve metric value for hydra-based hyperparameter optimization
-        metric_value = utils.get_metric_value(
-            metric_dict=metric_dict, metric_name=cfg.get("optimized_metric")
-        )
-
-        # return optimized metric
-        return metric_value
 
 
 def main():
