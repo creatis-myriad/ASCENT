@@ -462,7 +462,7 @@ class nnUNetLitModule(LightningModule):
         return self.loss(preds, label)
 
     def predict(
-        self, image: Union[Tensor, MetaTensor], apply_softmax: [Optional] = True
+        self, image: Union[Tensor, MetaTensor], apply_softmax: bool = True
     ) -> Union[Tensor, MetaTensor]:
         """Predict 2D/3D images with sliding window inference.
 
@@ -493,7 +493,7 @@ class nnUNetLitModule(LightningModule):
                 raise NotImplementedError
 
     def tta_predict(
-        self, image: Union[Tensor, MetaTensor], apply_softmax: [Optional] = True
+        self, image: Union[Tensor, MetaTensor], apply_softmax: bool = True
     ) -> Union[Tensor, MetaTensor]:
         """Predict with test time augmentation.
 
@@ -511,7 +511,7 @@ class nnUNetLitModule(LightningModule):
         return preds
 
     def predict_2D_2Dconv_tiled(
-        self, image: Union[Tensor, MetaTensor], apply_softmax: [Optional] = True
+        self, image: Union[Tensor, MetaTensor], apply_softmax: bool = True
     ) -> Union[Tensor, MetaTensor]:
         """Predict 2D image with 2D model.
 
@@ -534,7 +534,7 @@ class nnUNetLitModule(LightningModule):
             return self.sliding_window_inference(image)
 
     def predict_3D_3Dconv_tiled(
-        self, image: Union[Tensor, MetaTensor], apply_softmax: [Optional] = True
+        self, image: Union[Tensor, MetaTensor], apply_softmax: bool = True
     ) -> Union[Tensor, MetaTensor]:
         """Predict 3D image with 3D model.
 
@@ -557,7 +557,7 @@ class nnUNetLitModule(LightningModule):
             return self.sliding_window_inference(image)
 
     def predict_3D_2Dconv_tiled(
-        self, image: Union[Tensor, MetaTensor], apply_softmax: [Optional] = True
+        self, image: Union[Tensor, MetaTensor], apply_softmax: bool = True
     ) -> Union[Tensor, MetaTensor]:
         """Predict 3D image with 2D model.
 
