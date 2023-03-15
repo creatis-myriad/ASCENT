@@ -40,11 +40,9 @@ def setup_root(
 ) -> Path:
     """Find and setup the project root.
 
-    Recursively searches for files from the `indicators` list, starting from given path.
-
     Args:
-        project_root_env_var (bool, optional): Whether to set PROJECT_ROOT environment variable.
-        dotenv (bool, optional): Whether to load `.env` file from project root.
+        project_root_env_var (bool, optional): Whether to set ASCENT_PROJECT_ROOT environment variable.
+        dotenv (bool, optional): Whether to load `.env` file.
         pythonpath (bool, optional): Whether to add project root to pythonpath.
         cwd (bool, optional): Whether to set current working directory to project root.
 
