@@ -506,7 +506,7 @@ class nnUNetLitModule(LightningModule):
         """
         preds = self.predict(image)
         for flip_idx in self.tta_flips:
-            preds += torch.flip(self.predict(torch.flip(image, flip_idx)), flip_idx)
+            preds += torch.flip(self.predict(torch.flip(image, flip_idx), apply_softmax), flip_idx)
         preds /= len(self.tta_flips) + 1
         return preds
 
