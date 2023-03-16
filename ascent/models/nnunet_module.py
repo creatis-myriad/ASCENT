@@ -504,7 +504,7 @@ class nnUNetLitModule(LightningModule):
         Returns:
             Aggregated prediction over number of flips.
         """
-        preds = self.predict(image)
+        preds = self.predict(image, apply_softmax)
         for flip_idx in self.tta_flips:
             preds += torch.flip(self.predict(torch.flip(image, flip_idx), apply_softmax), flip_idx)
         preds /= len(self.tta_flips) + 1
