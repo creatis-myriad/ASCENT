@@ -8,7 +8,7 @@ import numpy as np
 import pyrootutils
 import ruamel.yaml
 
-from ascent import utils
+from ascent import get_ascent_root, utils
 from ascent.models.components.unet import UNet
 from ascent.preprocessing.utils import get_pool_and_conv_props
 from ascent.utils.file_and_folder_operations import load_pickle
@@ -247,7 +247,7 @@ class nnUNetPlanner2D:
         model_yaml = f"{dataset_name.lower()}_{dim}d.yaml"
         experiment_yaml = f"{dataset_name.lower()}_{dim}d.yaml"
 
-        root = pyrootutils.setup_root(__file__, pythonpath=True)
+        root = get_ascent_root()
 
         datamodule = {
             "defaults": ["nnunet"],
