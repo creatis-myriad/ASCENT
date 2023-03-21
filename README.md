@@ -69,7 +69,7 @@ ASCENT has been tested on Linux (Ubuntu 20, Red Hat 7.6), macOS and Windows 10.
 3. Install [PyTorch](https://pytorch.org/get-started/locally/) according to instructions. Grab the one with GPU for faster training:
    ```bash
    # example for linux or Windows
-   conda install pytorch==1.11.0 torchvision==0.12.0 torchaudio==0.11.0 cudatoolkit=11.3 -c pytorch
+   conda install pytorch==1.13.1 torchvision==0.14.1 torchaudio==0.13.1 pytorch-cuda=11.7 -c pytorch -c nvidia
    ```
 4. Install the project in editable mode and its dependencies:
    ```bash
