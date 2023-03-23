@@ -1,7 +1,6 @@
 # @package _global_
 
 defaults:
-  - _self_
   - datamodule: mnist # choose datamodule with `test_dataloader()` for evaluation
   - model: mnist
   - callbacks: default
@@ -11,6 +10,8 @@ defaults:
   - extras: default
   - hydra: default
   - experiment: null
+  - _self_
+  - optional launcher: null # List custom launcher after trainer/datamodule, so that it can override their configs
 
 task_name: "eval"
 

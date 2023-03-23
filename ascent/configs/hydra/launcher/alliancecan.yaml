@@ -1,0 +1,14 @@
+defaults:
+  - submitit_slurm
+
+timeout_min: ${oc.select:run_time_min,60}
+setup:
+  - "module load httpproxy" # load module allowing to connect to whitelisted domains
+  - "source ${venv}/bin/activate" # activate the pre-installed virtual environment
+  - "mkdir $SLURM_TMPDIR/ASCENT/data -p" # make sure the full path to where the data will be copied exists
+  - "rsync -a ${paths.data_dir}/ $SLURM_TMPDIR/ASCENT/data" # copy the dataset to the compute node
+  - "export ASCENT_DATA_PATH=$SLURM_TMPDIR/ASCENT/data" # override the previous data path with the path on the compute node
+
+additional_parameters:
+  mail-user: ${oc.env:SLURM_MAIL_USER,null}
+  mail-type: ALL
