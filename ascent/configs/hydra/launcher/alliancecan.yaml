@@ -1,0 +1,17 @@
+defaults:
+  - submitit_slurm
+
+timeout_min: ${oc.select:run_time_min,60}
+setup:
+  - "module load httpproxy" # load module allowing to connect to whitelisted domains
+  - "source ${hydra.launcher.additional_parameters.venv}/bin/activate" # activate the pre-installed virtual environment
+  - "rsync -a ${hydra.launcher.additional_parameters.dir_to_copy} $SLURM_TMPDIR" # copy the dataset to the compute node
+additional_parameters:
+  mail-user: ${oc.env:SLURM_MAIL_USER,null}
+  mail-type: ALL
+  # We are forced to specify new required options in the additional parameters instead of at the group level
+  # because the config is typed-checked against th submitit plugin's structured configs
+  # However, `additional_parameters` is a dict, and therefore does not check if required values are set.
+  # It is thus up to us to check it manually using our own validation logic at the start of a run
+  venv: ???
+  dir_to_copy: ???

@@ -4,7 +4,9 @@ from typing import List, Tuple
 import hydra
 import pytorch_lightning as pl
 import torch
-from omegaconf import DictConfig
+from hydra.core.hydra_config import HydraConfig
+from hydra_plugins.hydra_submitit_launcher.config import LocalQueueConf, SlurmQueueConf
+from omegaconf import DictConfig, open_dict
 from pytorch_lightning import Callback, LightningDataModule, LightningModule, Trainer
 from pytorch_lightning.loggers import CometLogger, Logger
 
@@ -33,6 +35,30 @@ class AscentTrainer(ABC):
         setup_root()
 
     @staticmethod
+    def _check_cfg(cfg: DictConfig) -> DictConfig:
+        """Parse args, making custom checks on the values of the parameters in the process.
+
+        Args:
+            cfg: Full configuration for the experiment.
+        Returns:
+             Validated config for a system run.
+        """
+        # If using the submitit launcher
+        if (hydra_launcher_cfg := HydraConfig.get().launcher)._target_ in [
+            SlurmQueueConf._target_,
+            LocalQueueConf._target_,
+        ]:
+            # Test if custom additional required parameters are set
+            for required_option in ["venv", "dir_to_copy"]:
+                if required_option not in hydra_launcher_cfg.additional_parameters:
+                    raise ValueError(
+                        f"You must specify 'hydra.launcher.additional_parameters.{required_option}', "
+                        f"e.g, hydra.launcher.additional_parameters.{required_option}=<OPTION>"
+                    )
+
+        return cfg
+
+    @staticmethod
     @hydra.main(version_base="1.3", config_path="configs", config_name="train")
     @utils.task_wrapper
     def run_system(cfg: DictConfig) -> Tuple[dict, dict]:
@@ -48,6 +74,9 @@ class AscentTrainer(ABC):
         Returns:
             Tuple[dict, dict]: Dict with metrics and dict with all instantiated objects.
         """
+
+        # check configs
+        cfg = AscentTrainer._check_cfg(cfg)
 
         # set seed for random number generators in pytorch, numpy and python.random
         if cfg.get("seed"):

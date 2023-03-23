@@ -32,6 +32,10 @@ class AscentEvaluator(AscentTrainer):
         Raises:
             ValueError: Error when checkpoint path is not provided.
         """
+
+        # check configs
+        cfg = AscentTrainer._check_cfg(cfg)
+
         if not cfg.ckpt_path:
             raise ValueError("ckpt_path must not be provided!")
 
