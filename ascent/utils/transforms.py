@@ -293,7 +293,10 @@ class Convert3Dto2Dd(MapTransform):
     def __call__(self, data: dict[str, Tensor]):
         d = dict(data)
         for key in self.keys:
+            shape = d[key].shape
             d[key] = rearrange(d[key], "c w h d -> (c d) w h")
+            if d.get("original_image_size") is None:
+                d[f"original_{key}_size"] = shape
         return d
 
 
@@ -319,7 +322,7 @@ class Convert2Dto3Dd(MapTransform):
     def __call__(self, data: dict[str, Tensor]):
         d = dict(data)
         for key in self.keys:
-            d[key] = rearrange(d[key], "(c d) w h -> c w h d", c=self.num_channel)
+            d[key] = rearrange(d[key], "(c d) w h -> c w h d", c=d.get(f"original_{key}_size")[0])
         return d
 
 

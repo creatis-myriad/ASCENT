@@ -5,11 +5,25 @@ from typing import Optional, Union
 
 import numpy as np
 import torch
+from batchgenerators.transforms.color_transforms import (
+    BrightnessMultiplicativeTransform,
+    ContrastAugmentationTransform,
+    GammaTransform,
+)
+from batchgenerators.transforms.noise_transforms import (
+    GaussianBlurTransform,
+    GaussianNoiseTransform,
+)
+from batchgenerators.transforms.resample_transforms import SimulateLowResolutionTransform
+from batchgenerators.transforms.spatial_transforms import MirrorTransform, SpatialTransform
+from batchgenerators.transforms.utility_transforms import RemoveLabelTransform
 from joblib import Parallel, delayed
 from monai.data import CacheDataset, DataLoader, IterableDataset
 from monai.transforms import (
+    AddChanneld,
     Compose,
     EnsureChannelFirstd,
+    EnsureTyped,
     RandAdjustContrastd,
     RandCropByPosNegLabeld,
     RandFlipd,
@@ -19,6 +33,8 @@ from monai.transforms import (
     RandScaleIntensityd,
     RandZoomd,
     SpatialPadd,
+    SqueezeDimd,
+    adaptor,
 )
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.trainer.states import TrainerFn
@@ -82,6 +98,8 @@ class nnUNetDataModule(LightningDataModule):
 
         self.crop_patch_size = patch_size
         self.threeD = len(patch_size) == 3
+        self.dim = len(patch_size)
+        self.initial_patch_size = []
         if not self.threeD:
             self.crop_patch_size = [*patch_size, 1]
 
@@ -289,43 +307,63 @@ class nnUNetDataModule(LightningDataModule):
 
         The only difference with nnUNet framework is the patch creation.
         """
+
+        ignore_axes = None
         if self.threeD:
-            rot_inter_mode = "bilinear"
-            zoom_inter_mode = "trilinear"
+            # rot_inter_mode = "bilinear"
+            # zoom_inter_mode = "trilinear"
             range_x = range_y = range_z = [-30.0 / 180 * np.pi, 30.0 / 180 * np.pi]
 
             if self.hparams.do_dummy_2D_data_aug:
-                zoom_inter_mode = rot_inter_mode = "bicubic"
+                # zoom_inter_mode = rot_inter_mode = "bicubic"
                 range_x = [-180.0 / 180 * np.pi, 180.0 / 180 * np.pi]
                 range_y = range_z = 0.0
+                ignore_axes = (0,)
 
         else:
-            zoom_inter_mode = rot_inter_mode = "bicubic"
+            # zoom_inter_mode = rot_inter_mode = "bicubic"
             range_x = [-180.0 / 180 * np.pi, 180.0 / 180 * np.pi]
             range_y = range_z = 0.0
             if max(self.hparams.patch_size) / min(self.hparams.patch_size) > 1.5:
                 range_x = [-15.0 / 180 * np.pi, 15.0 / 180 * np.pi]
 
+        initial_patch_size = self.get_patch_size_for_spatial_transform(
+            self.crop_patch_size[: self.dim], range_x, range_y, range_z, (0.7, 1.4)
+        )
+
+        if not self.threeD:
+            self.initial_patch_size = [*initial_patch_size, 1]
+
         shared_train_val_transforms = [
             LoadNpyd(keys=["data"], seg_label=self.hparams.seg_label),
             EnsureChannelFirstd(keys=["image", "label"]),
-            SpatialPadd(
-                keys=["image", "label"],
-                spatial_size=self.crop_patch_size,
-                mode="constant",
-                value=0,
-            ),
-            RandCropByPosNegLabeld(
-                keys=["image", "label"],
-                label_key="label",
-                spatial_size=self.crop_patch_size,
-                pos=0.33,
-                neg=0.67,
-                num_samples=1,
-            ),
         ]
 
         other_transforms = []
+        other_transforms.extend(
+            [
+                SpatialPadd(
+                    keys=["image"],
+                    spatial_size=self.initial_patch_size,
+                    mode="constant",
+                    value=0,
+                ),
+                SpatialPadd(
+                    keys=["label"],
+                    spatial_size=self.initial_patch_size,
+                    mode="constant",
+                    value=-1,
+                ),
+                RandCropByPosNegLabeld(
+                    keys=["image", "label"],
+                    label_key="label",
+                    spatial_size=self.initial_patch_size,
+                    pos=0.33,
+                    neg=0.67,
+                    num_samples=1,
+                ),
+            ]
+        )
 
         if not self.threeD:
             other_transforms.append(MayBeSqueezed(keys=["image", "label"], dim=-1))
@@ -335,52 +373,168 @@ class nnUNetDataModule(LightningDataModule):
 
         other_transforms.extend(
             [
-                RandRotated(
-                    keys=["image", "label"],
-                    range_x=range_x,
-                    range_y=range_y,
-                    range_z=range_z,
-                    mode=[rot_inter_mode, "nearest"],
-                    padding_mode="zeros",
-                    prob=0.2,
-                ),
-                RandZoomd(
-                    keys=["image", "label"],
-                    min_zoom=0.7,
-                    max_zoom=1.4,
-                    mode=[zoom_inter_mode, "nearest"],
-                    padding_mode="constant",
-                    align_corners=(True, None),
-                    prob=0.2,
+                AddChanneld(["image", "label"]),
+                EnsureTyped(["image", "label"], data_type="numpy"),
+                adaptor(
+                    SpatialTransform(
+                        self.crop_patch_size[: self.dim],
+                        patch_center_dist_from_border=None,
+                        do_elastic_deform=False,
+                        alpha=(0, 0),
+                        sigma=(0, 0),
+                        do_rotation=True,
+                        angle_x=range_x,
+                        angle_y=range_y,
+                        angle_z=range_z,
+                        p_rot_per_axis=1,  # todo experiment with this
+                        do_scale=True,
+                        scale=(0.7, 1.4),
+                        border_mode_data="constant",
+                        border_cval_data=0,
+                        order_data=3,
+                        border_mode_seg="constant",
+                        border_cval_seg=-1,
+                        order_seg=1,
+                        random_crop=False,  # random cropping is part of our dataloaders
+                        p_el_per_sample=0,
+                        p_scale_per_sample=0.2,
+                        p_rot_per_sample=0.2,
+                        independent_scale_for_each_axis=False,  # todo experiment with this
+                    ),
+                    {"image": "image", "label": "label"},
                 ),
             ]
         )
 
+        # other_transforms.extend(
+        #     [
+        #         RandRotated(
+        #             keys=["image", "label"],
+        #             range_x=range_x,
+        #             range_y=range_y,
+        #             range_z=range_z,
+        #             mode=[rot_inter_mode, "nearest"],
+        #             padding_mode="zeros",
+        #             prob=0.2,
+        #         ),
+        #         RandZoomd(
+        #             keys=["image", "label"],
+        #             min_zoom=0.7,
+        #             max_zoom=1.4,
+        #             mode=[zoom_inter_mode, "nearest"],
+        #             padding_mode="constant",
+        #             align_corners=(True, None),
+        #             prob=0.2,
+        #         ),
+        #     ]
+        # )
+
         if self.hparams.do_dummy_2D_data_aug and self.threeD:
-            other_transforms.append(
-                Convert2Dto3Dd(keys=["image", "label"], num_channel=self.hparams.in_channels)
-            )
+            other_transforms.append(Convert2Dto3Dd(keys=["image", "label"]))
 
         other_transforms.extend(
             [
-                RandGaussianNoised(keys=["image"], std=0.01, prob=0.15),
-                RandGaussianSmoothd(
-                    keys=["image"],
-                    sigma_x=(0.5, 1.15),
-                    sigma_y=(0.5, 1.15),
-                    prob=0.15,
+                adaptor(
+                    GaussianNoiseTransform(p_per_sample=0.1, data_key="image"),
+                    {"image": "image", "label": "label"},
                 ),
-                RandScaleIntensityd(keys=["image"], factors=0.3, prob=0.15),
-                RandAdjustContrastd(keys=["image"], gamma=(0.7, 1.5), prob=0.3),
+                adaptor(
+                    GaussianBlurTransform(
+                        (0.5, 1.0),
+                        different_sigma_per_channel=True,
+                        p_per_sample=0.2,
+                        p_per_channel=0.5,
+                        data_key="image",
+                    ),
+                    {"image": "image", "label": "label"},
+                ),
+                adaptor(
+                    BrightnessMultiplicativeTransform(
+                        multiplier_range=(0.75, 1.25), p_per_sample=0.15, data_key="image"
+                    ),
+                    {"image": "image", "label": "label"},
+                ),
+                adaptor(
+                    ContrastAugmentationTransform(p_per_sample=0.15, data_key="image"),
+                    {"image": "image", "label": "label"},
+                ),
+                adaptor(
+                    SimulateLowResolutionTransform(
+                        zoom_range=(0.5, 1),
+                        per_channel=True,
+                        p_per_channel=0.5,
+                        order_downsample=0,
+                        order_upsample=3,
+                        p_per_sample=0.25,
+                        ignore_axes=ignore_axes,
+                        data_key="image",
+                    ),
+                    {"image": "image", "label": "label"},
+                ),
+                adaptor(
+                    GammaTransform(
+                        (0.7, 1.5),
+                        True,
+                        True,
+                        retain_stats=True,
+                        p_per_sample=0.1,
+                        data_key="image",
+                    ),
+                    {"image": "image", "label": "label"},
+                ),
+                adaptor(
+                    GammaTransform((0.7, 1.5), False, True, retain_stats=True, data_key="image"),
+                    {"image": "image", "label": "label"},
+                ),
+                adaptor(
+                    RemoveLabelTransform(-1, 0, input_key="label", output_key="label"),
+                    {"image": "image", "label": "label"},
+                ),
+                SqueezeDimd(["image", "label"], dim=0),
+                EnsureTyped(["image", "label"], data_type="tensor", track_meta=True),
                 RandFlipd(["image", "label"], spatial_axis=[0], prob=0.5),
                 RandFlipd(["image", "label"], spatial_axis=[1], prob=0.5),
             ]
         )
 
+        # other_transforms.extend(
+        #     [
+        #         RandGaussianNoised(keys=["image"], std=0.01, prob=0.15),
+        #         RandGaussianSmoothd(
+        #             keys=["image"],
+        #             sigma_x=(0.5, 1.15),
+        #             sigma_y=(0.5, 1.15),
+        #             prob=0.15,
+        #         ),
+        #         RandScaleIntensityd(keys=["image"], factors=0.3, prob=0.15),
+        #         RandAdjustContrastd(keys=["image"], gamma=(0.7, 1.5), prob=0.3),
+        #         RandFlipd(["image", "label"], spatial_axis=[0], prob=0.5),
+        #         RandFlipd(["image", "label"], spatial_axis=[1], prob=0.5),
+        #     ]
+        # )
+
         if self.threeD:
             other_transforms.append(RandFlipd(["image", "label"], spatial_axis=[2], prob=0.5))
 
         val_transforms = shared_train_val_transforms.copy()
+        val_transforms.extend(
+            [
+                SpatialPadd(
+                    keys=["image", "label"],
+                    spatial_size=self.crop_patch_size,
+                    mode="constant",
+                    value=0,
+                ),
+                RandCropByPosNegLabeld(
+                    keys=["image", "label"],
+                    label_key="label",
+                    spatial_size=self.crop_patch_size,
+                    pos=0.33,
+                    neg=0.67,
+                    num_samples=1,
+                ),
+            ]
+        )
 
         if not self.threeD:
             val_transforms.append(MayBeSqueezed(keys=["image", "label"], dim=-1))
@@ -400,6 +554,38 @@ class nnUNetDataModule(LightningDataModule):
         self.train_transforms = Compose(shared_train_val_transforms + other_transforms)
         self.val_transforms = Compose(val_transforms)
         self.test_transforms = Compose(test_transforms)
+
+    @staticmethod
+    def get_patch_size_for_spatial_transform(final_patch_size, rot_x, rot_y, rot_z, scale_range):
+        if isinstance(rot_x, (tuple, list)):
+            rot_x = max(np.abs(rot_x))
+        if isinstance(rot_y, (tuple, list)):
+            rot_y = max(np.abs(rot_y))
+        if isinstance(rot_z, (tuple, list)):
+            rot_z = max(np.abs(rot_z))
+        rot_x = min(90 / 360 * 2.0 * np.pi, rot_x)
+        rot_y = min(90 / 360 * 2.0 * np.pi, rot_y)
+        rot_z = min(90 / 360 * 2.0 * np.pi, rot_z)
+        from batchgenerators.augmentations.utils import rotate_coords_2d, rotate_coords_3d
+
+        coords = np.array(final_patch_size)
+        final_shape = np.copy(coords)
+        if len(coords) == 3:
+            final_shape = np.max(
+                np.vstack((np.abs(rotate_coords_3d(coords, rot_x, 0, 0)), final_shape)), 0
+            )
+            final_shape = np.max(
+                np.vstack((np.abs(rotate_coords_3d(coords, 0, rot_y, 0)), final_shape)), 0
+            )
+            final_shape = np.max(
+                np.vstack((np.abs(rotate_coords_3d(coords, 0, 0, rot_z)), final_shape)), 0
+            )
+        elif len(coords) == 2:
+            final_shape = np.max(
+                np.vstack((np.abs(rotate_coords_2d(coords, rot_x)), final_shape)), 0
+            )
+        final_shape /= min(scale_range)
+        return final_shape.astype(int)
 
     def unpack_dataset(self):
         """Unpack dataset from .npz to .npy.
