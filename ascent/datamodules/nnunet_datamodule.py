@@ -373,7 +373,7 @@ class nnUNetDataModule(LightningDataModule):
 
         other_transforms.extend(
             [
-                AddChanneld(["image", "label"]),
+                EnsureChannelFirstd(keys=["image", "label"]),
                 EnsureTyped(["image", "label"], data_type="numpy"),
                 adaptor(
                     SpatialTransform(
@@ -399,7 +399,9 @@ class nnUNetDataModule(LightningDataModule):
                         p_el_per_sample=0,
                         p_scale_per_sample=0.2,
                         p_rot_per_sample=0.2,
-                        independent_scale_for_each_axis=False,  # todo experiment with this
+                        independent_scale_for_each_axis=False,  # todo experiment with this,
+                        data_key="image",
+                        label_key="label",
                     ),
                     {"image": "image", "label": "label"},
                 ),
