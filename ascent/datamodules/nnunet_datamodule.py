@@ -340,8 +340,8 @@ class nnUNetDataModule(LightningDataModule):
         if not self.threeD:
             self.initial_patch_size = [*self.initial_patch_size, 1]
 
-        print("initial_patch_size", self.initial_patch_size)
-        print("crop_patch_size", self.crop_patch_size[: self.dim])
+        if self.hparams.do_dummy_2D_data_aug and self.threeD:
+            self.initial_patch_size[-1] = self.crop_patch_size[-1]
 
         shared_train_val_transforms = [
             LoadNpyd(keys=["data"], seg_label=self.hparams.seg_label),
@@ -380,6 +380,9 @@ class nnUNetDataModule(LightningDataModule):
 
         if self.hparams.do_dummy_2D_data_aug and self.threeD:
             other_transforms.append(Convert3Dto2Dd(keys=["image", "label"]))
+            crop_patch_size = self.crop_patch_size[: self.dim - 1]
+        else:
+            crop_patch_size = self.crop_patch_size[: self.dim]
 
         other_transforms.extend(
             [
@@ -387,7 +390,7 @@ class nnUNetDataModule(LightningDataModule):
                 EnsureTyped(["image", "label"], data_type="numpy"),
                 adaptor(
                     SpatialTransform(
-                        self.crop_patch_size[: self.dim],
+                        crop_patch_size,
                         patch_center_dist_from_border=None,
                         do_elastic_deform=False,
                         alpha=(0, 0),
