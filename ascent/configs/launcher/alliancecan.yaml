@@ -7,9 +7,6 @@
 defaults:
   - override /hydra/launcher: alliancecan
 
-# Path to the root of the virtualenv to activate for the jobs
-venv: ???
-
 # Force the data to be specified using an environment variable, to be able to change its value between
 # i) when the jobs are submitted (env var points to data on shared filesystem)
 # ii) and when jobs are run (env var points to data on compute node)
