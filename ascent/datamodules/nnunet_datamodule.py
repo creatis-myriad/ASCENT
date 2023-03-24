@@ -445,6 +445,7 @@ class nnUNetDataModule(LightningDataModule):
         other_transforms.extend(
             [
                 AddChannelFirstd(keys=["image", "label"]),
+                EnsureTyped(["image", "label"], data_type="numpy"),
                 adaptor(
                     GaussianNoiseTransform(p_per_sample=0.1, data_key="image"),
                     {"image": "image", "label": "label"},
