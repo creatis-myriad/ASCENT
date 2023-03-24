@@ -295,7 +295,7 @@ class Convert3Dto2Dd(MapTransform):
         for key in self.keys:
             shape = d[key].shape
             d[key] = rearrange(d[key], "c w h d -> (c d) w h")
-            if d.get("original_image_size") is None:
+            if f"original_{key}_size" not in d:
                 d[f"original_{key}_size"] = shape
         return d
 
