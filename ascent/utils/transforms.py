@@ -379,7 +379,10 @@ class AddChannelFirstd(MapTransform):
     def __call__(self, data: dict[str, Tensor]):
         d = dict(data)
         for key in self.keys:
-            d[key] = rearrange(d[key], "c w h d -> 1 c w h d")
+            if len(d[key].shape) == 4:
+                d[key] = rearrange(d[key], "c w h d -> 1 c w h d")
+            elif len(d[key].shape) == 3:
+                d[key] = rearrange(d[key], "c w h -> 1 c w h")
         return d
 
 
