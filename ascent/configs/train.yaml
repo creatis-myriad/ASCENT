@@ -12,6 +12,7 @@ defaults:
   - extras: default
   - hydra: default
 
+  - _self_
   # experiment configs allow for version control of specific hyperparameters
   # e.g. best hyperparameters for given model and datamodule
   - experiment: null
@@ -25,7 +26,7 @@ defaults:
 
   # debugging config (enable through command line, e.g. `python train.py debug=default)
   - debug: null
-  - _self_
+
   - optional launcher: null # List custom launcher after trainer/datamodule, so that it can override their configs
 
 # task name, determines output directory path
