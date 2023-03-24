@@ -44,7 +44,13 @@ from ascent import utils
 from ascent.utils.data_loading import get_case_identifiers_from_npz_folders
 from ascent.utils.dataset import nnUNet_Iterator
 from ascent.utils.file_and_folder_operations import load_pickle, save_pickle, subfiles
-from ascent.utils.transforms import Convert2Dto3Dd, Convert3Dto2Dd, LoadNpyd, MayBeSqueezed
+from ascent.utils.transforms import (
+    AddChannelFirstd,
+    Convert2Dto3Dd,
+    Convert3Dto2Dd,
+    LoadNpyd,
+    MayBeSqueezed,
+)
 
 log = utils.get_pylogger(__name__)
 
@@ -327,12 +333,12 @@ class nnUNetDataModule(LightningDataModule):
             if max(self.hparams.patch_size) / min(self.hparams.patch_size) > 1.5:
                 range_x = [-15.0 / 180 * np.pi, 15.0 / 180 * np.pi]
 
-        initial_patch_size = self.get_patch_size_for_spatial_transform(
+        self.initial_patch_size = self.get_patch_size_for_spatial_transform(
             self.crop_patch_size[: self.dim], range_x, range_y, range_z, (0.7, 1.4)
         )
 
         if not self.threeD:
-            self.initial_patch_size = [*initial_patch_size, 1]
+            self.initial_patch_size = [*self.initial_patch_size, 1]
 
         shared_train_val_transforms = [
             LoadNpyd(keys=["data"], seg_label=self.hparams.seg_label),
@@ -348,6 +354,7 @@ class nnUNetDataModule(LightningDataModule):
                     mode="constant",
                     value=0,
                 ),
+                EnsureTyped(["label"], data_type="tensor", dtype=torch.int8),
                 SpatialPadd(
                     keys=["label"],
                     spatial_size=self.initial_patch_size,
@@ -373,7 +380,7 @@ class nnUNetDataModule(LightningDataModule):
 
         other_transforms.extend(
             [
-                AddChanneld(keys=["image", "label"]),
+                AddChannelFirstd(keys=["image", "label"]),
                 EnsureTyped(["image", "label"], data_type="numpy"),
                 adaptor(
                     SpatialTransform(
@@ -405,6 +412,7 @@ class nnUNetDataModule(LightningDataModule):
                     ),
                     {"image": "image", "label": "label"},
                 ),
+                SqueezeDimd(["image", "label"], dim=0),
             ]
         )
 
@@ -436,6 +444,7 @@ class nnUNetDataModule(LightningDataModule):
 
         other_transforms.extend(
             [
+                AddChannelFirstd(keys=["image", "label"]),
                 adaptor(
                     GaussianNoiseTransform(p_per_sample=0.1, data_key="image"),
                     {"image": "image", "label": "label"},
@@ -501,6 +510,8 @@ class nnUNetDataModule(LightningDataModule):
 
         # other_transforms.extend(
         #     [
+        #         SqueezeDimd(["image", "label"], dim=0),
+        #         EnsureTyped(["image", "label"], data_type="tensor", track_meta=True),
         #         RandGaussianNoised(keys=["image"], std=0.01, prob=0.15),
         #         RandGaussianSmoothd(
         #             keys=["image"],
@@ -613,22 +624,22 @@ class nnUNetDataModule(LightningDataModule):
 
 if __name__ == "__main__":
     import hydra
-    import pyrootutils
     from hydra import compose, initialize_config_dir
     from matplotlib import pyplot as plt
     from omegaconf import OmegaConf
 
+    from ascent import get_ascent_root
     from ascent.utils.visualization import dopplermap, imagesc
 
-    root = pyrootutils.setup_root(__file__, pythonpath=True)
+    root = get_ascent_root()
 
     initialize_config_dir(config_dir=str(root / "configs" / "datamodule"), job_name="test")
-    cfg = compose(config_name="dealias_2d.yaml")
+    cfg = compose(config_name="camus_challenge_2d.yaml")
 
-    cfg.data_dir = str(root / "data")
+    cfg.data_dir = str(root.resolve().parent / "data")
     # cfg.patch_size = [128, 128]
-    cfg.in_channels = 2
-    cfg.patch_size = [40, 192]
+    cfg.in_channels = 1
+    cfg.patch_size = [640, 1024]
     # cfg.patch_size = [128, 128, 12]
     cfg.batch_size = 1
     cfg.fold = 0
@@ -640,20 +651,8 @@ if __name__ == "__main__":
     # camus_datamodule.setup(stage=TrainerFn.TESTING)
     # test_dl = camus_datamodule.test_dataloader()
 
-    # predict_files = [
-    #     {
-    #         "image_0": "C:/Users/ling/Desktop/nnUNet/nnUNet_raw/nnUNet_raw_data/Task129_DealiasingConcat/imagesTr/Dealias_0001_0000.nii.gz",
-    #         "image_1": "C:/Users/ling/Desktop/nnUNet/nnUNet_raw/nnUNet_raw_data/Task129_DealiasingConcat/imagesTr/Dealias_0001_0001.nii.gz",
-    #     }
-    # ]
-
-    # camus_datamodule.prepare_for_prediction(predict_files)
-    # camus_datamodule.setup(stage=TrainerFn.PREDICTING)
-    # predict_dl = camus_datamodule.predict_dataloader()
     gen = iter(train_dl)
     batch = next(gen)
-    # batch = next(iter(test_dl))
-    # batch = next(iter(predict_dl))
 
     cmap = dopplermap()
 
@@ -665,8 +664,8 @@ if __name__ == "__main__":
     print(batch["image"][0]._meta["filename_or_obj"])
     plt.figure("image", (18, 6))
     ax = plt.subplot(1, 2, 1)
-    imagesc(ax, img[0, :, :].transpose(), "image", cmap, clim=[-1, 1])
+    imagesc(ax, img[0, :, :].transpose(), "image", clim=[-1, 1])
     ax = plt.subplot(1, 2, 2)
-    imagesc(ax, label[0, :, :].transpose(), "label", cmap)
+    imagesc(ax, label[0, :, :].transpose(), "label")
     print("max of seg: ", np.max(label[0, :, :]))
     plt.show()

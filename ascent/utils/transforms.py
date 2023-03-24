@@ -360,6 +360,29 @@ class MayBeSqueezed(MapTransform):
         return d
 
 
+class AddChannelFirstd(MapTransform):
+    """Add a dummy batch dimension at the first dimension."""
+
+    def __init__(
+        self,
+        keys: KeysCollection,
+        allow_missing_keys: bool = False,
+    ) -> None:
+        """Initialize class instance.
+
+        Args:
+            keys: Keys of the corresponding items to be transformed.
+            allow_missing_keys: Don't raise exception if key is missing.
+        """
+        super().__init__(keys, allow_missing_keys)
+
+    def __call__(self, data: dict[str, Tensor]):
+        d = dict(data)
+        for key in self.keys:
+            d[key] = rearrange(d[key], "c w h d -> 1 c w h d")
+        return d
+
+
 class Preprocessd(MapTransform):
     """Load and preprocess data path given in dictionary keys.
 
