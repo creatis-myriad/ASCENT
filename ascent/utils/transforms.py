@@ -306,7 +306,6 @@ class Convert2Dto3Dd(MapTransform):
     def __init__(
         self,
         keys: KeysCollection,
-        num_channel: int,
         allow_missing_keys: bool = False,
     ) -> None:
         """Initialize class instance.
@@ -317,7 +316,6 @@ class Convert2Dto3Dd(MapTransform):
             allow_missing_keys: Don't raise exception if key is missing.
         """
         super().__init__(keys, allow_missing_keys)
-        self.num_channel = num_channel
 
     def __call__(self, data: dict[str, Tensor]):
         d = dict(data)
