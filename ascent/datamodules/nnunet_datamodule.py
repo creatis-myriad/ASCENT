@@ -340,6 +340,9 @@ class nnUNetDataModule(LightningDataModule):
         if not self.threeD:
             self.initial_patch_size = [*self.initial_patch_size, 1]
 
+        print("initial_patch_size", self.initial_patch_size)
+        print("crop_patch_size", self.crop_patch_size[: self.dim])
+
         shared_train_val_transforms = [
             LoadNpyd(keys=["data"], seg_label=self.hparams.seg_label),
             EnsureChannelFirstd(keys=["image", "label"]),
