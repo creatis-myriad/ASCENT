@@ -95,13 +95,13 @@ class AscentTrainer(ABC):
                 trainer.fit(model=model, datamodule=datamodule)
 
             if isinstance(trainer.logger, CometLogger) and cfg.comet_save_model:
-                if cfg.get("best_model"):
+                if trainer.checkpoint_callback.best_model_path:
                     trainer.logger.experiment.log_model(
-                        "model", trainer.checkpoint_callback.best_model_path
+                        "best-model", trainer.checkpoint_callback.best_model_path
                     )
-                else:
+                if trainer.checkpoint_callback.last_model_path:
                     trainer.logger.experiment.log_model(
-                        "model", trainer.checkpoint_callback.last_model_path
+                        "last-model", trainer.checkpoint_callback.last_model_path
                     )
 
         train_metrics = trainer.callback_metrics
