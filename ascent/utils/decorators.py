@@ -5,22 +5,24 @@ import numpy as np
 import torch
 from torch import Tensor
 
+
 def _has_method(o: object, name: str) -> bool:
     return callable(getattr(o, name, None))
 
+
 def auto_cast_data(func: Callable) -> Callable:
     """Decorator to allow functions relying on numpy arrays to accept other input data types.
-    
+
     Args:
         func: Function for which to automatically convert the first argument to a numpy array.
-        
+
     Returns:
-        Function that accepts input data types other than numpy arrays by converting between them 
+        Function that accepts input data types other than numpy arrays by converting between them
         and numpy arrays.
-    
+
     Raises:
         ValueError: If the data is not a numpy or torch.Tensor array.
-        
+
     Retrieved from:
         https://github.com/vitalab/vital/blob/dev/vital/utils/decorators.py
     """
