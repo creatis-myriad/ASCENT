@@ -3,6 +3,7 @@ from typing import Callable
 
 import numpy as np
 import torch
+from monai.data import MetaTensor
 from torch import Tensor
 
 
@@ -21,7 +22,7 @@ def auto_cast_data(func: Callable) -> Callable:
         and numpy arrays.
 
     Raises:
-        ValueError: If the data is not a numpy or torch.Tensor array.
+        ValueError: If the data is not a numpy or torch.Tensor or monai.data.MetaTensor array.
 
     Retrieved from:
         https://github.com/vitalab/vital/blob/dev/vital/utils/decorators.py
@@ -46,11 +47,13 @@ def auto_cast_data(func: Callable) -> Callable:
                 f"or manually convert the input of '{func.__name__}' to one of the following "
                 f"supported types: {dtypes}."
             )
-        if dtype == Tensor:
+        if dtype in [Tensor, MetaTensor]:
             data_device = data.device
             data = data.detach().cpu().numpy()
+
         result = func(*self_or_empty, data, *args, **kwargs)
-        if dtype == Tensor:
+
+        if dtype in [Tensor, MetaTensor]:
             result = torch.tensor(result, device=data_device)
         return result
 
