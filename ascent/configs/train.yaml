@@ -3,7 +3,6 @@
 # specify here default configuration
 # order of defaults determines the order in which configs override each other
 defaults:
-  - _self_
   - datamodule: mnist
   - model: mnist
   - callbacks: default
@@ -26,6 +25,8 @@ defaults:
 
   # debugging config (enable through command line, e.g. `python train.py debug=default)
   - debug: null
+  - _self_
+  - optional launcher: null # List custom launcher after trainer/datamodule, so that it can override their configs
 
 # task name, determines output directory path
 task_name: "train"
