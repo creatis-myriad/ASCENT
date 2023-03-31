@@ -9,8 +9,8 @@ defaults:
   - paths: default
   - extras: default
   - hydra: default
-  - experiment: null
   - _self_
+  - experiment: null
   - optional launcher: null # List custom launcher after trainer/datamodule, so that it can override their configs
 
 task_name: "eval"
