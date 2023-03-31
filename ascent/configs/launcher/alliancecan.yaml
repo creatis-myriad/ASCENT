@@ -1,0 +1,14 @@
+# @package _global_
+
+# NOTE: This custom launcher (separate from the built-in 'hydra/launcher' node) is meant to override global options
+# that depend on the hardware resources available and for which the default options are for local runs
+# (e.g. GPU devices, number of dataloader workers, progress bar display, etc.)
+
+defaults:
+  - override /hydra/launcher: alliancecan
+
+# Force the data to be specified using an environment variable, to be able to change its value between
+# i) when the jobs are submitted (env var points to data on shared filesystem)
+# ii) and when jobs are run (env var points to data on compute node)
+paths:
+  data_dir: ${oc.env:ASCENT_DATA_PATH}

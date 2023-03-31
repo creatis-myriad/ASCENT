@@ -24,7 +24,7 @@ def get_ascent_home() -> Path:
     Returns:
         Path to the home directory for the `ASCENT` library.
     """
-    load_dotenv(override=True)
+    load_dotenv()
     ascent_home = os.getenv(ENV_ASCENT_HOME)
     if ascent_home is None:
         user_cache_dir = os.getenv("XDG_CACHE_HOME", DEFAULT_CACHE_DIR)
@@ -64,7 +64,7 @@ def setup_root(
 
     # Load any available `.env` file
     if dotenv:
-        load_dotenv(override=True)
+        load_dotenv()
 
     # Add project root to pythonpath
     if pythonpath:
