@@ -1,10 +1,11 @@
 from functools import wraps
 from typing import Callable
 
-import numpy as np
 import torch
 from monai.data import MetaTensor
 from torch import Tensor
+
+from ascent.utils.format.torch import torch_to_numpy
 
 
 def _has_method(o: object, name: str) -> bool:
@@ -15,46 +16,45 @@ def auto_cast_data(func: Callable) -> Callable:
     """Decorator to allow functions relying on numpy arrays to accept other input data types.
 
     Args:
-        func: Function for which to automatically convert the first argument to a numpy array.
+        func: Function for which to automatically convert all the torch.Tensor/monai.data.MetaTensor
+        arguments and keyword arguments to numpy arrays.
 
     Returns:
         Function that accepts input data types other than numpy arrays by converting between them
         and numpy arrays.
-
-    Raises:
-        ValueError: If the data is not a numpy or torch.Tensor or monai.data.MetaTensor array.
-
-    Retrieved from:
-        https://github.com/vitalab/vital/blob/dev/vital/utils/decorators.py
     """
-    cast_types = [Tensor]
-    dtypes = [np.ndarray, *cast_types]
+    cast_types = (Tensor, MetaTensor)
 
     @wraps(func)
     def _call_func_with_cast_data(*args, **kwargs):
+        dtype_args = [type(arg) for arg in args]
+        device_args = [arg.device if isinstance(arg, cast_types) else None for arg in args]
+        dtype_kwargs = [type(v) for _, v in kwargs.items()]
+        device_kwargs = [
+            v.device if isinstance(v, cast_types) else None for _, v in kwargs.items()
+        ]
+
+        # Cast all the args to numpy arrays
+        args = torch_to_numpy(args)
+
+        # Cast all the kwargs to numpy arrays
+        kwargs = torch_to_numpy(kwargs)
+
         if _has_method(args[0], func.__name__):
             # If `func` is a method, pass over the implicit `self` as first argument
-            self_or_empty, data, args = args[0:1], args[1], args[2:]
+            self_or_empty, args = args[0:1], args[1:]
         else:
-            self_or_empty, data, args = (), args[0], args[1:]
+            self_or_empty, args = (), args[0:]
 
-        dtype = type(data)
-        if dtype not in dtypes:
-            raise ValueError(
-                f"Decorator 'auto_cast_data' used by function '{func.__name__}' does not support "
-                f"casting inputs of type '{dtype}' to numpy arrays. Either provide the implementation "
-                f"for casting to numpy arrays from '{cast_types}' in 'auto_cast_data' decorator, "
-                f"or manually convert the input of '{func.__name__}' to one of the following "
-                f"supported types: {dtypes}."
-            )
-        if dtype in [Tensor, MetaTensor]:
-            data_device = data.device
-            data = data.detach().cpu().numpy()
+        result = func(*self_or_empty, *args, **kwargs)
 
-        result = func(*self_or_empty, data, *args, **kwargs)
+        if any(t in cast_types for t in (dtype_args + dtype_kwargs)):
+            cuda_device = [d for d in (device_args + device_kwargs) if "cuda" in d.type]
+            mps_device = [d for d in (device_args + device_kwargs) if "mps" in d.type]
+            cpu_device = [d for d in (device_args + device_kwargs) if "cpu" in d.type]
 
-        if dtype in [Tensor, MetaTensor]:
-            result = torch.tensor(result, device=data_device)
+            device = max([cuda_device, mps_device, cpu_device], key=len)[0]
+            result = torch.tensor(result, device=device)
         return result
 
     return _call_func_with_cast_data
