@@ -1,0 +1,22 @@
+# @package _global_
+
+defaults:
+  - override /datamodule: myosaiq_2d
+  - override /model: myosaiq_2d
+  - override /callbacks: nnunet
+  - override /logger: wandb
+  - override /trainer: nnunet
+  - override /hydra: nnunet
+
+tags: ["${model.name}_${nnUNet_variant}", "Fold${fold}"]
+task_name: "MYOSAIQ"
+fold: 0
+train: True
+test: True
+nnUNet_variant: 2D
+best_model: False
+logger:
+  wandb:
+    project: "${task_name}"
+    name: "${model.name}_${nnUNet_variant}"
+    tags: ["Fold${fold}"]

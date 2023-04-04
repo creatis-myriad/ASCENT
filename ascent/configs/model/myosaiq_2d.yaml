@@ -1,0 +1,9 @@
+defaults:
+  - nnunet
+
+net:
+  in_channels: 1
+  num_classes: 5
+  patch_size: [96, 80]
+  kernels: [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
+  strides: [[1, 1], [2, 2], [2, 2], [2, 2], [2, 2]]
