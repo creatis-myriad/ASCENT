@@ -1,0 +1,7 @@
+defaults:
+  - nnunet
+
+batch_size: 14
+dataset_name: MYOSAIQ
+do_dummy_2D_data_aug: True
+num_workers: 12
