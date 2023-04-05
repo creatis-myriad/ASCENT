@@ -36,11 +36,11 @@ class AscentTrainer(ABC):
     @hydra.main(version_base="1.3", config_path="configs", config_name="train")
     @utils.task_wrapper
     def run_system(cfg: DictConfig) -> Tuple[dict, dict]:
-        """Trains the model. Can additionally evaluate on a testset, using best weights obtained
-        during training.
+        """Trains the model. Can additionally evaluate on a testset, using best/last weights
+        obtained during training.
 
-        This method is wrapped in @task_wrapper decorator which applies extra utilities
-        before and after the call.
+        This method is wrapped in optional @task_wrapper decorator, that controls the behavior during
+        failure. Useful for multiruns, saving info about the crash, etc.
 
         Args:
             cfg (DictConfig): Configuration composed by Hydra.
@@ -48,6 +48,9 @@ class AscentTrainer(ABC):
         Returns:
             Tuple[dict, dict]: Dict with metrics and dict with all instantiated objects.
         """
+        # apply extra utilities
+        # (e.g. ask for tags if none are provided in cfg, print cfg tree, etc.)
+        utils.extras(cfg)
 
         # set seed for random number generators in pytorch, numpy and python.random
         if cfg.get("seed"):

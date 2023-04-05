@@ -20,8 +20,8 @@ class AscentEvaluator(AscentTrainer):
     def run_system(cfg: DictConfig) -> Tuple[dict, dict]:
         """Evaluates given checkpoint on a datamodule testset.
 
-        This method is wrapped in optional @task_wrapper decorator which applies extra utilities
-        before and after the call.
+        This method is wrapped in optional @task_wrapper decorator, that controls the behavior during
+        failure. Useful for multiruns, saving info about the crash, etc.
 
         Args:
             cfg (DictConfig): Configuration composed by Hydra.
@@ -32,6 +32,10 @@ class AscentEvaluator(AscentTrainer):
         Raises:
             ValueError: Error when checkpoint path is not provided.
         """
+        # apply extra utilities
+        # (e.g. ask for tags if none are provided in cfg, print cfg tree, etc.)
+        utils.extras(cfg)
+
         if not cfg.ckpt_path:
             raise ValueError("ckpt_path must not be provided!")
 
