@@ -13,9 +13,9 @@ Welcome to the code repository for *cardiAc ultrasound Segmentation & Color-dopp
 [![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336)](https://pycqa.github.io/isort/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![pre-commit](https://img.shields.io/badge/Pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
-[![code-quality](https://github.com/HangJung97/ASCENT/actions/workflows/code-quality-main.yaml/badge.svg)](https://github.com/HangJung97/ASCENT/actions/workflows/code-quality-main.yaml)
+[![code-quality](https://github.com/creatis-myriad/ASCENT/actions/workflows/code-quality-main.yaml/badge.svg)](https://github.com/creatis-myriad/ASCENT/actions/workflows/code-quality-main.yaml)
 
-[![license](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/HangJung97/ASCENT#LICENSE)
+[![license](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/creatis-myriad/ASCENT#LICENSE)
 
 </div>
 
@@ -57,7 +57,7 @@ ASCENT has been tested on Linux (Ubuntu 20, Red Hat 7.6), macOS and Windows 10.
 1. Download the repository:
    ```bash
    # clone project
-   git clone https://github.com/HangJung97/ASCENT
+   git clone https://github.com/creatis-myriad/ASCENT
    cd ASCENT
    ```
 2. Create a virtual environment (Conda is strongly recommended):
@@ -81,7 +81,7 @@ Several new commands will be added to the virtual environment once the installat
 ## Data
 
 Before doing any preprocessing and training, you must first reformat the dataset to the appropriate format and place the converted dataset in the `data/` folder.
-Here is an example of the converted [CAMUS](https://www.creatis.insa-lyon.fr/Challenge/camus/) dataset using this [conversion script](https://github.com/HangJung97/ASCENT/blob/main/ascent/dataset_conversion/camus.py).
+Here is an example of the converted [CAMUS](https://www.creatis.insa-lyon.fr/Challenge/camus/) dataset using this [conversion script](https://github.com/creatis-myriad/ASCENT/blob/main/ascent/dataset_conversion/camus.py).
 
 > **Note**
 > Refer to [here](#define-custom-data-and-logs-path) if you want to have a different `data/` folder location.
