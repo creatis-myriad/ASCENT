@@ -5,7 +5,7 @@ description = "Cardiac Ultrasound Segmentation & Color-Doppler Dealiasing Toolbo
 authors = ["Hang Jung Ling <hang-jung.ling@insa-lyon.fr>"]
 license = "Apache-2.0"
 readme = "README.md"
-repository = "https://github.com/HangJung97/ASCENT"
+repository = "https://github.com/creatis-myriad/ASCENT"
 classifiers=[
     "Environment :: Console",
     "Natural Language :: English",
