@@ -1,0 +1,7 @@
+defaults:
+  - nnunet
+
+batch_size: 32
+dataset_name: MYOSAIQ+EMIDEC
+do_dummy_2D_data_aug: False
+num_workers: 12
