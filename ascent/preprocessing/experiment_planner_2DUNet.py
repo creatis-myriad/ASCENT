@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Sequence, Union
 
 import numpy as np
-import pyrootutils
 import ruamel.yaml
 
 from ascent import get_ascent_root, utils
@@ -117,12 +116,12 @@ class nnUNetPlanner2D:
             conv_per_stage=self.conv_per_stage,
         )
         while here > ref:
-            axis_to_be_reduced = np.argsort(new_shp / median_shape[1:])[-1]
+            axis_to_be_reduced = np.argsort(new_shp / median_shape[:-1])[-1]
 
             tmp = deepcopy(new_shp)
             tmp[axis_to_be_reduced] -= shape_must_be_divisible_by[axis_to_be_reduced]
             _, _, _, _, shape_must_be_divisible_by_new = get_pool_and_conv_props(
-                current_spacing[1:],
+                current_spacing[:-1],
                 tmp,
                 self.unet_featuremap_min_edge_length,
                 self.unet_max_numpool,
@@ -137,7 +136,7 @@ class nnUNetPlanner2D:
                 new_shp,
                 shape_must_be_divisible_by,
             ) = get_pool_and_conv_props(
-                current_spacing[1:],
+                current_spacing[:-1],
                 new_shp,
                 self.unet_featuremap_min_edge_length,
                 self.unet_max_numpool,
@@ -339,7 +338,7 @@ class nnUNetPlanner2D:
 
 
 if __name__ == "__main__":
-    root = pyrootutils.setup_root(__file__, pythonpath=True)
-    preprocessed_folder = root / "data" / "DEALIAS" / "preprocessed"
+    root = get_ascent_root()
+    preprocessed_folder = root / ".." / "data" / "DEALIAS" / "preprocessed"
     planner = nnUNetPlanner2D(preprocessed_folder)
     planner.plan_experiment()
