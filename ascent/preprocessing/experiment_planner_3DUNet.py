@@ -220,9 +220,9 @@ class nnUNetPlanner3D(nnUNetPlanner2D):
 
 
 if __name__ == "__main__":
-    import pyrootutils
+    from ascent import get_ascent_root
 
-    root = pyrootutils.setup_root(__file__, pythonpath=True)
-    preprocessed_folder = root / "data" / "CAMUS" / "preprocessed"
+    root = get_ascent_root()
+    preprocessed_folder = root / ".." / "data" / "CAMUS" / "preprocessed"
     planner = nnUNetPlanner3D(preprocessed_folder)
     planner.plan_experiment()
