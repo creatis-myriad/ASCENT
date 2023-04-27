@@ -1,8 +1,13 @@
-defaults:
-  - default
-
 # path to data directory
 data_dir: ${oc.env:ASCENT_DATA_PATH}
 
 # path to logging directory
 log_dir: ${oc.env:ASCENT_LOGS_PATH}
+
+# path to output directory, created dynamically by hydra
+# path generation pattern is specified in `configs/hydra/default.yaml`
+# use it to store all files generated during the run, like ckpts and metrics
+output_dir: ${hydra:runtime.output_dir}
+
+# path to working directory
+work_dir: ${hydra:runtime.cwd}
