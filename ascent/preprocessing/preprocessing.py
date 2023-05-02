@@ -48,6 +48,30 @@ def get_lowres_axis(spacing: list[float, ...]) -> np.ndarray:
     return axis
 
 
+def calculate_new_shape(
+    self,
+    spacing: list[float, ...],
+    shape: Union[list[int, ...], tuple[int, ...]],
+    target_spacing: list[float, ...],
+) -> list[int, ...]:
+    """Calculate the new shape after resampling.
+
+    Args:
+        spacing: Original image spacing.
+        shape: Original image shape.
+        target_spacing: Target image spacing for resampling.
+
+    Returns:
+        New shape after resampling.
+    """
+    spacing_ratio = np.array(spacing) / np.array(target_spacing)
+    new_shape = (spacing_ratio * np.array(shape)).astype(int)
+    # Handle the case of pseudo 2D where image's Z spacing is smaller than target Z spacing,
+    # causing new_shape[-1] = 0
+    new_shape[new_shape == 0] = 1
+    return new_shape.tolist()
+
+
 def resample_image(
     image: np.ndarray,
     new_shape: Union[list, tuple],
@@ -541,24 +565,6 @@ class SegPreprocessor:
         all_classes = [int(i) for i in classes.keys() if int(i) > 0]
         return all_classes
 
-    def _calculate_new_shape(
-        self,
-        spacing: list[float, ...],
-        shape: Union[list, tuple],
-    ) -> list:
-        """Calculate the new shape after resampling.
-
-        Args:
-            spacing: New calculated spacing for data resampling.
-            shape: Original image shape.
-
-        Returns:
-            New shape after resampling.
-        """
-        spacing_ratio = np.array(spacing) / np.array(self.target_spacing)
-        new_shape = (spacing_ratio * np.array(shape)).astype(int).tolist()
-        return new_shape
-
     def _get_all_size_reductions(
         self,
         list_of_cropped_npz_files: list[str, ...],
@@ -693,8 +699,10 @@ class SegPreprocessor:
                     # we do not want to resample separately in the out of plane axis
                     anisotropy_flag = False
 
-            new_shape = self._calculate_new_shape(
-                properties["original_spacing"], properties["shape_after_cropping"]
+            new_shape = calculate_new_shape(
+                properties["original_spacing"],
+                properties["shape_after_cropping"],
+                self.target_spacing,
             )
             data = resample_image(data, new_shape, anisotropy_flag, axis, 3, 0)
             seg = resample_label(seg, new_shape, anisotropy_flag, axis, 1, 0)
@@ -1081,8 +1089,10 @@ class RegPreprocessor(SegPreprocessor):
                     # we do not want to resample separately in the out of plane axis
                     anisotropy_flag = False
 
-            new_shape = self._calculate_new_shape(
-                properties["original_spacing"], properties["shape_after_cropping"]
+            new_shape = calculate_new_shape(
+                properties["original_spacing"],
+                properties["shape_after_cropping"],
+                self.target_spacing,
             )
             data = resample_image(data, new_shape, anisotropy_flag, axis, 3, 0)
             seg = resample_image(seg.astype(np.float32), new_shape, anisotropy_flag, axis, 3, 0)
@@ -1273,8 +1283,10 @@ class DealiasPreprocessor(RegPreprocessor):
                     # we do not want to resample separately in the out of plane axis
                     anisotropy_flag = False
 
-            new_shape = self._calculate_new_shape(
-                properties["original_spacing"], properties["shape_after_cropping"]
+            new_shape = calculate_new_shape(
+                properties["original_spacing"],
+                properties["shape_after_cropping"],
+                self.target_spacing,
             )
             data = resample_image(data, new_shape, anisotropy_flag, axis, 3, 0)
             seg[:-1] = resample_image(
