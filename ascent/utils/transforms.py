@@ -406,6 +406,7 @@ class Preprocessd(MapTransform):
         image = SpatialCrop(roi_start=box_start, roi_end=box_end)(image)
         image_meta_dict["crop_bbox"] = np.vstack([box_start, box_end])
         image_meta_dict["shape_after_cropping"] = np.array(image.shape[1:])
+        image_meta_dict["spacing_after_resampling"] = self.target_spacing
 
         anisotropy_flag = False
 
@@ -434,7 +435,6 @@ class Preprocessd(MapTransform):
                         # we do not want to resample separately in the out of plane axis
                         anisotropy_flag = False
 
-                image_meta_dict["spacing_after_resampling"] = self.target_spacing
                 image = resample_image(image, resample_shape, anisotropy_flag, axis, 3, 0)
                 if "label" in self.keys:
                     label = label.cpu().detach().numpy()
