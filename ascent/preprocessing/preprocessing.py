@@ -49,7 +49,6 @@ def get_lowres_axis(spacing: list[float, ...]) -> np.ndarray:
 
 
 def calculate_new_shape(
-    self,
     spacing: list[float, ...],
     shape: Union[list[int, ...], tuple[int, ...]],
     target_spacing: list[float, ...],
