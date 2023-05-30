@@ -20,6 +20,7 @@ from monai.utils import convert_to_dst_type, convert_to_tensor
 from torch import Tensor
 
 from ascent.preprocessing.preprocessing import (
+    calculate_new_shape,
     check_anisotropy,
     get_lowres_axis,
     resample_image,
@@ -381,11 +382,6 @@ class Preprocessd(MapTransform):
         self.do_normalize = do_normalize
         self.modalities = modalities
 
-    def calculate_new_shape(self, spacing, shape):
-        spacing_ratio = np.array(spacing) / np.array(self.target_spacing)
-        new_shape = (spacing_ratio * np.array(shape)).astype(int).tolist()
-        return new_shape
-
     def __call__(self, data: dict[str, str]):
         # load data
         d = dict(data)
@@ -406,6 +402,7 @@ class Preprocessd(MapTransform):
         image = SpatialCrop(roi_start=box_start, roi_end=box_end)(image)
         image_meta_dict["crop_bbox"] = np.vstack([box_start, box_end])
         image_meta_dict["shape_after_cropping"] = np.array(image.shape[1:])
+        image_meta_dict["spacing_after_resampling"] = self.target_spacing
 
         anisotropy_flag = False
 
@@ -413,9 +410,10 @@ class Preprocessd(MapTransform):
         if image_meta_dict.get("resampling_flag"):
             if not np.all(image_meta_dict.get("original_spacing") == self.target_spacing):
                 # resample
-                resample_shape = self.calculate_new_shape(
+                resample_shape = calculate_new_shape(
                     image_meta_dict.get("original_spacing"),
                     image_meta_dict.get("shape_after_cropping"),
+                    self.target_spacing,
                 )
 
                 if check_anisotropy(image_meta_dict.get("original_spacing")):
@@ -434,7 +432,6 @@ class Preprocessd(MapTransform):
                         # we do not want to resample separately in the out of plane axis
                         anisotropy_flag = False
 
-                image_meta_dict["spacing_after_resampling"] = self.target_spacing
                 image = resample_image(image, resample_shape, anisotropy_flag, axis, 3, 0)
                 if "label" in self.keys:
                     label = label.cpu().detach().numpy()
