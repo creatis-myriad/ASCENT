@@ -2,7 +2,11 @@ from typing import Literal, Union
 
 import numpy as np
 import torch
+from einops import rearrange
 from torch import Tensor, nn
+
+from ascent.models.components.unet_related.drop import DropPath
+from ascent.models.components.unet_related.normalization import LayerNorm
 
 normalizations = {
     "instancenorm3d": nn.InstanceNorm3d,
@@ -25,21 +29,27 @@ dropouts = {
 
 
 def get_norm(
-    name: Literal["batchnorm2d", "batchnorm3d", "instancenorm2d", "instancenorm3d", "groupnorm"],
+    name: Literal[
+        "batchnorm2d", "batchnorm3d", "instancenorm2d", "instancenorm3d", "groupnorm", "layernorm"
+    ],
     num_channels: int,
+    **kwargs,
 ):
     """Get normalization layer.
 
     Args:
         name: Name of normalization layer to use.
         num_channels: Number of channels expected in input.
+        **kwargs: Keyword arguments to be passed to the normalization layer.
 
     Returns:
         PyTorch normalization layer with learnable parameters.
     """
     if "groupnorm" in name:
-        return nn.GroupNorm(32, num_channels, affine=True)
-    return normalizations[name](num_channels, affine=True)
+        return nn.GroupNorm(32, num_channels, affine=True, **kwargs)
+    elif "layernorm" in name:
+        return LayerNorm(normalized_shape=num_channels, eps=1e-6, **kwargs)
+    return normalizations[name](num_channels, affine=True, **kwargs)
 
 
 def get_conv(
@@ -49,6 +59,7 @@ def get_conv(
     stride: Union[int, tuple[int, ...]],
     dim: Literal[2, 3],
     bias: bool = True,
+    **kwargs,
 ):
     """Get 2D or 3D convolution layer.
 
@@ -59,13 +70,14 @@ def get_conv(
         stride: Stride of the convolution.
         dim: Dimension of convolution.
         bias: Set True to add a learnable bias to the output.
+        **kwargs: Keyword arguments to be passed to either Conv2d or Conv3d.
 
     Returns:
         PyTorch convolution layer.
     """
     conv = convolutions[f"Conv{dim}d"]
     padding = get_padding(kernel_size, stride)
-    return conv(in_channels, out_channels, kernel_size, stride, padding, bias=bias)
+    return conv(in_channels, out_channels, kernel_size, stride, padding, bias=bias, **kwargs)
 
 
 def get_transp_conv(
@@ -182,7 +194,7 @@ class ConvLayer(nn.Module):
         self.lrelu = nn.LeakyReLU(negative_slope=kwargs["negative_slope"], inplace=True)
         self.use_drop_block = kwargs["drop_block"]
         if self.use_drop_block:
-            self.drop_block = get_drop_block()
+            self.drop_block = get_drop_block(kwargs["dim"])
 
     def forward(self, data: Tensor):  # noqa: D102
         out = self.conv(data)
@@ -256,8 +268,8 @@ class ResidBlock(nn.Module):
         self.lrelu = nn.LeakyReLU(negative_slope=kwargs["negative_slope"], inplace=True)
         self.use_drop_block = kwargs["drop_block"]
         if self.use_drop_block:
-            self.drop_block = get_drop_block()
-            self.skip_drop_block = get_drop_block()
+            self.drop_block = get_drop_block(kwargs["dim"])
+            self.skip_drop_block = get_drop_block(kwargs["dim"])
         self.downsample = None
         if max(stride) > 1 or in_channels != out_channels:
             self.downsample = get_conv(
@@ -309,6 +321,69 @@ class AttentionLayer(nn.Module):
         out = self.conv(inputs)
         out = self.norm(out)
         return out
+
+
+class ConvNeXtBlock(nn.Module):
+    """ConvNeXt Block.
+
+    There are two equivalent implementations: (1) Conv -> LayerNorm (channels_first) -> 1x1 Conv ->
+    GELU -> 1x1 Conv; all in (N, C, H, W, D) (2) Conv -> Permute to (N, H, W, D, C); LayerNorm
+    (channels_last) -> Linear -> GELU -> Linear; Permute back We use (2) as we find it slightly
+    faster in PyTorch
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        kernel_size: Union[int, tuple[int, ...]],
+        stride: Union[int, tuple[int, ...]],
+        drop_path: float = 0.0,
+        layer_scale_init_value: float = 1e-6,
+        **kwargs,
+    ):
+        """Initialize class instance.
+
+        Args:
+            in_channels: Number of input channels.
+            kernel_size: Size of the convolving kernel.
+            stride: Stride of the convolution.
+            drop_path: Stochastic depth rate.
+            layer_scale_init_value (float): Init value for Layer Scale. Default: 1e-6.
+            **dim (int): Dimension for convolution. (2 or 3)
+            **norm (str): Name of normalization layer.
+        """
+        super().__init__()
+        self.conv = get_conv(
+            in_channels, in_channels, kernel_size, stride, kwargs["dim"], groups=in_channels
+        )  # depthwise conv
+        self.norm = get_norm(kwargs["norm"], in_channels)
+        self.pwconv1 = nn.Linear(
+            in_channels, 4 * in_channels
+        )  # pointwise/1x1 convs, implemented with linear layers
+        self.act = nn.GELU()
+        self.pwconv2 = nn.Linear(4 * in_channels, in_channels)
+        self.gamma = (
+            nn.Parameter(layer_scale_init_value * torch.ones(in_channels), requires_grad=True)
+            if layer_scale_init_value > 0
+            else None
+        )
+
+        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
+
+    def forward(self, x):
+        input = x
+        x = self.conv(x)
+        x = rearrange(x, "b c h w d -> b h w d c")
+        x = self.norm(x)
+        x = self.pwconv1(x)
+        x = self.act(x)
+        x = self.pwconv2(x)
+        if self.gamma is not None:
+            x = self.gamma * x
+        x = rearrange(x, "b h w d c -> b c h w d")
+
+        x = input + self.drop_path(x)
+        return x
 
 
 class UpsampleBlock(nn.Module):

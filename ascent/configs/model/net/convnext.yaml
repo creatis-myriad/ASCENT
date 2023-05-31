@@ -1,0 +1,17 @@
+_target_: ascent.models.components.convnext.ConvNeXt
+
+in_channels: ???
+num_classes: ???
+patch_size: ???
+convnext_kernels: 7
+decoder_kernels: ???
+strides: [[4, 4, 4], [2, 2, 2], [2, 2, 2], [2, 2, 2]]
+depths: [2, 3, 3, 9, 3]
+filters: [32, 96, 192, 384, 768]
+drop_path_rate: 0
+layer_scale_init_value: 1e-6
+encoder_normalization_layer: "layer"
+decoder_normalization_layer: "instance"
+negative_slope: 1e-2
+deep_supervision: True
+out_seg_bias: False
