@@ -14,3 +14,5 @@ net:
 
 loss:
   soft_dice_kwargs: { "batch_dice": False, "smooth": 1e-05, "do_bg": False }
+
+name: ConvNeXt
