@@ -1,0 +1,6 @@
+defaults:
+  - alliancecan
+
+cpus_per_task: 12
+gpus_per_node: 1
+mem_gb: 64
