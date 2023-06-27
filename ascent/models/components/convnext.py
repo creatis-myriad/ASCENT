@@ -43,8 +43,8 @@ class ConvNeXt(nn.Module):
             patch_size: Input patch size according to which the data will be cropped. Can be 2D or
                 3D.
             convnext_kernels: Kernel size used in the convolutional layers in the ConvNeXt backbone.
-            decoder_kernels: List of list containing convolution kernel size of the first convolution layer
-                of each double convolutions block in the U-Net decoder.
+            decoder_kernels: List of list containing convolution kernel size of the first convolution
+                layer of each double convolutions block in the U-Net decoder.
             strides: List of list containing convolution strides of the downsampling layers.
             depths: Number of ConvNeXt blocks at each encoder stage.
             filters: Feature dimensions at each encoder stage.
@@ -76,7 +76,10 @@ class ConvNeXt(nn.Module):
         self.out_seg_bias = out_seg_bias
         self.deep_supervision = deep_supervision
 
+        # Drop out rates
         dp_rates = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
+
+        # Input blocks = Conv + ConvNeXtBlock + LayerNorm
         input_blocks = []
         input_blocks.append(get_conv(in_channels, self.filters[0], convnext_kernels, 1, self.dim))
         cur = 0
@@ -94,9 +97,9 @@ class ConvNeXt(nn.Module):
             )
         input_blocks.append(LayerNorm(filters[0], eps=1e-6, data_format="channels_first"))
         cur += depths[0]
-
         self.input_block = nn.Sequential(*input_blocks)
 
+        # Downsampling blocks
         self.downsample_layers = nn.ModuleList()
         stem = nn.Sequential(
             get_conv(in_channels, filters[1], strides[0], strides[0], dim=self.dim),
@@ -111,9 +114,8 @@ class ConvNeXt(nn.Module):
             )
             self.downsample_layers.append(downsample_layer)
 
-        self.stages = (
-            nn.ModuleList()
-        )  # 4 feature resolution stages, each consisting of multiple residual blocks
+        # 4 feature resolution stages, each consisting of multiple residual blocks
+        self.stages = nn.ModuleList()
 
         for i in range(1, len(filters)):
             stage = nn.Sequential(
@@ -133,14 +135,17 @@ class ConvNeXt(nn.Module):
             self.stages.append(stage)
             cur += depths[i - 1]
 
+        # Normalization layers
         norm_layer = partial(LayerNorm, eps=1e-6, data_format="channels_first")
         self.norm_layers = nn.ModuleList()
         for i_layer in range(1, len(filters)):
             layer = norm_layer(filters[i_layer])
             self.norm_layers.append(layer)
 
+        # ConvNeXt uses trunc_normal initialization instead of kaiming_normal
         self.apply(self.initialize_ConvNeXt_weights)
 
+        # Upsampling blocks
         self.upsamples = self.get_module_list(
             conv_block=UpsampleBlock,
             in_channels=self.filters[1:][::-1],
@@ -148,9 +153,14 @@ class ConvNeXt(nn.Module):
             kernels=decoder_kernels[::-1],
             strides=strides[::-1],
         )
+
+        # Output block
         self.output_block = self.get_output_block(decoder_level=0)
+
+        # Deep supervision heads
         self.deep_supervision_heads = self.get_deep_supervision_heads()
 
+        # Stick to kaiming_normal initialization for the decoder
         self.upsamples.apply(self.initialize_decoder_weights)
         self.output_block.apply(self.initialize_decoder_weights)
         self.deep_supervision_heads.apply(self.initialize_decoder_weights)
