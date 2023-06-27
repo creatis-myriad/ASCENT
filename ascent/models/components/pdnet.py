@@ -8,7 +8,9 @@ from ascent.models.components.unet import UNet
 
 
 class PDNet(nn.Module):
-    """Primal-dual based reconstruction network to perform color Doppler dealiasing.
+    """Modified primal-dual based reconstruction network to perform color Doppler dealiasing.
+
+    PDNet uses the same feature maps per iteration.
 
     References:
         - Paper that introduced the Learned Primal-dual Reconstruction: https://arxiv.org/pdf/1707.06474.pdf
@@ -23,7 +25,6 @@ class PDNet(nn.Module):
         num_classes: int,
         patch_size: list[int, ...],
         negative_slope: float = 1e-2,
-        variant: Literal[0, 1, 2, 3] = 0,
         out_conv: bool = True,
     ) -> None:
         """Initialize class instance.
@@ -36,7 +37,6 @@ class PDNet(nn.Module):
             num_classes: Number of segmentation classes.
             patch_size: Input patch size.
             negative_slope: Negative slope used in LeakyRELU.
-            variant: Variant of PDNet.
             out_conv: Whether to apply convolution to the output.
 
         Raises:
@@ -53,7 +53,6 @@ class PDNet(nn.Module):
         self.num_classes = num_classes
         self.patch_size = patch_size
         self.negative_slope = negative_slope
-        self.variant = variant
         self.out_conv = out_conv
 
         # to keep the compatibility with nnUNetLitModule
@@ -64,122 +63,36 @@ class PDNet(nn.Module):
         self.padding = 1
         self.bias = True
 
-        if self.variant in [0, 1]:
-            if self.variant == 0:
-                self.conv_dual_1 = nn.ModuleList(
-                    [
-                        Conv2d(
-                            n_dual + self.in_channels + 1,
-                            32,
-                            self.kernel_size,
-                            self.stride,
-                            self.padding,
-                            bias=self.bias,
-                        )
-                        for i in range(self.iterations)
-                    ]
-                )
-            else:
-                self.conv_dual_1 = nn.ModuleList(
-                    [
-                        Conv2d(
-                            n_dual + self.in_channels,
-                            32,
-                            self.kernel_size,
-                            self.stride,
-                            self.padding,
-                            bias=self.bias,
-                        )
-                        for i in range(self.iterations)
-                    ]
-                )
+        self.conv_dual_1 = Conv2d(
+            n_dual + self.in_channels + 1,
+            32,
+            self.kernel_size,
+            self.stride,
+            self.padding,
+            bias=self.bias,
+        )
 
-            self.conv_primal_1 = nn.ModuleList(
-                [
-                    Conv2d(
-                        n_primal + 1,
-                        32,
-                        self.kernel_size,
-                        self.stride,
-                        self.padding,
-                        bias=self.bias,
-                    )
-                    for i in range(self.iterations)
-                ]
-            )
+        self.conv_primal_1 = Conv2d(
+            n_primal + 1, 32, self.kernel_size, self.stride, self.padding, bias=self.bias
+        )
 
-            self.conv_dual_2 = nn.ModuleList(
-                [
-                    Conv2d(32, 32, self.kernel_size, self.stride, self.padding, bias=self.bias)
-                    for i in range(self.iterations)
-                ]
-            )
-            self.conv_dual_3 = nn.ModuleList(
-                [
-                    Conv2d(32, n_dual, self.kernel_size, self.stride, self.padding, bias=self.bias)
-                    for i in range(self.iterations)
-                ]
-            )
+        self.conv_dual_2 = Conv2d(
+            32, 32, self.kernel_size, self.stride, self.padding, bias=self.bias
+        )
 
-            self.conv_primal_2 = nn.ModuleList(
-                [
-                    Conv2d(32, 32, self.kernel_size, self.stride, self.padding, bias=self.bias)
-                    for i in range(self.iterations)
-                ]
-            )
-            self.conv_primal_3 = nn.ModuleList(
-                [
-                    Conv2d(
-                        32, n_primal, self.kernel_size, self.stride, self.padding, bias=self.bias
-                    )
-                    for i in range(self.iterations)
-                ]
-            )
+        self.conv_dual_3 = Conv2d(
+            32, n_dual, self.kernel_size, self.stride, self.padding, bias=self.bias
+        )
 
-            self.lrelu = nn.ModuleList(
-                [nn.LeakyReLU(self.negative_slope, inplace=True) for i in range(self.iterations)]
-            )
-        elif self.variant in [2, 3]:
-            if self.variant == 2:
-                self.conv_dual_1 = Conv2d(
-                    n_dual + self.in_channels + 1,
-                    32,
-                    self.kernel_size,
-                    self.stride,
-                    self.padding,
-                    bias=self.bias,
-                )
-            else:
-                self.conv_dual_1 = Conv2d(
-                    n_dual + self.in_channels,
-                    32,
-                    self.kernel_size,
-                    self.stride,
-                    self.padding,
-                    bias=self.bias,
-                )
+        self.conv_primal_2 = Conv2d(
+            32, 32, self.kernel_size, self.stride, self.padding, bias=self.bias
+        )
 
-            self.conv_primal_1 = Conv2d(
-                n_primal + 1, 32, self.kernel_size, self.stride, self.padding, bias=self.bias
-            )
+        self.conv_primal_3 = Conv2d(
+            32, n_primal, self.kernel_size, self.stride, self.padding, bias=self.bias
+        )
 
-            self.conv_dual_2 = Conv2d(
-                32, 32, self.kernel_size, self.stride, self.padding, bias=self.bias
-            )
-
-            self.conv_dual_3 = Conv2d(
-                32, n_dual, self.kernel_size, self.stride, self.padding, bias=self.bias
-            )
-
-            self.conv_primal_2 = Conv2d(
-                32, 32, self.kernel_size, self.stride, self.padding, bias=self.bias
-            )
-
-            self.conv_primal_3 = Conv2d(
-                32, n_primal, self.kernel_size, self.stride, self.padding, bias=self.bias
-            )
-
-            self.lrelu = nn.LeakyReLU(self.negative_slope, inplace=True)
+        self.lrelu = nn.LeakyReLU(self.negative_slope, inplace=True)
 
         if self.out_conv:
             self.output_conv = Conv2d(
@@ -223,68 +136,286 @@ class PDNet(nn.Module):
             dim=1,
         )
 
-        if self.variant in [0, 1]:
-            for i in range(self.iterations):
-                # dual iterates
-                eval_pt = primal[:, 1:2, ...]
+        for i in range(self.iterations):
+            # dual iterates
+            eval_pt = primal[:, 1:2, ...]
 
-                eval_op = self.wrap(eval_pt)
-                if self.variant == 0:
-                    update = torch.concat([dual, eval_op, input_data], dim=1)
-                else:
-                    update = torch.concat([dual, eval_op - input_data], dim=1)
-                update = self.conv_dual_1[i](update)
-                update = self.lrelu[i](update)
-                update = self.conv_dual_2[i](update)
-                update = self.lrelu[i](update)
-                update = self.conv_dual_3[i](update)
+            eval_op = self.wrap(eval_pt)
+            if self.variant == 2:
+                update = torch.concat([dual, eval_op, input_data], dim=1)
+            else:
+                update = torch.concat([dual, eval_op - input_data], dim=1)
+            update = self.conv_dual_1(update)
+            update = self.lrelu(update)
+            update = self.conv_dual_2(update)
+            update = self.lrelu(update)
+            update = self.conv_dual_3(update)
 
-                # residual connection
-                dual = dual + update
+            # residual connection
+            dual = dual + update
 
-                # primal iterates
-                eval_op = dual[:, 0:1, ...]
-                update = torch.concat([primal, eval_op], dim=1)
+            # primal iterates
+            eval_op = dual[:, 0:1, ...]
+            update = torch.concat([primal, eval_op], dim=1)
 
-                update = self.conv_primal_1[i](update)
-                update = self.lrelu[i](update)
-                update = self.conv_primal_2[i](update)
-                update = self.lrelu[i](update)
-                update = self.conv_primal_3[i](update)
+            update = self.conv_primal_1(update)
+            update = self.lrelu(update)
+            update = self.conv_primal_2(update)
+            update = self.lrelu(update)
+            update = self.conv_primal_3(update)
 
-                # residual connection
-                primal = primal + update
-        elif self.variant in [2, 3]:
-            for i in range(self.iterations):
-                # dual iterates
-                eval_pt = primal[:, 1:2, ...]
+            # residual connection
+            primal = primal + update
 
-                eval_op = self.wrap(eval_pt)
-                if self.variant == 2:
-                    update = torch.concat([dual, eval_op, input_data], dim=1)
-                else:
-                    update = torch.concat([dual, eval_op - input_data], dim=1)
-                update = self.conv_dual_1(update)
-                update = self.lrelu(update)
-                update = self.conv_dual_2(update)
-                update = self.lrelu(update)
-                update = self.conv_dual_3(update)
+        out = primal[:, 0:1, ...]
+        if self.out_conv:
+            out = self.output_conv(out)
 
-                # residual connection
-                dual = dual + update
+        return out
 
-                # primal iterates
-                eval_op = dual[:, 0:1, ...]
-                update = torch.concat([primal, eval_op], dim=1)
+    def debug(self, input_data: Tensor) -> Tensor:  # noqa: D102
+        primal = torch.concat(
+            [torch.zeros(input_data.shape[0], 1, *input_data.shape[2:], device=input_data.device)]
+            * self.n_primal,
+            dim=1,
+        )
+        dual = torch.concat(
+            [torch.zeros(input_data.shape[0], 1, *input_data.shape[2:], device=input_data.device)]
+            * self.n_dual,
+            dim=1,
+        )
 
-                update = self.conv_primal_1(update)
-                update = self.lrelu(update)
-                update = self.conv_primal_2(update)
-                update = self.lrelu(update)
-                update = self.conv_primal_3(update)
+        results = []
 
-                # residual connection
-                primal = primal + update
+        for i in range(self.iterations):
+            # dual iterates
+            eval_pt = primal[:, 1:2, ...]
+
+            eval_op = self.wrap(eval_pt)
+
+            update = torch.concat([dual, eval_op, input_data], dim=1)
+            update = self.conv_dual_1(update)
+            update = self.lrelu(update)
+            update = self.conv_dual_2(update)
+            update = self.lrelu(update)
+            update = self.conv_dual_3(update)
+
+            # residual connection
+            dual = dual + update
+
+            # primal iterates
+            eval_op = dual[:, 0:1, ...]
+            update = torch.concat([primal, eval_op], dim=1)
+
+            update = self.conv_primal_1(update)
+            update = self.lrelu(update)
+            update = self.conv_primal_2(update)
+            update = self.lrelu(update)
+            update = self.conv_primal_3(update)
+
+            # residual connection
+            primal = primal + update
+
+            results.append([primal[:, 1:2, ...], primal[:, 0:1, ...], dual[:, 0:1, ...]])
+
+        out = primal[:, 0:1, ...]
+        if self.out_conv:
+            out = self.output_conv(out)
+
+        return out, results
+
+    def initialize_weights(self, module: nn.Module) -> None:
+        """Initialize the weights of all nn Modules using Kaimimg normal initialization."""
+        if isinstance(module, (nn.Conv3d, nn.Conv2d, nn.ConvTranspose3d, nn.ConvTranspose2d)):
+            module.weight = nn.init.kaiming_normal_(module.weight, a=self.negative_slope)
+            if module.bias is not None:
+                module.bias = nn.init.constant_(module.bias, 0)
+
+
+class OriPDNet(nn.Module):
+    """Original primal-dual based reconstruction network to perform color Doppler dealiasing.
+
+    OriPDNet uses different feature maps per iteration.
+
+    References:
+        - Paper that introduced the Learned Primal-dual Reconstruction: https://arxiv.org/pdf/1707.06474.pdf
+    """
+
+    def __init__(
+        self,
+        iterations: int,
+        n_primal: int,
+        n_dual: int,
+        in_channels: int,
+        num_classes: int,
+        patch_size: list[int, ...],
+        negative_slope: float = 1e-2,
+        out_conv: bool = True,
+    ) -> None:
+        """Initialize class instance.
+
+        Args:
+            iterations: Number of iterations.
+            n_primal: Number of data that persists between primal iterates.
+            n_dual: Number of data that persists between dual iterates.
+            in_channels: Number of input channels.
+            num_classes: Number of segmentation classes.
+            patch_size: Input patch size.
+            negative_slope: Negative slope used in LeakyRELU.
+            out_conv: Whether to apply convolution to the output.
+
+        Raises:
+            NotImplementedError: Error when input patch size is neither 2D nor 3D.
+        """
+        super().__init__()
+        if not len(patch_size) in [2, 3]:
+            raise NotImplementedError("Only 2D and 3D patches are supported right now!")
+
+        self.iterations = iterations
+        self.n_primal = n_primal
+        self.n_dual = n_dual
+        self.in_channels = in_channels
+        self.num_classes = num_classes
+        self.patch_size = patch_size
+        self.negative_slope = negative_slope
+        self.out_conv = out_conv
+
+        # to keep the compatibility with nnUNetLitModule
+        self.deep_supervision = False
+
+        self.kernel_size = 3
+        self.stride = 1
+        self.padding = 1
+        self.bias = True
+
+        self.conv_dual_1 = nn.ModuleList(
+            [
+                Conv2d(
+                    n_dual + self.in_channels + 1,
+                    32,
+                    self.kernel_size,
+                    self.stride,
+                    self.padding,
+                    bias=self.bias,
+                )
+                for i in range(self.iterations)
+            ]
+        )
+
+        self.conv_primal_1 = nn.ModuleList(
+            [
+                Conv2d(
+                    n_primal + 1,
+                    32,
+                    self.kernel_size,
+                    self.stride,
+                    self.padding,
+                    bias=self.bias,
+                )
+                for i in range(self.iterations)
+            ]
+        )
+
+        self.conv_dual_2 = nn.ModuleList(
+            [
+                Conv2d(32, 32, self.kernel_size, self.stride, self.padding, bias=self.bias)
+                for i in range(self.iterations)
+            ]
+        )
+        self.conv_dual_3 = nn.ModuleList(
+            [
+                Conv2d(32, n_dual, self.kernel_size, self.stride, self.padding, bias=self.bias)
+                for i in range(self.iterations)
+            ]
+        )
+
+        self.conv_primal_2 = nn.ModuleList(
+            [
+                Conv2d(32, 32, self.kernel_size, self.stride, self.padding, bias=self.bias)
+                for i in range(self.iterations)
+            ]
+        )
+        self.conv_primal_3 = nn.ModuleList(
+            [
+                Conv2d(32, n_primal, self.kernel_size, self.stride, self.padding, bias=self.bias)
+                for i in range(self.iterations)
+            ]
+        )
+
+        self.lrelu = nn.ModuleList(
+            [nn.LeakyReLU(self.negative_slope, inplace=True) for i in range(self.iterations)]
+        )
+
+        if self.out_conv:
+            self.output_conv = Conv2d(
+                1,
+                self.num_classes,
+                self.kernel_size,
+                self.stride,
+                self.padding,
+                bias=self.bias,
+            )
+
+        self.apply(self.initialize_weights)
+
+    @staticmethod
+    def wrap(x: Tensor, wrap_param: float = 1.0, normalize: bool = False) -> Tensor:
+        """Wrap any element with its absolute value surpassing the wrapping parameter.
+
+        Args:
+            x: Input tensor.
+            wrap_param: Wrapping parameter.
+            normalize: Whether to normalize the wrapped tensor between -1 and 1.
+
+        Returns:
+            Wrapped tensor.
+        """
+        x = (x + wrap_param) % (2 * wrap_param) - wrap_param
+        if normalize:
+            return x / wrap_param
+        else:
+            return x
+
+    def forward(self, input_data: Tensor) -> Tensor:  # noqa: D102
+        primal = torch.concat(
+            [torch.zeros(input_data.shape[0], 1, *input_data.shape[2:], device=input_data.device)]
+            * self.n_primal,
+            dim=1,
+        )
+        dual = torch.concat(
+            [torch.zeros(input_data.shape[0], 1, *input_data.shape[2:], device=input_data.device)]
+            * self.n_dual,
+            dim=1,
+        )
+
+        for i in range(self.iterations):
+            # dual iterates
+            eval_pt = primal[:, 1:2, ...]
+
+            eval_op = self.wrap(eval_pt)
+
+            update = torch.concat([dual, eval_op, input_data], dim=1)
+            update = self.conv_dual_1[i](update)
+            update = self.lrelu[i](update)
+            update = self.conv_dual_2[i](update)
+            update = self.lrelu[i](update)
+            update = self.conv_dual_3[i](update)
+
+            # residual connection
+            dual = dual + update
+
+            # primal iterates
+            eval_op = dual[:, 0:1, ...]
+            update = torch.concat([primal, eval_op], dim=1)
+
+            update = self.conv_primal_1[i](update)
+            update = self.lrelu[i](update)
+            update = self.conv_primal_2[i](update)
+            update = self.lrelu[i](update)
+            update = self.conv_primal_3[i](update)
+
+            # residual connection
+            primal = primal + update
 
         out = primal[:, 0:1, ...]
         if self.out_conv:
@@ -387,7 +518,7 @@ class PDNet(nn.Module):
                 module.bias = nn.init.constant_(module.bias, 0)
 
 
-class PDNetV2(nn.Module):
+class PDUNet(nn.Module):
     """Modified primal-dual based reconstruction network to perform color Doppler dealiasing.
 
     Instead of using just few convolution layers to learn the primal and dual's proximal operators,
