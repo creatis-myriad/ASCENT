@@ -1,0 +1,18 @@
+defaults:
+  - nnunet
+  - override net: convnext
+  - override optimizer: adamw
+  - override scheduler: coslr
+
+net:
+  in_channels: 1
+  num_classes: 5
+  patch_size: [96, 80, 20]
+  convnext_kernels: 7
+  decoder_kernels: [[3, 3, 3], [3, 3, 3], [3, 3, 3], [3, 3, 3]]
+  strides: [[4, 4, 1], [2, 1, 1], [2, 2, 2], [2, 2, 2]]
+
+loss:
+  soft_dice_kwargs: { "batch_dice": False, "smooth": 1e-05, "do_bg": False }
+
+name: ConvNeXt
