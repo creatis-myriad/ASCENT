@@ -1,4 +1,4 @@
-_target_: ascent.models.components.pdnet.PDNetV2
+_target_: ascent.models.components.pdnet.PDUNet
 
 iterations: 10
 n_primal: 5

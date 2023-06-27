@@ -1,0 +1,11 @@
+# @package _global_
+
+defaults:
+  - alliancecan
+  - override /hydra/launcher: cedar
+
+trainer:
+  devices: 1
+
+datamodule:
+  num_workers: 7

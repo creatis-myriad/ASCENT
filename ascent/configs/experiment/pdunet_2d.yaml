@@ -2,7 +2,7 @@
 
 defaults:
   - override /datamodule: dealiasm_2d
-  - override /model: pdnetv2_2d
+  - override /model: pdunet_2d
   - override /callbacks: nnunet
   - override /logger: wandb
   - override /trainer: nnunet
