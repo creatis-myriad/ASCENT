@@ -17,6 +17,14 @@ Welcome to the code repository for *cardiAc ultrasound Segmentation & Color-dopp
 
 [![license](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/creatis-myriad/ASCENT#LICENSE)
 
+# Publications <!-- no toc -->
+
+[![Journal](https://img.shields.io/badge/IEEE%20TUFFC-2023-4b44ce.svg)](https://doi.org/10.1109/TUFFC.2023.3289621)
+[![Paper](http://img.shields.io/badge/paper-arxiv.2306.13695-B31B1B.svg)](https://arxiv.org/abs/2306.13695)
+
+[![Conference](http://img.shields.io/badge/FIMH-2023-4b44ce.svg)](https://doi.org/10.1007/978-3-031-35302-4_25)
+[![Paper](http://img.shields.io/badge/paper-arxiv.2305.01997-B31B1B.svg)](https://arxiv.org/abs/2305.01997)
+
 </div>
 
 # Description
@@ -35,7 +43,10 @@ For now, ASCENT provides only nnUNet 2D and 3D_fullres architectures (similar to
 
 # Table of Contents <!-- no toc -->
 
+- [ASCENT ](#ascent-)
+- [Publications ](#publications-)
 - [Description](#description)
+- [Table of Contents ](#table-of-contents-)
 - [How to run](#how-to-run)
   - [Install](#install)
   - [Data](#data)
@@ -47,6 +58,7 @@ For now, ASCENT provides only nnUNet 2D and 3D_fullres architectures (similar to
   - [Experiment tracking](#experiment-tracking)
   - [Define custom data and logs path](#define-custom-data-and-logs-path)
 - [Resources](#resources)
+- [References](#references)
 
 # How to run
 
@@ -273,3 +285,29 @@ This project was inspired by:
 - [Project-MONAI/tutorials/modules/dynunet_pipeline](https://github.com/Project-MONAI/tutorials/tree/main/modules/dynunet_pipeline)
 - [NVIDIA/DeepLearningExamples/PyTorch/Segmentation/nnUNet/](https://github.com/NVIDIA/DeepLearningExamples/tree/ddbcd54056e8d1bc1c4d5a8ab34cb570ebea1947/PyTorch/Segmentation/nnUNet)
 - [ashleve/lightning-hydra-template](https://github.com/ashleve/lightning-hydra-template)
+
+# References
+
+If you find this repository useful, please consider citing the paper implemented in this repository relevant to you from the
+list below:
+
+```bibtex
+@article{ling_dealiasing_2023,
+   title = {Phase {Unwrapping} of {Color} {Doppler} {Echocardiography} using {Deep} {Learning}},
+   doi = {10.1109/TUFFC.2023.3289621},
+	journal = {IEEE Transactions on Ultrasonics, Ferroelectrics, and Frequency Control},
+	author = {Ling, Hang Jung and Bernard, Olivier and Ducros, Nicolas and Garcia, Damien},
+	year = {2023},
+}
+
+@inproceedings{ling_temporal_2023,
+	title = {Extraction of {Volumetric} {Indices} from {Echocardiography}: {Which} {Deep} {Learning} {Solution} for {Clinical} {Use}?},
+   doi = {10.1007/978-3-031-35302-4_25},
+   series = {Lecture {Notes} in {Computer} {Science}},
+	booktitle = {Functional {Imaging} and {Modeling} of the {Heart}},
+	publisher = {Springer Nature Switzerland},
+	author = {Ling, Hang Jung and Painchaud, Nathan and Courand, Pierre-Yves and Jodoin, Pierre-Marc and Garcia, Damien and Bernard, Olivier},
+	year = {2023},
+	pages = {245--254},
+}
+```
