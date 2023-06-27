@@ -2,14 +2,14 @@
 
 defaults:
   - override /datamodule: dealiasv_2d
-  - override /model: pdnetv2reg_2d
+  - override /model: pdunet_reg_2d
   - override /callbacks: nnunet
   - override /logger: wandb
   - override /trainer: nnunet
   - override /hydra: nnunet
 
 tags: ["dealiasv", "PDNetReg_2D"]
-task_name: "PDNetV2Reg"
+task_name: "PDUNetReg"
 fold: 0
 train: True
 test: True
