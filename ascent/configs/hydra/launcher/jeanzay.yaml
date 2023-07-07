@@ -1,0 +1,17 @@
+defaults:
+  - submitit_slurm
+
+timeout_min: 60
+gpus_per_node: 1
+tasks_per_node: 1
+gres: "gpu:${hydra.launcher.gpus_per_node}"
+qos: ${qos_from_hours:${hours}}
+cpus_per_task: ${cpu_from_gpu:${hydra.launcher.gpus_per_node},12}
+gpus_per_task: ${hydra.launcher.gpus_per_node}
+additional_parameters:
+  account: ${oc.env:IDRPROJ}@gpu
+  distribution: "block:block"
+  hint: nomultithread
+  time: "${hours}:00:00"
+  mail-user: ${oc.env:SLURM_MAIL_USER,null}
+  mail-type: ALL
