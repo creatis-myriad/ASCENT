@@ -5,10 +5,10 @@ from typing import Callable, Tuple, Union
 
 import hydra
 import numpy as np
+from lightning import LightningModule, Trainer
 from monai.data import CacheDataset, DataLoader
 from monai.transforms import Compose, EnsureChannelFirstd, LoadImaged, ToTensord
 from omegaconf import DictConfig
-from pytorch_lightning import LightningModule, Trainer
 
 from ascent import utils
 from ascent.train import AscentTrainer

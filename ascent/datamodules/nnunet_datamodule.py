@@ -6,6 +6,8 @@ from typing import Optional, Union
 import numpy as np
 import torch
 from joblib import Parallel, delayed
+from lightning import LightningDataModule
+from lightning.pytorch.trainer.states import TrainerFn
 from monai.data import CacheDataset, DataLoader, IterableDataset
 from monai.transforms import (
     Compose,
@@ -20,8 +22,6 @@ from monai.transforms import (
     RandZoomd,
     SpatialPadd,
 )
-from pytorch_lightning import LightningDataModule
-from pytorch_lightning.trainer.states import TrainerFn
 from sklearn.model_selection import KFold, train_test_split
 
 from ascent import utils

@@ -9,8 +9,8 @@ import SimpleITK as sitk
 import torch
 import torch.nn as nn
 from einops.einops import rearrange
+from lightning import LightningModule
 from monai.data import MetaTensor
-from pytorch_lightning import LightningModule
 from torch import Tensor
 
 from ascent.preprocessing.preprocessing import check_anisotropy, get_lowres_axis, resample_image
@@ -84,6 +84,11 @@ class nnUNetLitModule(LightningModule):
         self.online_eval_tp = []
         self.online_eval_fp = []
         self.online_eval_fn = []
+
+        # store validation/test steps output as we can no longer receive steps output in
+        # `on_validation_epoch_end` and `on_test_epoch_end`
+        self.validation_step_outputs = []
+        self.test_step_outputs = []
 
     def setup(self, stage: Optional[str] = None) -> None:  # noqa: D102
         # to initialize some class variables that depend on the model
@@ -165,10 +170,14 @@ class nnUNetLitModule(LightningModule):
         self.online_eval_fp.append(list(fp_hard))
         self.online_eval_fn.append(list(fn_hard))
 
+        self.validation_step_outputs.append({"val/loss": loss})
+
         return {"val/loss": loss}
 
-    def validation_epoch_end(self, validation_step_outputs: dict[str, Tensor]):  # noqa: D102
-        loss = self.metric_mean("val/loss", validation_step_outputs)
+    def on_validation_epoch_end(self):  # noqa: D102
+        loss = self.metric_mean("val/loss", self.validation_step_outputs)
+        self.validation_step_outputs.clear()  # free memory
+
         self.online_eval_tp = np.sum(self.online_eval_tp, 0)
         self.online_eval_fp = np.sum(self.online_eval_fp, 0)
         self.online_eval_fn = np.sum(self.online_eval_fn, 0)
@@ -328,10 +337,14 @@ class nnUNetLitModule(LightningModule):
 
             self.save_mask(final_preds, fname, spacing, save_dir)
 
+        self.test_step_outputs.append({"test/dice": test_dice})
+
         return {"test/dice": test_dice}
 
-    def test_epoch_end(self, test_step_outputs: dict[str, Tensor]):  # noqa: D102
-        mean_dice = self.metric_mean("test/dice", test_step_outputs)
+    def on_test_epoch_end(self):  # noqa: D102
+        mean_dice = self.metric_mean("test/dice", self.test_step_outputs)
+        self.test_step_outputs.clear()  # free memory
+
         self.log(
             "test/mean_dice",
             mean_dice,
@@ -607,12 +620,12 @@ class nnUNetLitModule(LightningModule):
         )
 
     @staticmethod
-    def metric_mean(name: str, outputs: dict[str, Tensor]) -> Tensor:
+    def metric_mean(name: str, outputs: list[dict[str, Tensor]]) -> Tensor:
         """Average metrics across batch dimension at epoch end.
 
         Args:
             name: Name of metrics to average.
-            outputs: Outputs dictionary returned at step end.
+            outputs: List containing outputs dictionary returned at step end.
 
         Returns:
             Averaged metrics tensor.
@@ -712,8 +725,8 @@ if __name__ == "__main__":
     import omegaconf
     import pyrootutils
     from hydra import compose, initialize
+    from lightning import Callback, LightningDataModule, LightningModule, Trainer
     from omegaconf import OmegaConf
-    from pytorch_lightning import Callback, LightningDataModule, LightningModule, Trainer
 
     from ascent import utils
 

@@ -10,4 +10,4 @@ limit_val_batches: 50
 gradient_clip_val: 12
 
 # mixed precision for extra speed-up
-precision: 16
+precision: 16-mixed
