@@ -90,6 +90,10 @@ class AscentTrainer(ABC):
             log.info("Logging hyperparameters!")
             utils.log_hyperparameters(object_dict)
 
+        if cfg.get("compile"):
+            log.info("Compiling model!")
+            model = torch.compile(model)
+
         if cfg.get("train"):
             log.info("Starting training!")
             if not cfg.transfer_training:
