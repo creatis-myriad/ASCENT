@@ -21,7 +21,7 @@ from ascent.utils.tensor_utils import sum_tensor
 
 
 class nnUNetLitModule(LightningModule):
-    """nnUNet training, evaluation and test strategy converted to PyTorch Lightning.
+    """`nnUNet` training, evaluation and test strategy converted to PyTorch Lightning.
 
     nnUNetLitModule includes all nnUNet key features, including the test time augmentation, sliding
     window inference etc. Currently only 2D and 3D_fullres nnUNet are supported.

@@ -15,7 +15,7 @@ from ascent.preprocessing.preprocessing import check_anisotropy, get_lowres_axis
 
 
 class nnUNetRegLitModule(nnUNetLitModule):
-    """nnUNet lightning module for regression.
+    """`nnUNet` lightning module for regression.
 
     nnUNetRegLitModule is similar to nnUNetLitModule except for the loss (smooth L1) and evaluation
     metrics (MSE).
