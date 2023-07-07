@@ -1,9 +1,9 @@
 from typing import List, Tuple
 
 import hydra
+from lightning import LightningDataModule, LightningModule, Trainer
+from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig
-from pytorch_lightning import LightningDataModule, LightningModule, Trainer
-from pytorch_lightning.loggers import Logger
 
 from ascent import utils
 from ascent.train import AscentTrainer

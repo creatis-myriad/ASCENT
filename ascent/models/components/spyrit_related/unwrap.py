@@ -201,10 +201,10 @@ if __name__ == "__main__":
     import hydra
     import pyrootutils
     from hydra import compose, initialize_config_dir
+    from lightning.pytorch.trainer.states import TrainerFn
     from matplotlib import pyplot as plt
     from monai.transforms import Compose, EnsureChannelFirstd
     from omegaconf import OmegaConf
-    from pytorch_lightning.trainer.states import TrainerFn
 
     from ascent.datamodules.components.transforms import LoadNpyd
     from ascent.utils.visualization import dopplermap, imagesc

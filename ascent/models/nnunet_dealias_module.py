@@ -65,8 +65,8 @@ if __name__ == "__main__":
     import omegaconf
     import pyrootutils
     from hydra import compose, initialize
+    from lightning import Callback, LightningDataModule, LightningModule, Trainer
     from omegaconf import OmegaConf
-    from pytorch_lightning import Callback, LightningDataModule, LightningModule, Trainer
 
     from ascent import utils
 

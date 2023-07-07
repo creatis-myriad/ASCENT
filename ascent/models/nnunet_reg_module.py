@@ -40,11 +40,14 @@ class nnUNetRegLitModule(nnUNetLitModule):
 
         val_metric = mean_squared_error(pred, label)
 
+        self.validation_step_outputs.append({"val/loss": loss, "val/mse": val_metric})
+
         return {"val/loss": loss, "val/mse": val_metric}
 
-    def validation_epoch_end(self, validation_step_outputs: dict[str, Tensor]):  # noqa: D102
-        loss = self.metric_mean("val/loss", validation_step_outputs)
-        metric = self.metric_mean("val/mse", validation_step_outputs)
+    def on_validation_epoch_end(self):  # noqa: D102
+        loss = self.metric_mean("val/loss", self.validation_step_outputs)
+        metric = self.metric_mean("val/mse", self.validation_step_outputs)
+        self.validation_step_outputs.clear()  # free memory
 
         self.all_val_eval_metrics.append(metric.item())
 
@@ -155,13 +158,17 @@ class nnUNetRegLitModule(nnUNetLitModule):
 
             self.save_predictions(final_preds, fname, spacing, save_dir)
 
+        self.test_step_outputs.append({"test/mse": test_mse})
+
         return {"test/mse": test_mse}
 
-    def test_epoch_end(self, test_step_outputs: dict[str, Tensor]):  # noqa: D102
-        mean_dice = self.metric_mean("test/mse", test_step_outputs)
+    def on_test_epoch_end(self):  # noqa: D102
+        mean_mse = self.metric_mean("test/mse", self.test_step_outputs)
+        self.test_step_outputs.clear()  # free memory
+
         self.log(
             "test/average_mse",
-            mean_dice,
+            mean_mse,
             on_step=False,
             on_epoch=True,
             prog_bar=False,
@@ -279,8 +286,8 @@ if __name__ == "__main__":
     import omegaconf
     import pyrootutils
     from hydra import compose, initialize
+    from lightning import Callback, LightningDataModule, LightningModule, Trainer
     from omegaconf import OmegaConf
-    from pytorch_lightning import Callback, LightningDataModule, LightningModule, Trainer
 
     from ascent import utils
 
