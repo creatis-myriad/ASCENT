@@ -43,10 +43,6 @@ For now, ASCENT provides only nnUNet 2D and 3D_fullres architectures (similar to
 
 # Table of Contents <!-- no toc -->
 
-- [ASCENT ](#ascent-)
-- [Publications ](#publications-)
-- [Description](#description)
-- [Table of Contents ](#table-of-contents-)
 - [How to run](#how-to-run)
   - [Install](#install)
   - [Data](#data)
