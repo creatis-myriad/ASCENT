@@ -11,6 +11,7 @@ import torch.nn as nn
 from einops.einops import rearrange
 from lightning import LightningModule
 from monai.data import MetaTensor
+from monai.transforms import SpatialPad
 from torch import Tensor
 
 from ascent.preprocessing.preprocessing import check_anisotropy, get_lowres_axis, resample_image
@@ -492,7 +493,13 @@ class nnUNetLitModule(LightningModule):
         """
         if len(image.shape) == 5:
             if len(self.patch_size) == 3:
-                return self.predict_3D_3Dconv_tiled(image, apply_softmax)
+                image_shape = image.shape[2:].tolist()
+                # Pad the last dimension to avoid segmentation artifacts
+                depth_pad = SpatialPad(
+                    spatial_size=(*image_shape[:-1], image_shape[-1] + 6), mode="reflect"
+                )
+                # Inverse the padding after prediction
+                return depth_pad.inverse(self.predict_3D_3Dconv_tiled(image, apply_softmax))
             elif len(self.patch_size) == 2:
                 return self.predict_3D_2Dconv_tiled(image, apply_softmax)
             else:
