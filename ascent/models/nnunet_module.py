@@ -12,6 +12,7 @@ from einops.einops import rearrange
 from lightning import LightningModule
 from monai.data import MetaTensor
 from torch import Tensor
+from torch.nn.functional import pad
 
 from ascent.preprocessing.preprocessing import check_anisotropy, get_lowres_axis, resample_image
 from ascent.utils.file_and_folder_operations import save_pickle
@@ -492,7 +493,11 @@ class nnUNetLitModule(LightningModule):
         """
         if len(image.shape) == 5:
             if len(self.patch_size) == 3:
-                return self.predict_3D_3Dconv_tiled(image, apply_softmax)
+                # Pad the last dimension to avoid 3D segmentation border artifacts
+                image = pad(image, (6, 6, 0, 0, 0, 0), mode="reflect")
+                pred = self.predict_3D_3Dconv_tiled(image, apply_softmax)
+                # Inverse the padding after prediction
+                return pred[..., 6:-6]
             elif len(self.patch_size) == 2:
                 return self.predict_3D_2Dconv_tiled(image, apply_softmax)
             else:
