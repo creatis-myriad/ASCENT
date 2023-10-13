@@ -493,7 +493,7 @@ class nnUNetLitModule(LightningModule):
         """
         if len(image.shape) == 5:
             if len(self.patch_size) == 3:
-                image_shape = image.shape[2:].tolist()
+                image_shape = list(image.shape[2:])
                 # Pad the last dimension to avoid segmentation artifacts
                 depth_pad = SpatialPad(
                     spatial_size=(*image_shape[:-1], image_shape[-1] + 6), mode="reflect"
