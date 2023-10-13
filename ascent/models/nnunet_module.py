@@ -494,10 +494,10 @@ class nnUNetLitModule(LightningModule):
         if len(image.shape) == 5:
             if len(self.patch_size) == 3:
                 # Pad the last dimension to avoid 3D segmentation artifacts
-                image = pad(image, (3, 3, 0, 0, 0, 0), mode="reflect")
+                image = pad(image, (6, 6, 0, 0, 0, 0), mode="reflect")
                 pred = self.predict_3D_3Dconv_tiled(image, apply_softmax)
                 # Inverse the padding after prediction
-                return pred[..., 3:-3]
+                return pred[..., 6:-6]
             elif len(self.patch_size) == 2:
                 return self.predict_3D_2Dconv_tiled(image, apply_softmax)
             else:
