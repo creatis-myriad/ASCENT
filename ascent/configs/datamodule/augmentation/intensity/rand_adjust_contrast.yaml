@@ -1,0 +1,5 @@
+adjust_contrast:
+  _target_: monai.transforms.RandAdjustContrastd
+  keys: ["image"]
+  gamma: [0.7, 1.5]
+  prob: 0.3

@@ -1,0 +1,13 @@
+zoom:
+  _target_: monai.transforms.RandZoomd
+  keys: ["image", "label"]
+  min_zoom: 0.7
+  max_zoom: 1.4
+  mode:
+    - ${get_interp_mode:${model.net.patch_size},${datamodule.do_dummy_2D_data_aug},"zoom"}
+    - "nearest"
+  padding_mode: "constant"
+  align_corners:
+    - True
+    - null # null in yaml is None in python
+  prob: 0.2

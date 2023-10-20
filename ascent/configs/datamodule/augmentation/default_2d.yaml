@@ -1,0 +1,14 @@
+defaults:
+  #  - rotation:
+  #      - rand_rotate
+  #  - zoom:
+  #      - rand_zoom
+  - flip:
+      - rand_flip_x
+      - rand_flip_y
+  - noise:
+      - rand_gaussian_noise
+      - rand_gaussian_smooth
+  - intensity:
+      - rand_scale_intensity
+      - rand_adjust_contrast

@@ -1,0 +1,5 @@
+gaussian_noise:
+  _target_: monai.transforms.RandGaussianNoised
+  keys: ["image"]
+  std: 0.01
+  prob: 0.15

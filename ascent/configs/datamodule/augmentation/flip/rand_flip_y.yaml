@@ -1,0 +1,5 @@
+flip_y:
+  _target_: monai.transforms.RandFlipd
+  keys: ["image", "label"]
+  spatial_axis: 1
+  prob: 0.5

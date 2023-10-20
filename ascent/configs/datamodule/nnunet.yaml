@@ -1,3 +1,6 @@
+defaults:
+  - augmentation: default_3d
+
 _target_: ascent.datamodules.nnunet_datamodule.nnUNetDataModule
 data_dir: ${paths.data_dir}
 batch_size: ???
