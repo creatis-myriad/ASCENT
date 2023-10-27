@@ -1,0 +1,6 @@
+artificial_aliasing:
+  _target_: ascent.utils.transforms.RandArtfclAliasingd
+  keys: ["image", "label"]
+  prob: 0.5
+  wrap_range: [0.6, 0.9]
+  seg_key: ${get_seg_key:${datamodule.augmentation.aliasing.artificial_aliasing.keys}}
