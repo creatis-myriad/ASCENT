@@ -29,8 +29,8 @@ from ascent.preprocessing.preprocessing import (
 from ascent.utils.file_and_folder_operations import load_pickle
 
 
-class ArtfclAliasing(RandomizableTransform):
-    """Create realistic artificial aliasing by randomly wrapping Doppler velocities.
+class RandArtfclAliasing(RandomizableTransform):
+    """Create realistic random artificial aliasing by randomly wrapping Doppler velocities.
 
     Detailed steps:
         1. Pick a random wrapping parameter between the wrap_range.
@@ -228,7 +228,7 @@ class ArtfclAliasing(RandomizableTransform):
             return img, seg, self.dealias(img, seg)
 
 
-class ArtfclAliasingd(RandomizableTransform, MapTransform):
+class RandArtfclAliasingd(RandomizableTransform, MapTransform):
     """Dictionary-based version of ArtfclAliasing."""
 
     def __init__(
@@ -236,23 +236,26 @@ class ArtfclAliasingd(RandomizableTransform, MapTransform):
         keys: KeysCollection,
         prob: float = 0.1,
         wrap_range: tuple[float, float] = (0.6, 0.9),
+        seg_key: str = "label",
         allow_missing_keys: bool = False,
     ) -> None:
         """Initialize class instance.
 
         Args:
-            keys: List containing all the keys in data.
+            keys: Keys of the corresponding items to be transformed.
             prob: Probability to perform the transform.
             wrap_range: Doppler velocity wrapping range, between 0 and 1.
+            seg_key: Key of the ground truth segmentation of the aliased pixels.
             allow_missing_keys: Don't raise exception if key is missing.
         """
         MapTransform.__init__(self, keys, allow_missing_keys)
         RandomizableTransform.__init__(self, prob)
-        self.artfcl_aliasing = ArtfclAliasing(prob=1.0, wrap_range=wrap_range)
+        self.artfcl_aliasing = RandArtfclAliasing(prob=1.0, wrap_range=wrap_range)
+        self.seg_key = seg_key
 
     def set_random_state(
         self, seed: Optional[int] = None, state: Optional[np.random.RandomState] = None
-    ) -> "ArtfclAliasingd":
+    ) -> "RandArtfclAliasingd":
         super().set_random_state(seed, state)
         self.artfcl_aliasing.set_random_state(seed, state)
         return self
@@ -267,10 +270,12 @@ class ArtfclAliasingd(RandomizableTransform, MapTransform):
                 d[key] = convert_to_tensor(d[key], track_meta=get_track_meta())
             return d
 
-        if "seg" in d.keys():
-            d["image"], d["seg"], d["label"] = self.artfcl_aliasing(d["image"], d["seg"])
+        if len(list(self.key_iterator(d))) == 3 and not self.seg_key == "label":
+            d["image"], d[self.seg_key], d["label"] = self.artfcl_aliasing(
+                d["image"], d[self.seg_key]
+            )
         else:
-            d["image"], d["label"], _ = self.artfcl_aliasing(d["image"], d["label"])
+            d["image"], d[self.seg_key], _ = self.artfcl_aliasing(d["image"], d[self.seg_key])
 
         return d
 
@@ -319,7 +324,7 @@ class Convert2Dto3Dd(MapTransform):
 
     def __call__(self, data: dict[str, Tensor]):
         d = dict(data)
-        for key in self.keys:
+        for key in self.key_iterator(d):
             d[key] = rearrange(d[key], "(c d) w h -> c w h d", c=self.num_channel)
         return d
 
@@ -352,7 +357,7 @@ class MayBeSqueezed(MapTransform):
 
     def __call__(self, data: dict[str, Tensor]):
         d = dict(data)
-        for key in self.keys:
+        for key in self.key_iterator(d):
             if len(d[key].shape) == 4 and d[key].shape[self.dim] == 1:
                 d[key] = self.squeeze(d[key])
         return d
@@ -516,7 +521,7 @@ class LoadNpyd(MapTransform):
             NotImplementedError: If the data contains a path that is not a .npy file or a pkl file.
         """
         d = dict(data)
-        for key in self.keys:
+        for key in self.key_iterator(d):
             if d[key].endswith(".npy"):
                 case_all_data = LoadImage(image_only=True, channel_dim=0)(d[key])
                 meta = case_all_data._meta
@@ -600,7 +605,7 @@ class DealiasLoadNpyd(MapTransform):
             NotImplementedError: If the data contains a path that is not a .npy file or a pkl file.
         """
         d = dict(data)
-        for key in self.keys:
+        for key in self.key_iterator(d):
             if d[key].endswith(".npy"):
                 case_all_data = LoadImage(image_only=True, channel_dim=0)(d[key])
                 meta = case_all_data._meta
@@ -659,7 +664,9 @@ if __name__ == "__main__":
     # data_path = "C:/Users/ling/Desktop/Thesis/REPO/ascent/data/CAMUS/cropped/NewCamus_0001.npz"
     # prop = "C:/Users/ling/Desktop/Thesis/REPO/ASCENT/data/CAMUS/preprocessed/data_and_properties/NewCamus_0001.pkl"
     data = LoadNpyd(["data"], test=False, seg_label=False)({"data": data_path})
-    aliased, gt_seg, gt_v = ArtfclAliasing(prob=1)(data["image"][..., 20], data["label"][..., 20])
+    aliased, gt_seg, gt_v = RandArtfclAliasing(prob=1)(
+        data["image"][..., 20], data["label"][..., 20]
+    )
 
     ori_vel = data["image"][0, :, :, 61].array.transpose()
     ori_gt = data["label"][0, :, :, 61].array.transpose()
