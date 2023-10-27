@@ -1,8 +1,8 @@
 defaults:
-  #  - rotation:
-  #      - rand_rotate
-  #  - zoom:
-  #      - rand_zoom
+  - rotation:
+      - rand_rotate
+  - zoom:
+      - rand_zoom
   - flip:
       - rand_flip_x
       - rand_flip_y
