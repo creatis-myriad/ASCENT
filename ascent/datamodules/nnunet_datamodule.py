@@ -284,7 +284,7 @@ class nnUNetDataModule(LightningDataModule):
 
     def setup_transforms(self) -> None:
         """Define the data augmentations used by nnUNet including the data reading using
-        monai.transforms libraries.
+        `monai.transforms` libraries.
 
         The only difference with nnUNet framework is the patch creation.
         """

@@ -1,17 +1,4 @@
-import numpy as np
-from monai.transforms import (
-    Compose,
-    EnsureChannelFirstd,
-    RandAdjustContrastd,
-    RandFlipd,
-    RandGaussianNoised,
-    RandGaussianSmoothd,
-    RandRotated,
-    RandScaleIntensityd,
-    RandSpatialCropd,
-    RandZoomd,
-    SpatialPadd,
-)
+from monai.transforms import Compose, EnsureChannelFirstd, RandSpatialCropd, SpatialPadd
 
 from ascent.datamodules.nnunet_datamodule import nnUNetDataModule
 from ascent.utils.transforms import Convert2Dto3Dd, Convert3Dto2Dd, LoadNpyd, MayBeSqueezed
@@ -22,27 +9,10 @@ class nnUNetRegDataModule(nnUNetDataModule):
 
     def setup_transforms(self) -> None:
         """Define the data augmentations used by nnUNet including the data reading using
-        monai.transforms libraries.
+        `monai.transforms` libraries.
 
         The only difference with nnUNet framework is the patch creation.
         """
-        if self.threeD:
-            rot_inter_mode = "bilinear"
-            zoom_inter_mode = "trilinear"
-            range_x = range_y = range_z = [-30.0 / 180 * np.pi, 30.0 / 180 * np.pi]
-
-            if self.hparams.do_dummy_2D_data_aug:
-                zoom_inter_mode = rot_inter_mode = "bicubic"
-                range_x = [-180.0 / 180 * np.pi, 180.0 / 180 * np.pi]
-                range_y = range_z = 0.0
-
-        else:
-            zoom_inter_mode = rot_inter_mode = "bicubic"
-            range_x = [-180.0 / 180 * np.pi, 180.0 / 180 * np.pi]
-            range_y = range_z = 0.0
-            if max(self.hparams.patch_size) / min(self.hparams.patch_size) > 1.5:
-                range_x = [-15.0 / 180 * np.pi, 15.0 / 180 * np.pi]
-
         shared_train_val_transforms = [
             LoadNpyd(keys=["data"], seg_label=self.hparams.seg_label),
             EnsureChannelFirstd(keys=["image", "label"]),
@@ -67,52 +37,38 @@ class nnUNetRegDataModule(nnUNetDataModule):
         if self.hparams.do_dummy_2D_data_aug and self.threeD:
             other_transforms.append(Convert3Dto2Dd(keys=["image", "label"]))
 
-        other_transforms.extend(
-            [
-                RandRotated(
-                    keys=["image", "label"],
-                    range_x=range_x,
-                    range_y=range_y,
-                    range_z=range_z,
-                    mode=rot_inter_mode,
-                    padding_mode="zeros",
-                    prob=0.2,
-                ),
-                RandZoomd(
-                    keys=["image", "label"],
-                    min_zoom=0.7,
-                    max_zoom=1.4,
-                    mode=zoom_inter_mode,
-                    padding_mode="constant",
-                    align_corners=True,
-                    prob=0.2,
-                ),
-            ]
-        )
+        if self.augmentation.get("rotate"):
+            other_transforms.append(self.augmentation.get("rotate"))
+
+        if self.augmentation.get("zoom"):
+            other_transforms.append(self.augmentation.get("zoom"))
 
         if self.hparams.do_dummy_2D_data_aug and self.threeD:
             other_transforms.append(
                 Convert2Dto3Dd(keys=["image", "label"], num_channel=self.hparams.in_channels)
             )
 
-        other_transforms.extend(
-            [
-                RandGaussianNoised(keys=["image"], std=0.01, prob=0.15),
-                RandGaussianSmoothd(
-                    keys=["image"],
-                    sigma_x=(0.5, 1.15),
-                    sigma_y=(0.5, 1.15),
-                    prob=0.15,
-                ),
-                RandScaleIntensityd(keys=["image"], factors=0.3, prob=0.15),
-                RandAdjustContrastd(keys=["image"], gamma=(0.7, 1.5), prob=0.3),
-                RandFlipd(["image", "label"], spatial_axis=[0], prob=0.5),
-                RandFlipd(["image", "label"], spatial_axis=[1], prob=0.5),
-            ]
-        )
+        if self.augmentation.get("gaussian_noise"):
+            other_transforms.append(self.augmentation.get("gaussian_noise"))
+
+        if self.augmentation.get("gaussian_smooth"):
+            other_transforms.append(self.augmentation.get("gaussian_smooth"))
+
+        if self.augmentation.get("scale_intensity"):
+            other_transforms.append(self.augmentation.get("scale_intensity"))
+
+        if self.augmentation.get("adjust_contrast"):
+            other_transforms.append(self.augmentation.get("adjust_contrast"))
+
+        if self.augmentation.get("flip_x"):
+            other_transforms.append(self.augmentation.get("flip_x"))
+
+        if self.augmentation.get("flip_y"):
+            other_transforms.append(self.augmentation.get("flip_y"))
 
         if self.threeD:
-            other_transforms.append(RandFlipd(["image", "label"], spatial_axis=[2], prob=0.5))
+            if self.augmentation.get("flip_z"):
+                other_transforms.append(self.augmentation.get("flip_z"))
 
         val_transforms = shared_train_val_transforms.copy()
 

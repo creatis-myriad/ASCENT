@@ -4,27 +4,14 @@ from monai.transforms import (
     ConcatItemsd,
     CopyItemsd,
     EnsureChannelFirstd,
-    RandAdjustContrastd,
     RandCropByPosNegLabeld,
-    RandFlipd,
-    RandGaussianNoised,
-    RandGaussianSmoothd,
-    RandRotated,
-    RandScaleIntensityd,
-    RandZoomd,
     SelectItemsd,
     SpatialPadd,
     SplitDimd,
 )
 
 from ascent.datamodules.nnunet_datamodule import nnUNetDataModule
-from ascent.utils.transforms import (
-    ArtfclAliasingd,
-    Convert2Dto3Dd,
-    Convert3Dto2Dd,
-    LoadNpyd,
-    MayBeSqueezed,
-)
+from ascent.utils.transforms import Convert2Dto3Dd, Convert3Dto2Dd, LoadNpyd, MayBeSqueezed
 
 
 class nnUNetDealiasDataModule(nnUNetDataModule):
@@ -32,7 +19,6 @@ class nnUNetDealiasDataModule(nnUNetDataModule):
 
     def __init__(
         self,
-        alias_transform: bool = True,
         separate_transform: bool = True,
         exclude_Dpower: bool = False,
         **kwargs,
@@ -42,35 +28,18 @@ class nnUNetDealiasDataModule(nnUNetDataModule):
         Args:
             alias_transform: Whether to apply artificial aliasing augmentation.
             separate_transform: Whether to apply separate on Doppler power and velocity.
-            exclude_Dpower: Whether to include Doppler power in case of velocity-power concatenated
+            exclude_Dpower: Whether to exclude Doppler power in case of velocity-power concatenated
                 input.
         """
         super().__init__(**kwargs)
 
     def setup_transforms(self) -> None:
         """Define the data augmentations used by nnUNet including the data reading using
-        monai.transforms libraries.
+        `monai.transforms` libraries.
 
         An additional artificial aliasing augmentation is added on top of the data augmentations
         defined in nnUNetDataModule.
         """
-        if self.threeD:
-            rot_inter_mode = "bilinear"
-            zoom_inter_mode = "trilinear"
-            range_x = range_y = range_z = [-30.0 / 180 * np.pi, 30.0 / 180 * np.pi]
-
-            if self.hparams.do_dummy_2D_data_aug:
-                zoom_inter_mode = rot_inter_mode = "bicubic"
-                range_x = [-180.0 / 180 * np.pi, 180.0 / 180 * np.pi]
-                range_y = range_z = 0.0
-
-        else:
-            zoom_inter_mode = rot_inter_mode = "bicubic"
-            range_x = [-180.0 / 180 * np.pi, 180.0 / 180 * np.pi]
-            range_y = range_z = 0.0
-            if max(self.hparams.patch_size) / min(self.hparams.patch_size) > 1.5:
-                range_x = [-15.0 / 180 * np.pi, 15.0 / 180 * np.pi]
-
         shared_train_val_transforms = [
             LoadNpyd(keys=["data"], seg_label=self.hparams.seg_label),
             EnsureChannelFirstd(keys=["image", "label"]),
@@ -98,77 +67,57 @@ class nnUNetDealiasDataModule(nnUNetDataModule):
         if self.hparams.do_dummy_2D_data_aug and self.threeD:
             other_transforms.append(Convert3Dto2Dd(keys=["image", "label"]))
 
-        if self.hparams.alias_transform:
-            other_transforms.append(ArtfclAliasingd(keys=["image", "label"], prob=0.5))
+        if self.augmentation.get("artificial_aliasing"):
+            other_transforms.append(self.augmentation.get("artificial_aliasing"))
 
-        other_transforms.extend(
-            [
-                RandRotated(
-                    keys=["image", "label"],
-                    range_x=range_x,
-                    range_y=range_y,
-                    range_z=range_z,
-                    mode=[rot_inter_mode, "nearest"],
-                    padding_mode="zeros",
-                    prob=0.2,
-                ),
-                RandZoomd(
-                    keys=["image", "label"],
-                    min_zoom=0.7,
-                    max_zoom=1.4,
-                    mode=[zoom_inter_mode, "nearest"],
-                    padding_mode="constant",
-                    align_corners=(True, None),
-                    prob=0.2,
-                ),
-            ]
-        )
+        if self.augmentation.get("rotate"):
+            other_transforms.append(self.augmentation.get("rotate"))
+
+        if self.augmentation.get("zoom"):
+            other_transforms.append(self.augmentation.get("zoom"))
 
         if self.hparams.do_dummy_2D_data_aug and self.threeD:
             other_transforms.append(
                 Convert2Dto3Dd(keys=["image", "label"], num_channel=self.hparams.in_channels)
             )
 
+        # Split the image into two channels, one for aliased Doppler and one for Doppler power
+        if self.hparams.separate_transform:
+            other_transforms.append(SplitDimd(keys=["image"], dim=0))
+
+        if self.augmentation.get("gaussian_noise"):
+            other_transforms.append(self.augmentation.get("gaussian_noise"))
+
+        if self.augmentation.get("gaussian_smooth"):
+            other_transforms.append(self.augmentation.get("gaussian_smooth"))
+
+        if self.augmentation.get("scale_intensity"):
+            other_transforms.append(self.augmentation.get("scale_intensity"))
+
+        if self.augmentation.get("adjust_contrast"):
+            other_transforms.append(self.augmentation.get("adjust_contrast"))
+
+        # Concatenate the two channels back into one image
         if self.hparams.separate_transform:
             other_transforms.extend(
                 [
-                    SplitDimd(keys=["image"], dim=0),
-                    RandGaussianNoised(keys=["image_0"], std=0.01, prob=0.15),
-                    RandGaussianSmoothd(
-                        keys=["image_0", "label"],
-                        sigma_x=(0.5, 1.15),
-                        sigma_y=(0.5, 1.15),
-                        prob=0.15,
-                    ),
-                    RandScaleIntensityd(keys=["image_0"], factors=0.3, prob=0.15),
-                    RandAdjustContrastd(keys=["image_0"], gamma=(0.7, 1.5), prob=0.3),
                     SelectItemsd(keys=["image_0", "image_1", "label"]),
                     ConcatItemsd(keys=["image_0", "image_1"], name="image"),
                     SelectItemsd(keys=["image", "label"]),
-                    RandFlipd(keys=["image", "label"], spatial_axis=[0], prob=0.5),
-                    RandFlipd(keys=["image", "label"], spatial_axis=[1], prob=0.5),
                 ]
             )
-        else:
-            other_transforms.extend(
-                [
-                    RandGaussianNoised(keys=["image"], std=0.01, prob=0.15),
-                    RandGaussianSmoothd(
-                        keys=["image"],
-                        sigma_x=(0.5, 1.15),
-                        sigma_y=(0.5, 1.15),
-                        prob=0.15,
-                    ),
-                    RandScaleIntensityd(keys=["image"], factors=0.3, prob=0.15),
-                    RandAdjustContrastd(keys=["image"], gamma=(0.7, 1.5), prob=0.3),
-                    RandFlipd(["image", "label"], spatial_axis=[0], prob=0.5),
-                    RandFlipd(["image", "label"], spatial_axis=[1], prob=0.5),
-                ]
-            )
+
+        if self.augmentation.get("flip_x"):
+            other_transforms.append(self.augmentation.get("flip_x"))
+
+        if self.augmentation.get("flip_y"):
+            other_transforms.append(self.augmentation.get("flip_y"))
 
         if self.threeD:
-            other_transforms.append(RandFlipd(keys=["image", "label"], spatial_axis=[2], prob=0.5))
+            if self.augmentation.get("flip_z"):
+                other_transforms.append(self.augmentation.get("flip_z"))
 
+        # Exclude Doppler power (channel 1) from the multichannel input if required
         if self.hparams.exclude_Dpower and self.hparams.in_channels == 1:
             other_transforms.extend(
                 [
@@ -184,6 +133,7 @@ class nnUNetDealiasDataModule(nnUNetDataModule):
         if not self.threeD:
             val_transforms.append(MayBeSqueezed(keys=["image", "label"], dim=-1))
 
+        # Exclude Doppler power (channel 1) from the multichannel input if required
         if self.hparams.exclude_Dpower and self.hparams.in_channels == 1:
             val_transforms.extend(
                 [
@@ -206,6 +156,7 @@ class nnUNetDealiasDataModule(nnUNetDataModule):
         if not self.threeD:
             test_transforms.append(MayBeSqueezed(keys=["image", "label"], dim=-1))
 
+        # Exclude Doppler power (channel 1) from the multichannel input if required
         if self.hparams.exclude_Dpower and self.hparams.in_channels == 1:
             test_transforms.extend(
                 [
