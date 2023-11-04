@@ -317,11 +317,13 @@ class nnUNetDataModule(LightningDataModule):
         if self.hparams.do_dummy_2D_data_aug and self.threeD:
             other_transforms.append(Convert3Dto2Dd(keys=self.hparams.data_keys.all_keys))
 
-        if self.augmentation.get("rotate"):
-            other_transforms.append(self.augmentation.get("rotate"))
+        if self.hparams.augmentation.get("rotation"):
+            for name, aug in self.hparams.augmentation.get("rotation").items():
+                other_transforms.append(aug)
 
-        if self.augmentation.get("zoom"):
-            other_transforms.append(self.augmentation.get("zoom"))
+        if self.hparams.augmentation.get("zoom"):
+            for name, aug in self.hparams.augmentation.get("zoom").items():
+                other_transforms.append(aug)
 
         if self.hparams.do_dummy_2D_data_aug and self.threeD:
             other_transforms.append(
@@ -329,28 +331,17 @@ class nnUNetDataModule(LightningDataModule):
                     keys=self.hparams.data_keys.all_keys, num_channel=self.hparams.in_channels
                 )
             )
+        if self.hparams.augmentation.get("noise"):
+            for name, aug in self.hparams.augmentation.get("noise").items():
+                other_transforms.append(aug)
 
-        if self.augmentation.get("gaussian_noise"):
-            other_transforms.append(self.augmentation.get("gaussian_noise"))
+        if self.hparams.augmentation.get("intensity"):
+            for aug in self.hparams.augmentation.get("intensity"):
+                other_transforms.append(aug)
 
-        if self.augmentation.get("gaussian_smooth"):
-            other_transforms.append(self.augmentation.get("gaussian_smooth"))
-
-        if self.augmentation.get("scale_intensity"):
-            other_transforms.append(self.augmentation.get("scale_intensity"))
-
-        if self.augmentation.get("adjust_contrast"):
-            other_transforms.append(self.augmentation.get("adjust_contrast"))
-
-        if self.augmentation.get("flip_x"):
-            other_transforms.append(self.augmentation.get("flip_x"))
-
-        if self.augmentation.get("flip_y"):
-            other_transforms.append(self.augmentation.get("flip_y"))
-
-        if self.threeD:
-            if self.augmentation.get("flip_z"):
-                other_transforms.append(self.augmentation.get("flip_z"))
+        if self.hparams.augmentation.get("flip"):
+            for name, aug in self.hparams.augmentation.get("flip").items():
+                other_transforms.append(aug)
 
         self.train_transforms = Compose(train_transforms + other_transforms)
         self.val_transforms = Compose(val_transforms)
