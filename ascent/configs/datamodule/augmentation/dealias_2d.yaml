@@ -5,12 +5,12 @@ defaults:
 
 noise:
   gaussian_noise:
-    keys: ${get_noise_and_intensity_transform_key:${datamodule.separate_transform}}
+    keys: ${get_noise_and_intensity_transform_key:${datamodule.separate_transform},${datamodule.data_keys.image_key}}
   gaussian_smooth:
-    keys: ${get_noise_and_intensity_transform_key:${datamodule.separate_transform}}
+    keys: ${get_noise_and_intensity_transform_key:${datamodule.separate_transform},${datamodule.data_keys.image_key}}
 
 intensity:
   scale_intensity:
-    keys: ${get_noise_and_intensity_transform_key:${datamodule.separate_transform}}
+    keys: ${get_noise_and_intensity_transform_key:${datamodule.separate_transform},${datamodule.data_keys.image_key}}
   adjust_contrast:
-    keys: ${get_noise_and_intensity_transform_key:${datamodule.separate_transform}}
+    keys: ${get_noise_and_intensity_transform_key:${datamodule.separate_transform},${datamodule.data_keys.image_key}}

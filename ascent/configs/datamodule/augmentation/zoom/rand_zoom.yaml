@@ -1,10 +1,10 @@
 zoom:
   _target_: monai.transforms.RandZoomd
-  keys: ["image", "label"]
+  keys: ${datamodule.data_keys.all_keys}
   min_zoom: 0.7
   max_zoom: 1.4
   mode:
-    - ${get_interp_mode:${model.net.patch_size},${datamodule.do_dummy_2D_data_aug},"zoom"}
+    - ${get_interp_mode:${datamodule.patch_size},${datamodule.do_dummy_2D_data_aug},"zoom"}
     - "nearest"
   padding_mode: "constant"
   align_corners:

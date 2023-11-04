@@ -1,5 +1,7 @@
 defaults:
   - augmentation: default_3d
+  - loading@loading.train: default_train
+  - loading@loading.test: default_test
 
 _target_: ascent.datamodules.nnunet_datamodule.nnUNetDataModule
 data_dir: ${paths.data_dir}
@@ -14,3 +16,9 @@ num_workers: 12
 pin_memory: True
 test_splits: True
 seg_label: True
+data_keys:
+  image_key: "image"
+  label_key: "label"
+  all_keys:
+    - ${datamodule.data_keys.image_key}
+    - ${datamodule.data_keys.label_key}

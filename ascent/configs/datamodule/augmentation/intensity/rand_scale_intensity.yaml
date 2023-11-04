@@ -1,5 +1,5 @@
 scale_intensity:
   _target_: monai.transforms.RandScaleIntensityd
-  keys: ["image"]
+  keys: ${datamodule.data_keys.image_key}
   factors: 0.3
   prob: 0.15

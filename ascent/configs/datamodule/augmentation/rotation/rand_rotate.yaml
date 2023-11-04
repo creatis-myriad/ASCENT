@@ -1,11 +1,11 @@
 rotate:
   _target_: monai.transforms.RandRotated
-  keys: ["image", "label"]
-  range_x: ${get_rot_range:${model.net.patch_size},${datamodule.do_dummy_2D_data_aug},"x"}
-  range_y: ${get_rot_range:${model.net.patch_size},${datamodule.do_dummy_2D_data_aug},"y"}
-  range_z: ${get_rot_range:${model.net.patch_size},${datamodule.do_dummy_2D_data_aug},"z"}
+  keys: ${datamodule.data_keys.all_keys}
+  range_x: ${get_rot_range:${datamodule.patch_size},${datamodule.do_dummy_2D_data_aug},"x"}
+  range_y: ${get_rot_range:${datamodule.patch_size},${datamodule.do_dummy_2D_data_aug},"y"}
+  range_z: ${get_rot_range:${datamodule.patch_size},${datamodule.do_dummy_2D_data_aug},"z"}
   mode:
-    - ${get_interp_mode:${model.net.patch_size},${datamodule.do_dummy_2D_data_aug},"rotation"}
+    - ${get_interp_mode:${datamodule.patch_size},${datamodule.do_dummy_2D_data_aug},"rotation"}
     - "nearest"
   padding_mode: "zeros"
   prob: 0.2
