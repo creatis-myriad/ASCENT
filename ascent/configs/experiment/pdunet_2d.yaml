@@ -9,7 +9,7 @@ defaults:
   - override /hydra: nnunet
 
 tags: ["${model.name}_${nnUNet_variant}", "Fold${fold}"]
-task_name: "DEALIASMv2"
+task_name: "DEALIASM"
 fold: 0
 train: True
 test: True

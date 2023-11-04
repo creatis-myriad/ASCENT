@@ -1,12 +1,57 @@
 defaults:
-  - nnunet
+  - dealiasm_2d
+  - override loading@loading.train: unfolded_train
+  - override loading@loading.test: unfolded_test
 
-_target_: ascent.datamodules.dealias_datamodule.DealiasDataModule
-alias_transform: False
-batch_size: 4
 dataset_name: DEALIASV
-do_dummy_2D_data_aug: False
-num_workers: 12
+separate_transform: False
 seg_label: False
-in_channels: 1
-patch_size: ${model.net.patch_size}
+data_keys:
+  all_keys:
+    - ${datamodule.data_keys.image_key}
+    - ${datamodule.data_keys.label_key}
+    - "seg"
+
+loading:
+  train:
+    crop:
+      label_key: "seg"
+  test:
+    data_loading:
+      keys: ["data", "image_meta_dict"]
+
+augmentation:
+  rotation:
+    rotate:
+      mode:
+        - ${get_interp_mode:${datamodule.patch_size},${datamodule.do_dummy_2D_data_aug},"rotation"}
+        - ${get_interp_mode:${datamodule.patch_size},${datamodule.do_dummy_2D_data_aug},"rotation"}
+        - "nearest"
+  zoom:
+    zoom:
+      mode:
+        - ${get_interp_mode:${datamodule.patch_size},${datamodule.do_dummy_2D_data_aug},"zoom"}
+        - ${get_interp_mode:${datamodule.patch_size},${datamodule.do_dummy_2D_data_aug},"zoom"}
+        - "nearest"
+      align_corners:
+        - True
+        - True
+        - null
+  noise:
+    gaussian_noise:
+      keys:
+        - ${get_noise_and_intensity_transform_key:${datamodule.separate_transform},${datamodule.data_keys.image_key}}
+        - ${datamodule.data_keys.label_key}
+    gaussian_smooth:
+      keys:
+        - ${get_noise_and_intensity_transform_key:${datamodule.separate_transform},${datamodule.data_keys.image_key}}
+        - ${datamodule.data_keys.label_key}
+  intensity:
+    scale_intensity:
+      keys:
+        - ${get_noise_and_intensity_transform_key:${datamodule.separate_transform},${datamodule.data_keys.image_key}}
+        - ${datamodule.data_keys.label_key}
+    adjust_contrast:
+      keys:
+        - ${get_noise_and_intensity_transform_key:${datamodule.separate_transform},${datamodule.data_keys.image_key}}
+        - ${datamodule.data_keys.label_key}

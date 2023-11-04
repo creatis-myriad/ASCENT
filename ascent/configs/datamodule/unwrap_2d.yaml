@@ -1,5 +1,8 @@
 defaults:
-  - dealias_2d
+  - dealiasv_2d
 
 dataset_name: UNWRAPV2
-seg_label: False
+patch_size: ${model.net.denoiser.patch_size}
+in_channels: ${model.net.denoiser.in_channels}
+separate_transform: True
+exclude_Dpower: False

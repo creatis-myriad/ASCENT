@@ -15,7 +15,7 @@ from ascent.utils.transforms import Convert2Dto3Dd, Convert3Dto2Dd, LoadNpyd, Ma
 
 
 class nnUNetDealiasDataModule(nnUNetDataModule):
-    """Data module for dealiasing using segmentation."""
+    """Data module for dealiasing using segmentation/deep unfolding/primal-dual."""
 
     def __init__(
         self,
@@ -30,6 +30,7 @@ class nnUNetDealiasDataModule(nnUNetDataModule):
             separate_transform: Whether to apply separate on Doppler power and velocity.
             exclude_Dpower: Whether to exclude Doppler power in case of velocity-power concatenated
                 input.
+            kwargs: Additional arguments to pass to the parent class.
         """
         super().__init__(**kwargs)
 
@@ -40,32 +41,16 @@ class nnUNetDealiasDataModule(nnUNetDataModule):
         An additional artificial aliasing augmentation is added on top of the data augmentations
         defined in nnUNetDataModule.
         """
-        shared_train_val_transforms = [
-            LoadNpyd(keys=["data"], seg_label=self.hparams.seg_label),
-            EnsureChannelFirstd(keys=["image", "label"]),
-            SpatialPadd(
-                keys=["image", "label"],
-                spatial_size=self.crop_patch_size,
-                mode="constant",
-                value=0,
-            ),
-            RandCropByPosNegLabeld(
-                keys=["image", "label"],
-                label_key="label",
-                spatial_size=self.crop_patch_size,
-                pos=0.33,
-                neg=0.67,
-                num_samples=1,
-            ),
-        ]
+        (
+            train_transforms,
+            val_transforms,
+            test_transforms,
+        ) = self._get_train_val_test_loading_transforms()
 
         other_transforms = []
 
-        if not self.threeD:
-            other_transforms.append(MayBeSqueezed(keys=["image", "label"], dim=-1))
-
         if self.hparams.do_dummy_2D_data_aug and self.threeD:
-            other_transforms.append(Convert3Dto2Dd(keys=["image", "label"]))
+            other_transforms.append(Convert3Dto2Dd(keys=self.hparams.data_keys.all_keys))
 
         if self.augmentation.get("artificial_aliasing"):
             other_transforms.append(self.augmentation.get("artificial_aliasing"))
@@ -78,12 +63,14 @@ class nnUNetDealiasDataModule(nnUNetDataModule):
 
         if self.hparams.do_dummy_2D_data_aug and self.threeD:
             other_transforms.append(
-                Convert2Dto3Dd(keys=["image", "label"], num_channel=self.hparams.in_channels)
+                Convert2Dto3Dd(
+                    keys=self.hparams.data_keys.all_keys, num_channel=self.hparams.in_channels
+                )
             )
 
         # Split the image into two channels, one for aliased Doppler and one for Doppler power
         if self.hparams.separate_transform:
-            other_transforms.append(SplitDimd(keys=["image"], dim=0))
+            other_transforms.append(SplitDimd(keys=self.hparams.data_keys.image_key, dim=0))
 
         if self.augmentation.get("gaussian_noise"):
             other_transforms.append(self.augmentation.get("gaussian_noise"))
@@ -97,13 +84,33 @@ class nnUNetDealiasDataModule(nnUNetDataModule):
         if self.augmentation.get("adjust_contrast"):
             other_transforms.append(self.augmentation.get("adjust_contrast"))
 
+        if (
+            self.hparams.separate_transform
+            or self.hparams.exclude_Dpower
+            or self.hparams.in_channels == 1
+        ):
+            resting_keys_to_keep = self.hparams.data_keys.all_keys.copy()
+            resting_keys_to_keep.remove(self.hparams.data_keys.image_key)
+
         # Concatenate the two channels back into one image
         if self.hparams.separate_transform:
             other_transforms.extend(
                 [
-                    SelectItemsd(keys=["image_0", "image_1", "label"]),
-                    ConcatItemsd(keys=["image_0", "image_1"], name="image"),
-                    SelectItemsd(keys=["image", "label"]),
+                    SelectItemsd(
+                        keys=[
+                            f"{self.hparams.data_keys.image_key}_0",
+                            f"{self.hparams.data_keys.image_key}_1",
+                            *resting_keys_to_keep,
+                        ]
+                    ),
+                    ConcatItemsd(
+                        keys=[
+                            f"{self.hparams.data_keys.image_key}_0",
+                            f"{self.hparams.data_keys.image_key}_1",
+                        ],
+                        name=self.hparams.data_keys.image_key,
+                    ),
+                    SelectItemsd(keys=self.hparams.data_keys.all_keys),
                 ]
             )
 
@@ -121,106 +128,57 @@ class nnUNetDealiasDataModule(nnUNetDataModule):
         if self.hparams.exclude_Dpower and self.hparams.in_channels == 1:
             other_transforms.extend(
                 [
-                    SplitDimd(keys=["image"], dim=0),
-                    SelectItemsd(keys=["image_0", "label"]),
-                    CopyItemsd(keys=["image_0"], names="image"),
-                    SelectItemsd(keys=["image", "label"]),
+                    SplitDimd(keys=[self.hparams.data_keys.image_key], dim=0),
+                    SelectItemsd(
+                        keys=[
+                            f"{self.hparams.data_keys.image_key}_0",
+                            *resting_keys_to_keep,
+                        ]
+                    ),
+                    CopyItemsd(
+                        keys=[f"{self.hparams.data_keys.image_key}_0"],
+                        names=self.hparams.data_keys.image_key,
+                    ),
+                    SelectItemsd(keys=self.hparams.data_keys.all_keys),
                 ]
             )
-
-        val_transforms = shared_train_val_transforms.copy()
-
-        if not self.threeD:
-            val_transforms.append(MayBeSqueezed(keys=["image", "label"], dim=-1))
 
         # Exclude Doppler power (channel 1) from the multichannel input if required
         if self.hparams.exclude_Dpower and self.hparams.in_channels == 1:
             val_transforms.extend(
                 [
-                    SplitDimd(keys=["image"], dim=0),
-                    SelectItemsd(keys=["image_0", "label"]),
-                    CopyItemsd(keys=["image_0"], names="image"),
-                    SelectItemsd(keys=["image", "label"]),
+                    SplitDimd(keys=[self.hparams.data_keys.image_key], dim=0),
+                    SelectItemsd(
+                        keys=[
+                            f"{self.hparams.data_keys.image_key}_0",
+                            *resting_keys_to_keep,
+                        ]
+                    ),
+                    CopyItemsd(
+                        keys=[f"{self.hparams.data_keys.image_key}_0"],
+                        names=self.hparams.data_keys.image_key,
+                    ),
+                    SelectItemsd(keys=self.hparams.data_keys.all_keys),
                 ]
             )
-
-        test_transforms = [
-            LoadNpyd(
-                keys=["data", "image_meta_dict"],
-                test=True,
-                seg_label=self.hparams.seg_label,
-            ),
-            EnsureChannelFirstd(keys=["image", "label"]),
-        ]
-
-        if not self.threeD:
-            test_transforms.append(MayBeSqueezed(keys=["image", "label"], dim=-1))
 
         # Exclude Doppler power (channel 1) from the multichannel input if required
         if self.hparams.exclude_Dpower and self.hparams.in_channels == 1:
             test_transforms.extend(
                 [
-                    SplitDimd(keys=["image"], dim=0),
-                    SelectItemsd(keys=["image_0", "label", "image_meta_dict"]),
-                    CopyItemsd(keys=["image_0"], names="image"),
-                    SelectItemsd(keys=["image", "label", "image_meta_dict"]),
+                    SplitDimd(keys=[self.hparams.data_keys.image_key], dim=0),
+                    SelectItemsd(
+                        keys=[
+                            f"{self.hparams.data_keys.image_key}_0",
+                            *resting_keys_to_keep,
+                            "image_meta_dict",
+                        ]
+                    ),
+                    CopyItemsd(keys=["image_0"], names=self.hparams.data_keys.image_key),
+                    SelectItemsd(keys=[*self.hparams.data_keys.all_keys, "image_meta_dict"]),
                 ]
             )
 
-        self.train_transforms = Compose(shared_train_val_transforms + other_transforms)
+        self.train_transforms = Compose(train_transforms + other_transforms)
         self.val_transforms = Compose(val_transforms)
         self.test_transforms = Compose(test_transforms)
-
-
-if __name__ == "__main__":
-    import hydra
-    import pyrootutils
-    from hydra import compose, initialize_config_dir
-    from lightning.pytorch.trainer.states import TrainerFn
-    from matplotlib import pyplot as plt
-    from omegaconf import OmegaConf
-
-    from ascent.utils.visualization import dopplermap, imagesc
-
-    root = pyrootutils.setup_root(__file__, pythonpath=True)
-
-    initialize_config_dir(
-        config_dir=str(root / "configs" / "datamodule"), job_name="test", version_base="1.2"
-    )
-    cfg = compose(config_name="dealias_2d.yaml")
-    cfg.in_channels = 1
-    cfg.data_dir = str(root / "data")
-    cfg.patch_size = [40, 192]
-    cfg.batch_size = 1
-    cfg.fold = 0
-    print(OmegaConf.to_yaml(cfg))
-
-    datamodule = hydra.utils.instantiate(cfg)
-    datamodule.prepare_data()
-    datamodule.setup(stage=TrainerFn.FITTING)
-    train_dl = datamodule.train_dataloader()
-    gen = iter(train_dl)
-    batch = next(gen)
-
-    # datamodule.setup(stage=TrainerFn.TESTING)
-    # test_dl = datamodule.test_dataloader()
-    # gen = iter(test_dl)
-    # batch = next(gen)
-
-    cmap = dopplermap()
-
-    img = batch["image"][0].array
-    label = batch["label"][0].array
-    img_shape = img.shape
-    label_shape = label.shape
-    print(f"image shape: {img_shape}, label shape: {label_shape}")
-    print(batch["image"][0]._meta["filename_or_obj"])
-    plt.figure("image", (18, 6))
-    ax = plt.subplot(1, 3, 1)
-    imagesc(ax, img[0, :, :].transpose(), "image", cmap, clim=[-1, 1])
-    ax = plt.subplot(1, 3, 2)
-    imagesc(ax, img[1, :, :].transpose(), "power", cmap, clim=[-1, 1])
-    ax = plt.subplot(1, 3, 3)
-    imagesc(ax, label[0, :, :].transpose(), "label", cmap, clim=[0, 2])
-    print("max of seg: ", np.max(label[0, :, :]))
-    plt.show()
