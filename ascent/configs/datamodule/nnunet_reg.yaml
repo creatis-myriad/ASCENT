@@ -1,18 +1,17 @@
 defaults:
   - nnunet
-  - override loading@train/crop: spatial_crop
+  - override loading/crop@loading.train.crop: rand_spatial_crop
 
-_target_: ascent.datamodules.nnunet_reg_datamodule.nnUNetDataModule
 seg_label: False
 
 augmentation:
   rotation:
-    rotate:
+    rand_rotate:
       mode:
         - ${get_interp_mode:${model.net.patch_size},${datamodule.do_dummy_2D_data_aug},"rotation"}
         - ${get_interp_mode:${model.net.patch_size},${datamodule.do_dummy_2D_data_aug},"rotation"}
   zoom:
-    zoom:
+    rand_zoom:
       mode:
         - ${get_interp_mode:${model.net.patch_size},${datamodule.do_dummy_2D_data_aug},"zoom"}
         - ${get_interp_mode:${model.net.patch_size},${datamodule.do_dummy_2D_data_aug},"zoom"}
