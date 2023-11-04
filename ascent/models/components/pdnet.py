@@ -141,10 +141,9 @@ class PDNet(nn.Module):
             eval_pt = primal[:, 1:2, ...]
 
             eval_op = self.wrap(eval_pt)
-            if self.variant == 2:
-                update = torch.concat([dual, eval_op, input_data], dim=1)
-            else:
-                update = torch.concat([dual, eval_op - input_data], dim=1)
+
+            update = torch.concat([dual, eval_op, input_data], dim=1)
+
             update = self.conv_dual_1(update)
             update = self.lrelu(update)
             update = self.conv_dual_2(update)
@@ -437,72 +436,36 @@ class OriPDNet(nn.Module):
 
         results = []
 
-        if self.variant in [0, 1]:
-            for i in range(self.iterations):
-                # dual iterates
-                eval_pt = primal[:, 1:2, ...]
+        for i in range(self.iterations):
+            # dual iterates
+            eval_pt = primal[:, 1:2, ...]
 
-                eval_op = self.wrap(eval_pt)
-                if self.variant == 0:
-                    update = torch.concat([dual, eval_op, input_data], dim=1)
-                else:
-                    update = torch.concat([dual, eval_op - input_data], dim=1)
-                update = self.conv_dual_1[i](update)
-                update = self.lrelu[i](update)
-                update = self.conv_dual_2[i](update)
-                update = self.lrelu[i](update)
-                update = self.conv_dual_3[i](update)
+            eval_op = self.wrap(eval_pt)
 
-                # residual connection
-                dual = dual + update
+            update = torch.concat([dual, eval_op, input_data], dim=1)
+            update = self.conv_dual_1[i](update)
+            update = self.lrelu[i](update)
+            update = self.conv_dual_2[i](update)
+            update = self.lrelu[i](update)
+            update = self.conv_dual_3[i](update)
 
-                # primal iterates
-                eval_op = dual[:, 0:1, ...]
-                update = torch.concat([primal, eval_op], dim=1)
+            # residual connection
+            dual = dual + update
 
-                update = self.conv_primal_1[i](update)
-                update = self.lrelu[i](update)
-                update = self.conv_primal_2[i](update)
-                update = self.lrelu[i](update)
-                update = self.conv_primal_3[i](update)
+            # primal iterates
+            eval_op = dual[:, 0:1, ...]
+            update = torch.concat([primal, eval_op], dim=1)
 
-                # residual connection
-                primal = primal + update
+            update = self.conv_primal_1[i](update)
+            update = self.lrelu[i](update)
+            update = self.conv_primal_2[i](update)
+            update = self.lrelu[i](update)
+            update = self.conv_primal_3[i](update)
 
-                results.append([primal[:, 1:2, ...], primal[:, 0:1, ...], dual[:, 0:1, ...]])
-        elif self.variant in [2, 3]:
-            for i in range(self.iterations):
-                # dual iterates
-                eval_pt = primal[:, 1:2, ...]
+            # residual connection
+            primal = primal + update
 
-                eval_op = self.wrap(eval_pt)
-                if self.variant == 2:
-                    update = torch.concat([dual, eval_op, input_data], dim=1)
-                else:
-                    update = torch.concat([dual, eval_op - input_data], dim=1)
-                update = self.conv_dual_1(update)
-                update = self.lrelu(update)
-                update = self.conv_dual_2(update)
-                update = self.lrelu(update)
-                update = self.conv_dual_3(update)
-
-                # residual connection
-                dual = dual + update
-
-                # primal iterates
-                eval_op = dual[:, 0:1, ...]
-                update = torch.concat([primal, eval_op], dim=1)
-
-                update = self.conv_primal_1(update)
-                update = self.lrelu(update)
-                update = self.conv_primal_2(update)
-                update = self.lrelu(update)
-                update = self.conv_primal_3(update)
-
-                # residual connection
-                primal = primal + update
-
-                results.append([primal[:, 1:2, ...], primal[:, 0:1, ...], dual[:, 0:1, ...]])
+            results.append([primal[:, 1:2, ...], primal[:, 0:1, ...], dual[:, 0:1, ...]])
 
         out = primal[:, 0:1, ...]
         if self.out_conv:
@@ -579,7 +542,7 @@ class PDUNet(nn.Module):
             primal_channels, n_primal, patch_size, kernels, strides, deep_supervision=False
         )
 
-        dual_channels = n_dual + self.in_channels
+        dual_channels = n_dual + self.in_channels + 1
         self.unet_dual = UNet(
             dual_channels, n_dual, patch_size, kernels, strides, deep_supervision=False
         )
@@ -623,7 +586,7 @@ class PDUNet(nn.Module):
             # dual iterates
             eval_pt = primal[:, 1:2, ...]
             eval_op = self.wrap(eval_pt)
-            update = torch.concat([dual, eval_op - input_data], dim=1)
+            update = torch.concat([dual, eval_op, input_data], dim=1)
             update = self.unet_dual(update)
 
             # residual connection
@@ -663,7 +626,7 @@ class PDUNet(nn.Module):
             # dual iterates
             eval_pt = primal[:, 1:2, ...]
             eval_op = self.wrap(eval_pt)
-            update = torch.concat([dual, eval_op - input_data], dim=1)
+            update = torch.concat([dual, eval_op, input_data], dim=1)
             update = self.unet_dual(update)
 
             # residual connection
