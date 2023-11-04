@@ -1,5 +1,6 @@
 defaults:
   - nnunet
+  - override augmentation: default_2d
 
 batch_size: 32
 dataset_name: MYOSAIQ+EMIDEC

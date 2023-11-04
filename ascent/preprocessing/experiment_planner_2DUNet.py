@@ -249,7 +249,7 @@ class nnUNetPlanner2D:
         root = get_ascent_root()
 
         datamodule = {
-            "defaults": ["nnunet"],
+            "defaults": ["nnunet", {"override augmentation": "default_2d"}],
             "batch_size": plan["batch_size"],
             "dataset_name": dataset_name,
             "do_dummy_2D_data_aug": plan["do_dummy_2D_data_aug"],

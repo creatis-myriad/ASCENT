@@ -1,5 +1,6 @@
 defaults:
   - nnunet
+  - override augmentation: default_2d
 
 batch_size: 2
 dataset_name: CAMUS_challenge
