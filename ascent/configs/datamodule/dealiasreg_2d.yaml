@@ -1,4 +1,6 @@
 defaults:
-  - nnunet_reg
+  - dealiasv_2d
 
 dataset_name: UNWRAPV2
+separate_transform: True
+exclude_Dpower: False
