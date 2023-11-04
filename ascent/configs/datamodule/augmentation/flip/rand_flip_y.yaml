@@ -1,4 +1,4 @@
-flip_y:
+rand_flip_y:
   _target_: monai.transforms.RandFlipd
   keys: ${datamodule.data_keys.all_keys}
   spatial_axis: 1

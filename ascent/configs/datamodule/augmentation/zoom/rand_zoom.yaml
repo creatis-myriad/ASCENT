@@ -1,4 +1,4 @@
-zoom:
+rand_zoom:
   _target_: monai.transforms.RandZoomd
   keys: ${datamodule.data_keys.all_keys}
   min_zoom: 0.7

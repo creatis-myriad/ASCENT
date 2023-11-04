@@ -19,13 +19,13 @@ loading:
 
 augmentation:
   rotation:
-    rotate:
+    rand_rotate:
       mode:
         - ${get_interp_mode:${datamodule.patch_size},${datamodule.do_dummy_2D_data_aug},"rotation"}
         - ${get_interp_mode:${datamodule.patch_size},${datamodule.do_dummy_2D_data_aug},"rotation"}
         - "nearest"
   zoom:
-    zoom:
+    rand_zoom:
       mode:
         - ${get_interp_mode:${datamodule.patch_size},${datamodule.do_dummy_2D_data_aug},"zoom"}
         - ${get_interp_mode:${datamodule.patch_size},${datamodule.do_dummy_2D_data_aug},"zoom"}
@@ -35,20 +35,20 @@ augmentation:
         - True
         - null
   noise:
-    gaussian_noise:
+    rand_gaussian_noise:
       keys:
         - ${get_noise_and_intensity_transform_key:${datamodule.separate_transform},${datamodule.data_keys.image_key}}
         - ${datamodule.data_keys.label_key}
-    gaussian_smooth:
+    rand_gaussian_smooth:
       keys:
         - ${get_noise_and_intensity_transform_key:${datamodule.separate_transform},${datamodule.data_keys.image_key}}
         - ${datamodule.data_keys.label_key}
   intensity:
-    scale_intensity:
+    rand_scale_intensity:
       keys:
         - ${get_noise_and_intensity_transform_key:${datamodule.separate_transform},${datamodule.data_keys.image_key}}
         - ${datamodule.data_keys.label_key}
-    adjust_contrast:
+    rand_adjust_contrast:
       keys:
         - ${get_noise_and_intensity_transform_key:${datamodule.separate_transform},${datamodule.data_keys.image_key}}
         - ${datamodule.data_keys.label_key}

@@ -1,4 +1,4 @@
-gaussian_noise:
+rand_gaussian_noise:
   _target_: monai.transforms.RandGaussianNoised
   keys: ${datamodule.data_keys.image_key}
   std: 0.01

@@ -1,4 +1,4 @@
-rotate:
+rand_rotate:
   _target_: monai.transforms.RandRotated
   keys: ${datamodule.data_keys.all_keys}
   range_x: ${get_rot_range:${datamodule.patch_size},${datamodule.do_dummy_2D_data_aug},"x"}
