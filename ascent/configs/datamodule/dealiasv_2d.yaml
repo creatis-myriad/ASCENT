@@ -1,7 +1,7 @@
 defaults:
   - dealiasm_2d
-  - override loading@loading.train: unfolded_train
-  - override loading@loading.test: unfolded_test
+  - override loading/data_loading@loading.train.data_loading: unfolded_loadnpy
+  - override loading/data_loading@loading.test.data_loading: unfolded_loadnpy
 
 dataset_name: DEALIASV
 separate_transform: False
@@ -16,9 +16,6 @@ loading:
   train:
     crop:
       label_key: "seg"
-  test:
-    data_loading:
-      keys: ["data", "image_meta_dict"]
 
 augmentation:
   rotation:
