@@ -1,0 +1,4 @@
+_target_: ascent.utils.transforms.MayBeSqueezed
+keys: ${datamodule.data_keys.all_keys}
+dim: -1
+allow_missing_keys: False

@@ -115,20 +115,38 @@ def determine_separate_transform_based_on_input_channels(in_channels: int) -> bo
     return in_channels == 2
 
 
-def determine_key_for_noise_and_intensity_transforms(separate_transform: bool) -> str:
+def determine_key_for_noise_and_intensity_transforms(
+    separate_transform: bool, image_key: str
+) -> str:
     """Determine the key for noise and intensity transforms based on the `separate transforms`
     flag.
 
     Args:
         separate_transform: Whether to apply separate transforms.
+        image_key: Key for the image.
 
     Returns:
         Key for noise and intensity transforms.
     """
     if separate_transform:
-        return "image_0"
+        return f"{image_key}_0"
     else:
-        return "image"
+        return image_key
+
+
+def get_crop_size(patch_size: Union[list[int], tuple[int, ...]]) -> omegaconf.ListConfig[int]:
+    """Determine the crop size for the given patch size.
+
+    Args:
+        patch_size: Patch size used by the model.
+
+    Returns:
+        Crop size.
+    """
+    if len(patch_size) == 3:
+        return omegaconf.ListConfig(patch_size)
+    else:
+        return omegaconf.ListConfig([*patch_size, 1])
 
 
 OmegaConf.register_new_resolver("get_rot_range", determine_rotation_range)
@@ -140,3 +158,4 @@ OmegaConf.register_new_resolver(
 OmegaConf.register_new_resolver(
     "get_noise_and_intensity_transform_key", determine_key_for_noise_and_intensity_transforms
 )
+OmegaConf.register_new_resolver("get_crop_size", get_crop_size)

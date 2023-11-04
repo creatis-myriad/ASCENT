@@ -1,0 +1,14 @@
+# Generic loader from Monai. Refer to https://docs.monai.io/en/latest/transforms.html#monai.transforms.LoadImaged
+# for more details.
+_target_: monai.transforms.LoadImaged
+keys: ${datamodule.data_keys.all_keys}
+reader: null
+meta_keys: null
+overwriting: False
+image_only: True
+ensure_channel_first: False
+simple_keys: False
+prune_meta_pattern: null
+prune_meta_sep: "."
+allow_missing_keys: False
+expanduser: True

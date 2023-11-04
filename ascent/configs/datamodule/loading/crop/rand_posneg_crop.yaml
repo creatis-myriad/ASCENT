@@ -1,0 +1,17 @@
+# Crop random fixed sized regions with the center being a foreground or background voxel based on
+# the Pos Neg Ratio. Refer to https://docs.monai.io/en/latest/transforms.html#RandCropByPosNegLabeld
+# for more details.
+_target_: monai.transforms.RandCropByPosNegLabeld
+keys: ${datamodule.data_keys.all_keys}
+label_key: ${datamodule.data_keys.label_key}
+spatial_size: ${get_crop_size:${datamodule.patch_size}}
+pos: 0.33
+neg: 0.67
+num_samples: 1
+image_key: null
+image_threshold: 0
+fg_indices_key: null
+bg_indices_key: null
+allow_smaller: False
+allow_missing_keys: False
+lazy: False
