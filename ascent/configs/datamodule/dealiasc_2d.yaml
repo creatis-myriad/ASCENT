@@ -1,11 +1,4 @@
 defaults:
-  - nnunet
+  - dealias_2d
 
-_target_: ascent.datamodules.nnunet_dealias_datamodule.nnUNetDealiasDataModule
-alias_transform: True
-separate_transform: True
 exclude_Dpower: False
-batch_size: 4
-dataset_name: DEALIASC
-do_dummy_2D_data_aug: False
-num_workers: 12

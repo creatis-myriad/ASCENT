@@ -1,0 +1,8 @@
+# Adjust or add the channel dimension of input data to ensure channel_first shape. Refer to
+# https://docs.monai.io/en/latest/transforms.html#monai.transforms.EnsureChannelFirstd for more
+# details.
+_target_: monai.transforms.EnsureChannelFirstd
+keys: ${datamodule.data_keys.all_keys}
+strict_check: True
+allow_missing_keys: False
+channel_dim: null

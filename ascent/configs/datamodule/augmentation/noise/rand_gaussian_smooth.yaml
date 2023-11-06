@@ -1,0 +1,6 @@
+rand_gaussian_smooth:
+  _target_: monai.transforms.RandGaussianSmoothd
+  keys: ${datamodule.data_keys.image_key}
+  sigma_x: [0.5, 1.15]
+  sigma_y: [0.5, 1.15]
+  prob: 0.15

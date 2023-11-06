@@ -1,0 +1,4 @@
+_target_: ascent.utils.transforms.DealiasLoadNpyd
+keys:
+  - "data" # Load ["data"] or ["data", "image_meta_dict"]
+allow_missing_keys: False

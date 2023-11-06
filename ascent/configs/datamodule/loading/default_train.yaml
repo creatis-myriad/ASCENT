@@ -1,0 +1,6 @@
+defaults:
+  - data_loading: loadnpy
+  - utility@channel_first: channel_first
+  - pad: spatial_pad
+  - crop: rand_posneg_crop
+  - utility@maybe_squeeze: maybe_squeeze

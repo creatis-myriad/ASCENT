@@ -1,0 +1,9 @@
+# Performs padding to the data, symmetric for all sides or all on one side for each dimension.
+# Refer to https://docs.monai.io/en/latest/transforms.html#SpatialPadd for more details.
+_target_: monai.transforms.SpatialPadd
+keys: ${datamodule.data_keys.all_keys}
+spatial_size: ${get_crop_size:${datamodule.patch_size}}
+method: "symmetric"
+mode: "constant"
+allow_missing_keys: False
+lazy: False

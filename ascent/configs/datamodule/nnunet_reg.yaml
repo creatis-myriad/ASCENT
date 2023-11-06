@@ -1,0 +1,18 @@
+defaults:
+  - nnunet
+  - override loading/crop@loading.train.crop: rand_spatial_crop
+
+seg_label: False
+
+augmentation:
+  rotation:
+    rand_rotate:
+      mode:
+        - ${get_interp_mode:${model.net.patch_size},${datamodule.do_dummy_2D_data_aug},"rotation"}
+        - ${get_interp_mode:${model.net.patch_size},${datamodule.do_dummy_2D_data_aug},"rotation"}
+  zoom:
+    rand_zoom:
+      mode:
+        - ${get_interp_mode:${model.net.patch_size},${datamodule.do_dummy_2D_data_aug},"zoom"}
+        - ${get_interp_mode:${model.net.patch_size},${datamodule.do_dummy_2D_data_aug},"zoom"}
+      align_corners: True

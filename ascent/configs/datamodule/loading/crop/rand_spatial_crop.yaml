@@ -1,0 +1,9 @@
+# General purpose cropper to produce sub-volume region of interest. Refer to
+# https://docs.monai.io/en/latest/transforms.html#RandSpatialCropd for more details.
+_target_: monai.transforms.RandSpatialCropd
+keys: ${datamodule.data_keys.all_keys}
+roi_size: ${get_crop_size:${datamodule.patch_size}}
+max_roi_size: null
+random_center: True
+random_size: False
+lazy: False

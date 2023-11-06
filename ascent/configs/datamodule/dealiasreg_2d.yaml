@@ -1,12 +1,6 @@
 defaults:
-  - nnunet
+  - dealiasv_2d
 
-_target_: ascent.datamodules.dealias_datamodule.DealiasDataModule
-alias_transform: True
-batch_size: 4
 dataset_name: UNWRAPV2
-do_dummy_2D_data_aug: False
-num_workers: 12
-seg_label: False
-in_channels: ${model.net.in_channels}
-patch_size: ${model.net.patch_size}
+separate_transform: True
+exclude_Dpower: False

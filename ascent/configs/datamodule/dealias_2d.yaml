@@ -1,9 +1,9 @@
 defaults:
   - nnunet
+  - override augmentation: dealias_2d
 
 _target_: ascent.datamodules.nnunet_dealias_datamodule.nnUNetDealiasDataModule
-alias_transform: True
-separate_transform: True
+separate_transform: ${do_separate_transform:${datamodule.in_channels}}
 exclude_Dpower: True
 batch_size: 4
 dataset_name: DEALIASC

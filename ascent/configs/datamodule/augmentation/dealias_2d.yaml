@@ -1,0 +1,16 @@
+defaults:
+  - default_2d
+  - aliasing:
+      - rand_artificial_aliasing
+
+noise:
+  rand_gaussian_noise:
+    keys: ${get_noise_and_intensity_transform_key:${datamodule.separate_transform},${datamodule.data_keys.image_key}}
+  rand_gaussian_smooth:
+    keys: ${get_noise_and_intensity_transform_key:${datamodule.separate_transform},${datamodule.data_keys.image_key}}
+
+intensity:
+  rand_scale_intensity:
+    keys: ${get_noise_and_intensity_transform_key:${datamodule.separate_transform},${datamodule.data_keys.image_key}}
+  rand_adjust_contrast:
+    keys: ${get_noise_and_intensity_transform_key:${datamodule.separate_transform},${datamodule.data_keys.image_key}}

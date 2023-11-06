@@ -1,0 +1,5 @@
+rand_flip_z:
+  _target_: monai.transforms.RandFlipd
+  keys: ${datamodule.data_keys.all_keys}
+  spatial_axis: 2
+  prob: 0.5

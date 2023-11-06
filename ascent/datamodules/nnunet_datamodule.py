@@ -1,32 +1,23 @@
 import os
 from collections import OrderedDict
 from pathlib import Path
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
+import hydra
 import numpy as np
 import torch
 from joblib import Parallel, delayed
 from lightning import LightningDataModule
 from lightning.pytorch.trainer.states import TrainerFn
 from monai.data import CacheDataset, DataLoader, IterableDataset
-from monai.transforms import (
-    Compose,
-    EnsureChannelFirstd,
-    RandAdjustContrastd,
-    RandCropByPosNegLabeld,
-    RandFlipd,
-    RandGaussianNoised,
-    RandGaussianSmoothd,
-    RandRotated,
-    RandScaleIntensityd,
-    RandZoomd,
-    SpatialPadd,
-)
+from monai.transforms import Compose, EnsureChannelFirstd, RandCropByPosNegLabeld, SpatialPadd
+from omegaconf import DictConfig
 from sklearn.model_selection import KFold, train_test_split
 
 from ascent import utils
 from ascent.utils.data_loading import get_case_identifiers_from_npz_folders
 from ascent.utils.dataset import nnUNet_Iterator
+from ascent.utils.dict_utils import flatten_dict
 from ascent.utils.file_and_folder_operations import load_pickle, save_pickle, subfiles
 from ascent.utils.transforms import Convert2Dto3Dd, Convert3Dto2Dd, LoadNpyd, MayBeSqueezed
 
@@ -38,17 +29,20 @@ class nnUNetDataModule(LightningDataModule):
 
     def __init__(
         self,
-        data_dir: str = "data/",
+        data_dir: Union[str, Path] = "data/",
         dataset_name: str = "CAMUS",
         fold: int = 0,
         batch_size: int = 2,
-        patch_size: tuple[int, ...] = (128, 128, 128),
+        patch_size: Union[tuple[int, ...], list[int]] = (128, 128, 128),
         in_channels: int = 1,
         do_dummy_2D_data_aug: bool = True,
         num_workers: int = os.cpu_count() - 1,
         pin_memory: bool = True,
         test_splits: bool = True,
         seg_label: bool = True,
+        data_keys: DictConfig = None,
+        augmentation: DictConfig = None,
+        loading: DictConfig = None,
     ):
         """Initialize class instance.
 
@@ -57,13 +51,17 @@ class nnUNetDataModule(LightningDataModule):
             dataset_name: Name of dataset to be used.
             fold: Fold to be used for training, validation or test.
             batch_size: Batch size to be used for training and validation.
-            patch_size: Patch size to crop the data..
+            patch_size: Patch size to crop the data.
             in_channels: Number of input channels.
             do_dummy_2D_data_aug: Whether to apply 2D transformation on 3D dataset.
             num_workers: Number of subprocesses to use for data loading.
             pin_memory: Whether to pin memory to GPU.
             test_splits: Whether to split data into train/val/test (0.8/0.1/0.1).
             seg_label: Whether the labels are segmentations.
+            data_keys: Dictionary config containing information about image key, label key, and
+                all keys.
+            augmentation: Dictionary config containing the transforms for data augmentation.
+            loading: Dictionary config containing the transforms for data loading.
 
         Raises:
             NotImplementedError: If the patch shape is not 2D nor 3D.
@@ -80,13 +78,15 @@ class nnUNetDataModule(LightningDataModule):
         if not len(patch_size) in [2, 3]:
             raise NotImplementedError("Only 2D and 3D patches are supported right now!")
 
-        self.crop_patch_size = patch_size
         self.threeD = len(patch_size) == 3
-        if not self.threeD:
-            self.crop_patch_size = [*patch_size, 1]
 
         # data transformations
         self.train_transforms = self.val_transforms = self.test_transform = []
+
+        # flatten nested augmentations dict to a single dict
+        self.augmentation = flatten_dict(self.hparams.augmentation)
+
+        # setup the transforms
         self.setup_transforms()
 
         self.data_train: Optional[torch.utils.Dataset] = None
@@ -283,121 +283,73 @@ class nnUNetDataModule(LightningDataModule):
             shuffle=False,
         )
 
+    def get_train_val_test_loading_transforms(self) -> tuple[list[Callable], ...]:
+        """Get the data loading transforms for train, validation and test.
+
+        Returns:
+            Tuple of lists of transforms for train, validation and test.
+        """
+        train_transforms = []
+        test_transforms = []
+        train_transforms.append(self.hparams.loading["train"].get("data_loading"))
+        train_transforms.append(self.hparams.loading["train"].get("channel_first"))
+        train_transforms.append(self.hparams.loading["train"].get("pad"))
+        train_transforms.append(self.hparams.loading["train"].get("crop"))
+
+        test_transforms.append(self.hparams.loading["test"].get("data_loading"))
+        test_transforms.append(self.hparams.loading["test"].get("channel_first"))
+
+        # squeeze the data if it is 2D to remove the singleton third dimension
+        if not self.threeD:
+            train_transforms.append(self.hparams.loading["train"].get("maybe_squeeze"))
+            test_transforms.append(self.hparams.loading["test"].get("maybe_squeeze"))
+
+        return train_transforms, train_transforms.copy(), test_transforms
+
     def setup_transforms(self) -> None:
         """Define the data augmentations used by nnUNet including the data reading using
-        monai.transforms libraries.
+        `monai.transforms` libraries.
 
         The only difference with nnUNet framework is the patch creation.
         """
-        if self.threeD:
-            rot_inter_mode = "bilinear"
-            zoom_inter_mode = "trilinear"
-            range_x = range_y = range_z = [-30.0 / 180 * np.pi, 30.0 / 180 * np.pi]
-
-            if self.hparams.do_dummy_2D_data_aug:
-                zoom_inter_mode = rot_inter_mode = "bicubic"
-                range_x = [-180.0 / 180 * np.pi, 180.0 / 180 * np.pi]
-                range_y = range_z = 0.0
-
-        else:
-            zoom_inter_mode = rot_inter_mode = "bicubic"
-            range_x = [-180.0 / 180 * np.pi, 180.0 / 180 * np.pi]
-            range_y = range_z = 0.0
-            if max(self.hparams.patch_size) / min(self.hparams.patch_size) > 1.5:
-                range_x = [-15.0 / 180 * np.pi, 15.0 / 180 * np.pi]
-
-        shared_train_val_transforms = [
-            LoadNpyd(keys=["data"], seg_label=self.hparams.seg_label),
-            EnsureChannelFirstd(keys=["image", "label"]),
-            SpatialPadd(
-                keys=["image", "label"],
-                spatial_size=self.crop_patch_size,
-                mode="constant",
-                value=0,
-            ),
-            RandCropByPosNegLabeld(
-                keys=["image", "label"],
-                label_key="label",
-                spatial_size=self.crop_patch_size,
-                pos=0.33,
-                neg=0.67,
-                num_samples=1,
-            ),
-        ]
+        (
+            train_transforms,
+            val_transforms,
+            test_transforms,
+        ) = self.get_train_val_test_loading_transforms()
 
         other_transforms = []
 
-        if not self.threeD:
-            other_transforms.append(MayBeSqueezed(keys=["image", "label"], dim=-1))
-
         if self.hparams.do_dummy_2D_data_aug and self.threeD:
-            other_transforms.append(Convert3Dto2Dd(keys=["image", "label"]))
+            other_transforms.append(Convert3Dto2Dd(keys=self.hparams.data_keys.all_keys))
 
-        other_transforms.extend(
-            [
-                RandRotated(
-                    keys=["image", "label"],
-                    range_x=range_x,
-                    range_y=range_y,
-                    range_z=range_z,
-                    mode=[rot_inter_mode, "nearest"],
-                    padding_mode="zeros",
-                    prob=0.2,
-                ),
-                RandZoomd(
-                    keys=["image", "label"],
-                    min_zoom=0.7,
-                    max_zoom=1.4,
-                    mode=[zoom_inter_mode, "nearest"],
-                    padding_mode="constant",
-                    align_corners=(True, None),
-                    prob=0.2,
-                ),
-            ]
-        )
+        if self.hparams.augmentation.get("rotation"):
+            for name, aug in self.hparams.augmentation.get("rotation").items():
+                other_transforms.append(aug)
+
+        if self.hparams.augmentation.get("zoom"):
+            for name, aug in self.hparams.augmentation.get("zoom").items():
+                other_transforms.append(aug)
 
         if self.hparams.do_dummy_2D_data_aug and self.threeD:
             other_transforms.append(
-                Convert2Dto3Dd(keys=["image", "label"], num_channel=self.hparams.in_channels)
+                Convert2Dto3Dd(
+                    keys=self.hparams.data_keys.all_keys, num_channel=self.hparams.in_channels
+                )
             )
+        if self.hparams.augmentation.get("noise"):
+            for name, aug in self.hparams.augmentation.get("noise").items():
+                other_transforms.append(aug)
 
-        other_transforms.extend(
-            [
-                RandGaussianNoised(keys=["image"], std=0.01, prob=0.15),
-                RandGaussianSmoothd(
-                    keys=["image"],
-                    sigma_x=(0.5, 1.15),
-                    sigma_y=(0.5, 1.15),
-                    prob=0.15,
-                ),
-                RandScaleIntensityd(keys=["image"], factors=0.3, prob=0.15),
-                RandAdjustContrastd(keys=["image"], gamma=(0.7, 1.5), prob=0.3),
-                RandFlipd(["image", "label"], spatial_axis=[0], prob=0.5),
-                RandFlipd(["image", "label"], spatial_axis=[1], prob=0.5),
-            ]
-        )
+        if self.hparams.augmentation.get("intensity"):
+            for aug in self.hparams.augmentation.get("intensity"):
+                other_transforms.append(aug)
 
-        if self.threeD:
-            other_transforms.append(RandFlipd(["image", "label"], spatial_axis=[2], prob=0.5))
+        if self.hparams.augmentation.get("flip"):
+            for name, aug in self.hparams.augmentation.get("flip").items():
+                other_transforms.append(aug)
 
-        val_transforms = shared_train_val_transforms.copy()
-
-        if not self.threeD:
-            val_transforms.append(MayBeSqueezed(keys=["image", "label"], dim=-1))
-
-        test_transforms = [
-            LoadNpyd(
-                keys=["data", "image_meta_dict"],
-                test=True,
-                seg_label=self.hparams.seg_label,
-            ),
-            EnsureChannelFirstd(keys=["image", "label"]),
-        ]
-
-        if not self.threeD:
-            test_transforms.append(MayBeSqueezed(keys=["image", "label"], dim=-1))
-
-        self.train_transforms = Compose(shared_train_val_transforms + other_transforms)
+        self.train_transforms = Compose(train_transforms + other_transforms)
         self.val_transforms = Compose(val_transforms)
         self.test_transforms = Compose(test_transforms)
 
@@ -424,48 +376,31 @@ class nnUNetDataModule(LightningDataModule):
 
 
 if __name__ == "__main__":
-    import hydra
-    import pyrootutils
-    from hydra import compose, initialize_config_dir
+    from hydra import compose, initialize
     from matplotlib import pyplot as plt
     from omegaconf import OmegaConf
 
+    from ascent import get_ascent_root
     from ascent.utils.visualization import dopplermap, imagesc
 
-    root = pyrootutils.setup_root(__file__, pythonpath=True)
+    root = get_ascent_root()
 
-    initialize_config_dir(config_dir=str(root / "configs" / "datamodule"), job_name="test")
-    cfg = compose(config_name="dealias_2d.yaml")
+    # Example to visualize the data for dealiasing
+    with initialize(config_path=str(root / "configs" / "datamodule"), version_base="1.3"):
+        cfg = compose(config_name="dealias_2d")
 
     cfg.data_dir = str(root / "data")
-    # cfg.patch_size = [128, 128]
     cfg.in_channels = 2
     cfg.patch_size = [40, 192]
-    # cfg.patch_size = [128, 128, 12]
     cfg.batch_size = 1
     cfg.fold = 0
     print(OmegaConf.to_yaml(cfg))
-    camus_datamodule = hydra.utils.instantiate(cfg)
-    camus_datamodule.prepare_data()
-    camus_datamodule.setup(stage=TrainerFn.FITTING)
-    train_dl = camus_datamodule.train_dataloader()
-    # camus_datamodule.setup(stage=TrainerFn.TESTING)
-    # test_dl = camus_datamodule.test_dataloader()
-
-    # predict_files = [
-    #     {
-    #         "image_0": "C:/Users/ling/Desktop/nnUNet/nnUNet_raw/nnUNet_raw_data/Task129_DealiasingConcat/imagesTr/Dealias_0001_0000.nii.gz",
-    #         "image_1": "C:/Users/ling/Desktop/nnUNet/nnUNet_raw/nnUNet_raw_data/Task129_DealiasingConcat/imagesTr/Dealias_0001_0001.nii.gz",
-    #     }
-    # ]
-
-    # camus_datamodule.prepare_for_prediction(predict_files)
-    # camus_datamodule.setup(stage=TrainerFn.PREDICTING)
-    # predict_dl = camus_datamodule.predict_dataloader()
+    datamodule = hydra.utils.instantiate(cfg)
+    datamodule.prepare_data()
+    datamodule.setup(stage=TrainerFn.FITTING)
+    train_dl = datamodule.train_dataloader()
     gen = iter(train_dl)
     batch = next(gen)
-    # batch = next(iter(test_dl))
-    # batch = next(iter(predict_dl))
 
     cmap = dopplermap()
 
