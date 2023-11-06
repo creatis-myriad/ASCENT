@@ -45,7 +45,7 @@ class nnUNetDealiasDataModule(nnUNetDataModule):
             train_transforms,
             val_transforms,
             test_transforms,
-        ) = self._get_train_val_test_loading_transforms()
+        ) = self.get_train_val_test_loading_transforms()
 
         other_transforms = []
 

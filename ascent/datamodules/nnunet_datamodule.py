@@ -283,7 +283,12 @@ class nnUNetDataModule(LightningDataModule):
             shuffle=False,
         )
 
-    def _get_train_val_test_loading_transforms(self) -> tuple[list[Callable], ...]:
+    def get_train_val_test_loading_transforms(self) -> tuple[list[Callable], ...]:
+        """Get the data loading transforms for train, validation and test.
+
+        Returns:
+            Tuple of lists of transforms for train, validation and test.
+        """
         train_transforms = []
         test_transforms = []
         train_transforms.append(self.hparams.loading["train"].get("data_loading"))
@@ -294,6 +299,7 @@ class nnUNetDataModule(LightningDataModule):
         test_transforms.append(self.hparams.loading["test"].get("data_loading"))
         test_transforms.append(self.hparams.loading["test"].get("channel_first"))
 
+        # squeeze the data if it is 2D to remove the singleton third dimension
         if not self.threeD:
             train_transforms.append(self.hparams.loading["train"].get("maybe_squeeze"))
             test_transforms.append(self.hparams.loading["test"].get("maybe_squeeze"))
@@ -310,7 +316,7 @@ class nnUNetDataModule(LightningDataModule):
             train_transforms,
             val_transforms,
             test_transforms,
-        ) = self._get_train_val_test_loading_transforms()
+        ) = self.get_train_val_test_loading_transforms()
 
         other_transforms = []
 
