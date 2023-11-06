@@ -1,7 +1,7 @@
 import warnings
 from functools import wraps
 from importlib.util import find_spec
-from typing import Callable
+from typing import Callable, Optional
 
 from omegaconf import DictConfig
 
@@ -93,8 +93,16 @@ def extras(cfg: DictConfig) -> None:
         rich_utils.print_config_tree(cfg, resolve=True, save_to_file=True)
 
 
-def get_metric_value(metric_dict: dict, metric_name: str) -> float:
-    """Safely retrieves value of the metric logged in LightningModule."""
+def get_metric_value(metric_dict: dict, metric_name: Optional[str]) -> Optional[float]:
+    """Safely retrieves value of the metric logged in LightningModule.
+
+    Args:
+        metric_dict: A dict containing metric values.
+        metric_name: If provided, the name of the metric to retrieve.
+
+    Returns:
+        If a metric name was provided, the value of the metric.
+    """
 
     if not metric_name:
         log.info("Metric name is None! Skipping metric value retrieval...")
