@@ -5,3 +5,5 @@ defaults:
 _target_: ascent.models.components.unet.UNet
 
 patch_size: ???
+encoder:
+  dim: ${get_dim_from_patch_size:${model.net.patch_size}}

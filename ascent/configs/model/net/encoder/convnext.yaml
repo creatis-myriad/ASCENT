@@ -1,7 +1,7 @@
 _target_: ascent.models.components.encoders.convnext.ConvNeXt
 
 in_channels: ???
-num_stages: ???
+num_stages: ${get_num_stages_from_kernels:${model.net.encoder.kernels}}
 dim: ???
 stem_kernel: 7
 kernels: ???
