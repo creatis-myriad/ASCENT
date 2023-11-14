@@ -57,6 +57,11 @@ class UNet(nn.Module):
         else:
             self.decoder = decoder
 
+        # store some attributes to be used in nnUNetLitModule
+        self.in_channels = self.encoder.in_channels
+        self.num_classes = self.decoder.num_classes
+        self.deep_supervision = self.decoder.deep_supervision
+
     def forward(
         self, input_data: Union[Tensor, MetaTensor]
     ) -> Union[Tensor, MetaTensor]:  # noqa: D102
