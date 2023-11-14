@@ -5,6 +5,8 @@ from typing import Sequence, Union
 import numpy as np
 
 from ascent import utils
+from ascent.models.components.decoders.unet_decoder import UNetDecoder
+from ascent.models.components.encoders.unet_encoder import UNetEncoder
 from ascent.models.components.unet import UNet
 from ascent.preprocessing.experiment_planner_2DUNet import nnUNetPlanner2D
 from ascent.preprocessing.utils import get_pool_and_conv_props
@@ -101,15 +103,22 @@ class nnUNetPlanner3D(nnUNetPlanner2D):
             / UNet.BASE_NUM_FEATURES_3D
         )
 
-        here = UNet.compute_approx_vram_consumption(
-            new_shp,
-            network_num_pool_per_axis,
-            self.unet_base_num_features,
-            self.unet_max_num_filters,
-            num_modalities,
-            num_classes,
-            pool_op_kernel_sizes,
-            conv_per_stage=self.conv_per_stage,
+        encoder_kwargs = {
+            "in_channels": num_modalities,
+            "num_stages": len([[1] * len(input_patch_size)] + pool_op_kernel_sizes),
+            "dim": len(input_patch_size),
+            "kernels": conv_kernel_sizes,
+            "strides": [[1] * len(input_patch_size)] + pool_op_kernel_sizes,
+            "start_features": self.unet_base_num_features,
+            "num_conv_per_stage": self.conv_per_stage,
+        }
+
+        decoder_kwargs = {
+            "num_classes": num_classes,
+            "num_conv_per_stage": self.conv_per_stage,
+        }
+        here = self.static_estimate_VRAM_usage(
+            new_shp, UNetEncoder, encoder_kwargs, UNetDecoder, decoder_kwargs
         )
         while here > ref:
             axis_to_be_reduced = np.argsort(new_shp / median_shape)[-1]
@@ -138,15 +147,14 @@ class nnUNetPlanner3D(nnUNetPlanner2D):
                 self.unet_max_numpool,
             )
 
-            here = UNet.compute_approx_vram_consumption(
-                new_shp,
-                network_num_pool_per_axis,
-                self.unet_base_num_features,
-                self.unet_max_num_filters,
-                num_modalities,
-                num_classes,
-                pool_op_kernel_sizes,
-                conv_per_stage=self.conv_per_stage,
+            encoder_kwargs["num_stages"] = len(
+                [[1] * len(input_patch_size)] + pool_op_kernel_sizes
+            )
+            encoder_kwargs["kernels"] = conv_kernel_sizes
+            encoder_kwargs["strides"] = [[1] * len(input_patch_size)] + pool_op_kernel_sizes
+
+            here = self.static_estimate_VRAM_usage(
+                new_shp, UNetEncoder, encoder_kwargs, UNetDecoder, decoder_kwargs
             )
 
         input_patch_size = new_shp

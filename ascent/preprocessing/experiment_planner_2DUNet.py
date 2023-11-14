@@ -2,12 +2,15 @@ import errno
 import os
 from copy import deepcopy
 from pathlib import Path
-from typing import Sequence, Union
+from typing import Any, Literal, Sequence, Type, Union
 
 import numpy as np
 import ruamel.yaml
 
 from ascent import get_ascent_root, utils
+from ascent.models.components.decoders.unet_decoder import UNetDecoder
+from ascent.models.components.encoders.convnext import ConvNeXt
+from ascent.models.components.encoders.unet_encoder import UNetEncoder
 from ascent.models.components.unet import UNet
 from ascent.preprocessing.utils import get_pool_and_conv_props
 from ascent.utils.file_and_folder_operations import load_pickle
@@ -54,6 +57,31 @@ class nnUNetPlanner2D:
         self.how_much_of_a_patient_must_the_network_see_at_stage0 = 4  # 1/4 of a patient
         # all samples in the batch together cannot cover more than 5% of the entire dataset
         self.batch_size_covers_max_percent_of_dataset = 0.05
+
+    @staticmethod
+    def static_estimate_VRAM_usage(
+        patch_size: Union[list[int], tuple[int, ...]],
+        encoder: Literal[Type[UNetEncoder], Type[ConvNeXt]],
+        encoder_kwargs: dict[str, Any],
+        decoder: Type[UNetDecoder],
+        decoder_kwargs: dict[str, Any],
+    ) -> int:
+        """Estimate rough VRAM usage of a 2D/3D U-Net.
+
+        Args:
+            patch_size: Input patch size.
+            encoder: A U-Net type convolutional encoder. Can be either `UNetEncoder` or `ConvNeXt`.
+            encoder_kwargs: Keyword arguments for encoder.
+            decoder: A U-Net type convolutional decoder. Can be `UNetDecoder`.
+            decoder_kwargs: Keyword arguments for decoder.
+
+        Returns:
+            Rough VRAM usage of a 2D/3D U-Net.
+        """
+        encoder = encoder(**encoder_kwargs)
+        decoder = decoder(encoder, **decoder_kwargs)
+        net = UNet(patch_size, encoder, decoder)
+        return net.compute_pixels_in_output_feature_map(patch_size)
 
     def get_properties(
         self,
@@ -105,16 +133,25 @@ class nnUNetPlanner2D:
         ref = (
             UNet.use_this_for_batch_size_computation_2D * UNet.DEFAULT_BATCH_SIZE_2D / 2
         )  # for batch size 2
-        here = UNet.compute_approx_vram_consumption(
-            new_shp,
-            network_num_pool_per_axis,
-            30,
-            self.unet_max_num_filters,
-            num_modalities,
-            num_classes,
-            pool_op_kernel_sizes,
-            conv_per_stage=self.conv_per_stage,
+
+        encoder_kwargs = {
+            "in_channels": num_modalities,
+            "num_stages": len([[1] * len(input_patch_size)] + pool_op_kernel_sizes),
+            "dim": len(input_patch_size),
+            "kernels": conv_kernel_sizes,
+            "strides": [[1] * len(input_patch_size)] + pool_op_kernel_sizes,
+            "start_features": self.unet_base_num_features,
+            "num_conv_per_stage": self.conv_per_stage,
+        }
+
+        decoder_kwargs = {
+            "num_classes": num_classes,
+            "num_conv_per_stage": self.conv_per_stage,
+        }
+        here = self.static_estimate_VRAM_usage(
+            new_shp, UNetEncoder, encoder_kwargs, UNetDecoder, decoder_kwargs
         )
+
         while here > ref:
             axis_to_be_reduced = np.argsort(new_shp / median_shape[:-1])[-1]
 
@@ -142,15 +179,14 @@ class nnUNetPlanner2D:
                 self.unet_max_numpool,
             )
 
-            here = UNet.compute_approx_vram_consumption(
-                new_shp,
-                network_num_pool_per_axis,
-                self.unet_base_num_features,
-                self.unet_max_num_filters,
-                num_modalities,
-                num_classes,
-                pool_op_kernel_sizes,
-                conv_per_stage=self.conv_per_stage,
+            encoder_kwargs["num_stages"] = len(
+                [[1] * len(input_patch_size)] + pool_op_kernel_sizes
+            )
+            encoder_kwargs["kernels"] = conv_kernel_sizes
+            encoder_kwargs["strides"] = [[1] * len(input_patch_size)] + pool_op_kernel_sizes
+
+            here = self.static_estimate_VRAM_usage(
+                new_shp, UNetEncoder, encoder_kwargs, UNetDecoder, decoder_kwargs
             )
             # print(new_shp)
 
@@ -239,6 +275,8 @@ class nnUNetPlanner2D:
         yaml = ruamel.yaml.YAML()
         yaml.indent(mapping=2, sequence=4, offset=2)
         yaml.boolean_representation = ["False", "True"]
+        # prevent line wrapping
+        yaml.width = 99
 
         dim = len(plan["patch_size"])
         dataset_name = os.path.split(os.path.dirname(self.preprocessed_folder))[-1]
@@ -248,13 +286,22 @@ class nnUNetPlanner2D:
 
         root = get_ascent_root()
 
-        datamodule = {
-            "defaults": ["nnunet", {"override augmentation": "default_2d"}],
-            "batch_size": plan["batch_size"],
-            "dataset_name": dataset_name,
-            "do_dummy_2D_data_aug": plan["do_dummy_2D_data_aug"],
-            "num_workers": 12,
-        }
+        if dim == 2:
+            datamodule = {
+                "defaults": ["nnunet", {"override augmentation": "default_2d"}],
+                "batch_size": plan["batch_size"],
+                "dataset_name": dataset_name,
+                "do_dummy_2D_data_aug": plan["do_dummy_2D_data_aug"],
+                "num_workers": 12,
+            }
+        elif dim == 3:
+            datamodule = {
+                "defaults": ["nnunet"],
+                "batch_size": plan["batch_size"],
+                "dataset_name": dataset_name,
+                "do_dummy_2D_data_aug": plan["do_dummy_2D_data_aug"],
+                "num_workers": 12,
+            }
 
         datamodule = ruamel.yaml.comments.CommentedMap(datamodule)
         datamodule.yaml_set_comment_before_after_key("batch_size", before="\n")
@@ -263,22 +310,34 @@ class nnUNetPlanner2D:
             model = {
                 "defaults": ["nnunet"],
                 "net": {
-                    "in_channels": len(list(self.dataset_properties["modalities"].keys())),
-                    "num_classes": len(self.dataset_properties["all_classes"]) + 1,
                     "patch_size": flist(plan["patch_size"].tolist()),
-                    "kernels": flist(plan["conv_kernel_sizes"]),
-                    "strides": flist(plan["pool_op_kernel_sizes"]),
+                    "encoder": {
+                        "in_channels": len(list(self.dataset_properties["modalities"].keys())),
+                        "num_stages": len(plan["pool_op_kernel_sizes"]),
+                        "dim": dim,
+                        "kernels": flist(plan["conv_kernel_sizes"]),
+                        "strides": flist(plan["pool_op_kernel_sizes"]),
+                    },
+                    "decoder": {
+                        "num_classes": len(self.dataset_properties["all_classes"]) + 1,
+                    },
                 },
             }
         elif dim == 3:
             model = {
                 "defaults": ["nnunet"],
                 "net": {
-                    "in_channels": len(list(self.dataset_properties["modalities"].keys())),
-                    "num_classes": len(self.dataset_properties["all_classes"]) + 1,
                     "patch_size": flist(plan["patch_size"].tolist()),
-                    "kernels": flist(plan["conv_kernel_sizes"]),
-                    "strides": flist(plan["pool_op_kernel_sizes"]),
+                    "encoder": {
+                        "in_channels": len(list(self.dataset_properties["modalities"].keys())),
+                        "num_stages": len(plan["pool_op_kernel_sizes"]),
+                        "dim": dim,
+                        "kernels": flist(plan["conv_kernel_sizes"]),
+                        "strides": flist(plan["pool_op_kernel_sizes"]),
+                    },
+                    "decoder": {
+                        "num_classes": len(self.dataset_properties["all_classes"]) + 1,
+                    },
                 },
                 "loss": {
                     "soft_dice_kwargs": fdict(
