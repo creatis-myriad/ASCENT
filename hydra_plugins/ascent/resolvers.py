@@ -169,6 +169,28 @@ def get_in_channels_from_model_net(net: omegaconf.DictConfig) -> int:
         raise ValueError("Could not determine number of input channels.")
 
 
+def get_dim_from_patch_size(
+    patch_size: Union[list[int], tuple[int, ...], omegaconf.ListConfig]
+) -> int:
+    """Get the dimension from the patch size.
+
+    Args:
+        patch_size: Patch size used by the model.
+
+    Returns:
+        Dimension.
+
+    Raises:
+        NotImplementedError: If the patch size is not 2D or 3D.
+    """
+    if len(patch_size) == 3:
+        return 3
+    elif len(patch_size) == 2:
+        return 2
+    else:
+        raise NotImplementedError("Only 2D and 3D patch size is supported.")
+
+
 OmegaConf.register_new_resolver("get_rot_range", determine_rotation_range)
 OmegaConf.register_new_resolver("get_interp_mode", determine_interpolation_mode)
 OmegaConf.register_new_resolver("get_seg_key", determine_seg_key_based_on_keys)
@@ -180,3 +202,4 @@ OmegaConf.register_new_resolver(
 )
 OmegaConf.register_new_resolver("get_crop_size", get_crop_size)
 OmegaConf.register_new_resolver("get_in_channels_from_model_net", get_in_channels_from_model_net)
+OmegaConf.register_new_resolver("get_dim_from_patch_size", get_dim_from_patch_size)
