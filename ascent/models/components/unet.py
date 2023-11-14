@@ -1,3 +1,4 @@
+from functools import partial
 from typing import Literal, Union
 
 import torch
@@ -51,7 +52,10 @@ class UNet(nn.Module):
 
         self.patch_size = patch_size
         self.encoder = encoder
-        self.decoder = decoder(encoder=encoder)
+        if isinstance(decoder, partial):
+            self.decoder = decoder(encoder=encoder)
+        else:
+            self.decoder = decoder
 
     def forward(
         self, input_data: Union[Tensor, MetaTensor]
