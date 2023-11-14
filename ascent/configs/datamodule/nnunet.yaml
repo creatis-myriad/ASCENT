@@ -8,7 +8,7 @@ data_dir: ${paths.data_dir}
 batch_size: ???
 dataset_name: ???
 patch_size: ${model.net.patch_size}
-in_channels: ${model.net.in_channels}
+in_channels: ${model.net.encoder.in_channels}
 # Whether to do dummy 2D data augmentation during the training of 3D-UNet
 do_dummy_2D_data_aug: ???
 fold: ${fold}
