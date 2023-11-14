@@ -2,8 +2,12 @@ defaults:
   - nnunet
 
 net:
-  in_channels: 1
-  num_classes: 3
   patch_size: [640, 512]
-  kernels: [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
-  strides: [[1, 1], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2]]
+  encoder:
+    in_channels: 1
+    num_stages: 8
+    dim: 2
+    kernels: [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
+    strides: [[1, 1], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2]]
+  decoder:
+    num_classes: 3

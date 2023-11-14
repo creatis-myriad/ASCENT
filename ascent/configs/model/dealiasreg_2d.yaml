@@ -5,12 +5,13 @@ defaults:
 _target_: ascent.models.nnunet_reg_module.nnUNetRegLitModule
 
 net:
-  in_channels: 2
-  num_classes: 1
   patch_size: [40, 192]
-  kernels: [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
-  strides: [[1, 1], [2, 2], [2, 2], [2, 2], [1, 2]]
-  deep_supervision: False
-  out_seg_bias: True
+  encoder:
+    in_channels: 2
+    kernels: [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
+    strides: [[1, 1], [2, 2], [2, 2], [2, 2], [1, 2]]
+  decoder:
+    num_classes: 1
+    deep_supervision: False
 
 name: nnUNetReg
