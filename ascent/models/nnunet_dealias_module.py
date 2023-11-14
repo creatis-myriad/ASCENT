@@ -26,7 +26,7 @@ class nnUNetDealiasLitModule(nnUNetRegLitModule):
         # to initialize some class variables that depend on the model
         self.threeD = len(self.net.denoiser.patch_size) == 3
         self.patch_size = list(self.net.denoiser.patch_size)
-        self.num_classes = self.net.denoiser.num_classes
+        self.num_classes = self.net.denoiser.decoder.num_classes
 
         # create a dummy input to display model summary
         self.example_input_array = torch.rand(1, 2, *self.patch_size, device=self.device)
