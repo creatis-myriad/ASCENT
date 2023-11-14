@@ -1,0 +1,23 @@
+_target_: ascent.models.components.encoders.convnext.ConvNeXt
+
+in_channels: ???
+num_stages: ???
+dim: ???
+stem_kernel: 7
+kernels: ???
+strides: ???
+num_conv_per_stage: [3, 3, 9, 3]
+num_features_per_stage: [96, 192, 384, 768]
+conv_bias: True
+expansion_rate: 4
+stochastic_depth_p: 0
+layer_scale_init_value: 1e-6
+conv_kwargs: null
+norm_layer: "group"
+norm_kwargs: null
+activation: "gelu"
+activation_kwargs: null
+drop_block: False
+drop_kwargs: None
+return_skip: True
+initialization: "trunc_normal"

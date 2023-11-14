@@ -1,0 +1,22 @@
+_target_: ascent.models.components.encoders.unet_encoder.UNetEncoder
+
+in_channels: ???
+num_stages: ???
+dim: ???
+kernels: ???
+strides: ???
+start_features: 32
+num_conv_per_stage: 2
+conv_bias: True
+conv_kwargs: null
+pooling: "stride"
+adaptive_pooling: False
+norm_layer: "instance"
+norm_kwargs: null
+activation: "leakyrelu"
+activation_kwargs: { "inplace": True }
+drop_block: False
+drop_kwargs: None
+residual: False
+return_skip: True
+initialization: "kaiming_normal"
