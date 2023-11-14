@@ -191,6 +191,18 @@ def get_dim_from_patch_size(
         raise NotImplementedError("Only 2D and 3D patch size is supported.")
 
 
+def get_num_stages_from_kernels(kernels: Union[list[int], omegaconf.ListConfig]) -> int:
+    """Get the number of stages from the kernels.
+
+    Args:
+        kernels: List of kernels.
+
+    Returns:
+        Number of stages.
+    """
+    return len(kernels)
+
+
 OmegaConf.register_new_resolver("get_rot_range", determine_rotation_range)
 OmegaConf.register_new_resolver("get_interp_mode", determine_interpolation_mode)
 OmegaConf.register_new_resolver("get_seg_key", determine_seg_key_based_on_keys)
@@ -203,3 +215,4 @@ OmegaConf.register_new_resolver(
 OmegaConf.register_new_resolver("get_crop_size", get_crop_size)
 OmegaConf.register_new_resolver("get_in_channels_from_model_net", get_in_channels_from_model_net)
 OmegaConf.register_new_resolver("get_dim_from_patch_size", get_dim_from_patch_size)
+OmegaConf.register_new_resolver("get_num_stages_from_kernels", get_num_stages_from_kernels)
