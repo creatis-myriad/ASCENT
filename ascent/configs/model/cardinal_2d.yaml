@@ -5,8 +5,6 @@ net:
   patch_size: [640, 512]
   encoder:
     in_channels: 1
-    num_stages: 8
-    dim: 2
     kernels: [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
     strides: [[1, 1], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2]]
   decoder:
