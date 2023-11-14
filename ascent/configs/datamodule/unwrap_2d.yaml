@@ -3,6 +3,6 @@ defaults:
 
 dataset_name: UNWRAPV2
 patch_size: ${model.net.denoiser.patch_size}
-in_channels: ${model.net.denoiser.in_channels}
+in_channels: ${get_in_channels_from_model_net:${model.net.denoiser}}
 separate_transform: True
 exclude_Dpower: False

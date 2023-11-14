@@ -1,3 +1,6 @@
+defaults:
+  - .@denoiser: unet
+
 _target_: ascent.models.components.spyrit_net.SpyritNet
 
 unwrap:
@@ -7,18 +10,14 @@ unwrap:
   in_channels: 2
 
 denoiser:
-  _target_: ascent.models.components.unet.UNet
-  in_channels: 3
-  num_classes: 1
   patch_size: [40, 192]
-  kernels: [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
-  strides: [[1, 1], [2, 2], [2, 2], [2, 2], [1, 2]]
-  normalization_layer: "instance"
-  negative_slope: 1e-2
-  deep_supervision: False
-  attention: False
-  drop_block: False
-  residual: False
-  out_seg_bias: True
+  encoder:
+    in_channels: 3
+    num_stages: ${get_num_stages_from_kernels:${model.net.denoiser.encoder.kernels}}
+    dim: 2
+    kernels: [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
+    strides: [[1, 1], [2, 2], [2, 2], [2, 2], [1, 2]]
+  decoder:
+    num_classes: 1
 
 postprocess: True

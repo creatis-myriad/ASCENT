@@ -1,0 +1,9 @@
+_target_: ascent.models.components.decoders.unet_decoder.UNetDecoder
+
+_partial_: true
+num_classes: ???
+num_conv_per_stage: 2
+output_conv_bias: True
+deep_supervision: True
+attention: False
+initialization: null

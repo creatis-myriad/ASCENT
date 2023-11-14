@@ -149,6 +149,82 @@ def get_crop_size(patch_size: Union[list[int], tuple[int, ...]]) -> omegaconf.Li
         return omegaconf.ListConfig([*patch_size, 1])
 
 
+def get_in_channels_from_model_net(net: omegaconf.DictConfig) -> int:
+    """Get the number of input channels from the model net.
+
+    Args:
+        net: Model net.
+
+    Returns:
+        Number of input channels.
+
+    Raises:
+        ValueError: If the number of input channels could not be determined.
+    """
+    if "in_channels" in net:
+        return net.in_channels
+    elif "encoder" in net:
+        return net.encoder.in_channels
+    else:
+        raise ValueError("Could not determine number of input channels.")
+
+
+def get_dim_from_patch_size(
+    patch_size: Union[list[int], tuple[int, ...], omegaconf.ListConfig]
+) -> int:
+    """Get the dimension from the patch size.
+
+    Args:
+        patch_size: Patch size used by the model.
+
+    Returns:
+        Dimension.
+
+    Raises:
+        NotImplementedError: If the patch size is not 2D or 3D.
+    """
+    if len(patch_size) == 3:
+        return 3
+    elif len(patch_size) == 2:
+        return 2
+    else:
+        raise NotImplementedError("Only 2D and 3D patch size is supported.")
+
+
+def get_num_stages_from_kernels(kernels: Union[list[int], omegaconf.ListConfig]) -> int:
+    """Get the number of stages from the kernels.
+
+    Args:
+        kernels: List of kernels.
+
+    Returns:
+        Number of stages.
+    """
+    return len(kernels)
+
+
+def determine_batch_dice_from_patch_size(
+    patch_size: Union[list[int], tuple[int, ...], omegaconf.ListConfig]
+) -> bool:
+    """Determine whether to use batch dice loss based on the patch size.
+
+    Args:
+        patch_size: Patch size used by the model.
+
+    Returns:
+        Whether to use batch dice loss.
+
+    Raises:
+        NotImplementedError: If the patch size is not 2D or 3D.
+    """
+    if len(patch_size) == 3:
+        return False
+    elif len(patch_size) == 2:
+        return True
+    else:
+        raise NotImplementedError("Only 2D and 3D patch size is supported.")
+
+
 OmegaConf.register_new_resolver("get_rot_range", determine_rotation_range)
 OmegaConf.register_new_resolver("get_interp_mode", determine_interpolation_mode)
 OmegaConf.register_new_resolver("get_seg_key", determine_seg_key_based_on_keys)
@@ -159,3 +235,7 @@ OmegaConf.register_new_resolver(
     "get_noise_and_intensity_transform_key", determine_key_for_noise_and_intensity_transforms
 )
 OmegaConf.register_new_resolver("get_crop_size", get_crop_size)
+OmegaConf.register_new_resolver("get_in_channels_from_model_net", get_in_channels_from_model_net)
+OmegaConf.register_new_resolver("get_dim_from_patch_size", get_dim_from_patch_size)
+OmegaConf.register_new_resolver("get_num_stages_from_kernels", get_num_stages_from_kernels)
+OmegaConf.register_new_resolver("do_batch_dice", determine_batch_dice_from_patch_size)
