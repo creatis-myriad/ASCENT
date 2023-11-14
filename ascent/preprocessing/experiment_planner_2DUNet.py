@@ -313,8 +313,6 @@ class nnUNetPlanner2D:
                     "patch_size": flist(plan["patch_size"].tolist()),
                     "encoder": {
                         "in_channels": len(list(self.dataset_properties["modalities"].keys())),
-                        "num_stages": len(plan["pool_op_kernel_sizes"]),
-                        "dim": dim,
                         "kernels": flist(plan["conv_kernel_sizes"]),
                         "strides": flist(plan["pool_op_kernel_sizes"]),
                     },
@@ -330,8 +328,6 @@ class nnUNetPlanner2D:
                     "patch_size": flist(plan["patch_size"].tolist()),
                     "encoder": {
                         "in_channels": len(list(self.dataset_properties["modalities"].keys())),
-                        "num_stages": len(plan["pool_op_kernel_sizes"]),
-                        "dim": dim,
                         "kernels": flist(plan["conv_kernel_sizes"]),
                         "strides": flist(plan["pool_op_kernel_sizes"]),
                     },
