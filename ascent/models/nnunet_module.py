@@ -95,11 +95,11 @@ class nnUNetLitModule(LightningModule):
         # to initialize some class variables that depend on the model
         self.threeD = len(self.net.patch_size) == 3
         self.patch_size = list(self.net.patch_size)
-        self.num_classes = self.net.decoder.num_classes
+        self.num_classes = self.net.num_classes
 
         # create a dummy input to display model summary
         self.example_input_array = torch.rand(
-            1, self.net.encoder.in_channels, *self.patch_size, device=self.device
+            1, self.net.in_channels, *self.patch_size, device=self.device
         )
 
         # get the flipping axes in case of tta
@@ -466,7 +466,7 @@ class nnUNetLitModule(LightningModule):
         Returns:
             Train loss.
         """
-        if self.net.decoder.deep_supervision:
+        if self.net.deep_supervision:
             loss = self.loss(preds[0], label)
             for i, pred in enumerate(preds[1:]):
                 downsampled_label = nn.functional.interpolate(label, pred.shape[2:])
