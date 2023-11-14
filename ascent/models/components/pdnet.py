@@ -1,4 +1,4 @@
-from typing import Literal, Sequence
+from typing import Union
 
 import torch
 from torch import Tensor, nn
@@ -25,7 +25,7 @@ class PDNet(nn.Module):
         n_dual: int,
         in_channels: int,
         num_classes: int,
-        patch_size: list[int, ...],
+        patch_size: Union[list[int], tuple[int, ...]],
         negative_slope: float = 1e-2,
         out_conv: bool = True,
     ) -> None:
@@ -249,7 +249,7 @@ class OriPDNet(nn.Module):
         n_dual: int,
         in_channels: int,
         num_classes: int,
-        patch_size: list[int, ...],
+        patch_size: Union[list[int], tuple[int, ...]],
         negative_slope: float = 1e-2,
         out_conv: bool = True,
     ) -> None:
@@ -500,9 +500,9 @@ class PDUNet(nn.Module):
         n_dual: int,
         in_channels: int,
         num_classes: int,
-        patch_size: list[int, ...],
-        kernels: list[Sequence[tuple[int]]],
-        strides: list[Sequence[tuple[int]]],
+        patch_size: Union[list[int], tuple[int, ...]],
+        kernels: Union[int, list[Union[int, list[int]]], tuple[Union[int, tuple[int, ...]], ...]],
+        strides: Union[int, list[Union[int, list[int]]], tuple[Union[int, tuple[int, ...]], ...]],
         out_conv: bool = True,
     ) -> None:
         """Initialize class instance.
@@ -514,10 +514,14 @@ class PDUNet(nn.Module):
             in_channels: Number of input channels.
             num_classes: Number of segmentation classes.
             patch_size: Input patch size.
-            kernels: List of list containing convolution kernel size of the first convolution layer
-                of each double convolutions block.
-            strides: List of list containing convolution strides of the first convolution layer
-                of each double convolutions block.
+            kernels: Size of the convolving kernel. If the value is an integer, then the same
+                value is used for all spatial dimensions and all stages. If the value is a sequence
+                , then each value is used for each stage. If the value is a sequence of sequence,
+                then each value is used for each stage and each spatial dimension.
+            strides: Stride of the convolution. If the value is an integer, then the same value is
+                used for all spatial dimensions and all stages. If the value is a sequence
+                , then each value is used for each stage. If the value is a sequence of sequence,
+                then each value is used for each stage and each spatial dimension.
             out_conv: Whether to apply convolution to the output.
 
         Raises:
@@ -693,4 +697,4 @@ if __name__ == "__main__":
     )
     dummy_input = torch.rand((2, 1, *patch_size))
     print(summary(pdnet, input_size=dummy_input.shape))
-    # out = pdnet(dummy_input)
+    out = pdnet(dummy_input)
