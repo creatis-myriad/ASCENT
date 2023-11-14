@@ -40,7 +40,7 @@ class nnUNetPlanner3D(nnUNetPlanner2D):
         num_cases: int,
         num_classes: int,
         num_modalities: int,
-    ) -> dict[str, Union[int, bool, list[Sequence[int]], list[list[Sequence[int]]]]]:
+    ) -> dict[str, Union[int, bool, list[int], list[list[int]]]]:
         """Compute training and model parameters based on nnUNet's heuristic rules.
 
         Computation of 3D input patch shape is different from 2D. Instead of using directly the

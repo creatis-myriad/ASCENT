@@ -90,7 +90,7 @@ class nnUNetPlanner2D:
         num_cases: int,
         num_classes: int,
         num_modalities: int,
-    ) -> dict[str, Union[int, bool, list[Sequence[int]], list[list[Sequence[int]]]]]:
+    ) -> dict[str, Union[int, bool, list[int], list[list[int]]]]:
         """Compute training and model parameters based on nnUNet's heuristic rules.
 
         Args:
@@ -250,7 +250,7 @@ class nnUNetPlanner2D:
         self.write_plans_to_yaml(plan)
 
     def write_plans_to_yaml(
-        self, plan: dict[str, Union[int, bool, list[Sequence[int]], list[list[Sequence[int]]]]]
+        self, plan: dict[str, Union[int, bool, list[int], list[list[int]]]]
     ) -> None:
         """Write plans to yaml file.
 
@@ -306,45 +306,20 @@ class nnUNetPlanner2D:
         datamodule = ruamel.yaml.comments.CommentedMap(datamodule)
         datamodule.yaml_set_comment_before_after_key("batch_size", before="\n")
 
-        if dim == 2:
-            model = {
-                "defaults": ["nnunet"],
-                "net": {
-                    "patch_size": flist(plan["patch_size"].tolist()),
-                    "encoder": {
-                        "in_channels": len(list(self.dataset_properties["modalities"].keys())),
-                        "kernels": flist(plan["conv_kernel_sizes"]),
-                        "strides": flist(plan["pool_op_kernel_sizes"]),
-                    },
-                    "decoder": {
-                        "num_classes": len(self.dataset_properties["all_classes"]) + 1,
-                    },
+        model = {
+            "defaults": ["nnunet"],
+            "net": {
+                "patch_size": flist(plan["patch_size"].tolist()),
+                "encoder": {
+                    "in_channels": len(list(self.dataset_properties["modalities"].keys())),
+                    "kernels": flist(plan["conv_kernel_sizes"]),
+                    "strides": flist(plan["pool_op_kernel_sizes"]),
                 },
-            }
-        elif dim == 3:
-            model = {
-                "defaults": ["nnunet"],
-                "net": {
-                    "patch_size": flist(plan["patch_size"].tolist()),
-                    "encoder": {
-                        "in_channels": len(list(self.dataset_properties["modalities"].keys())),
-                        "kernels": flist(plan["conv_kernel_sizes"]),
-                        "strides": flist(plan["pool_op_kernel_sizes"]),
-                    },
-                    "decoder": {
-                        "num_classes": len(self.dataset_properties["all_classes"]) + 1,
-                    },
+                "decoder": {
+                    "num_classes": len(self.dataset_properties["all_classes"]) + 1,
                 },
-                "loss": {
-                    "soft_dice_kwargs": fdict(
-                        {
-                            DoubleQuote("batch_dice"): False,
-                            DoubleQuote("smooth"): 1e-5,
-                            DoubleQuote("do_bg"): False,
-                        }
-                    ),
-                },
-            }
+            },
+        }
 
         model = ruamel.yaml.comments.CommentedMap(model)
         model.yaml_set_comment_before_after_key("net", before="\n")
