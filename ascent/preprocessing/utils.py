@@ -1,15 +1,17 @@
 from copy import deepcopy
-from typing import Union
+from typing import Any, List, Tuple, Union
 
 import numpy as np
 
 
 def get_pool_and_conv_props(
-    spacing: tuple[int, ...],
-    patch_size: tuple[int, ...],
+    spacing: Union[list[float], tuple[float, ...]],
+    patch_size: Union[list[int], tuple[int, ...], np.ndarray[Any, np.dtype[int]]],
     min_feature_map_size: int,
     max_numpool: int,
-) -> tuple[list[int, ...]]:
+) -> tuple[
+    list[int], list[list[int]], list[list[int]], np.ndarray[Any, np.dtype[int]], np.ndarray
+]:
     """Compute the optimum patch size, strides, number of pooling, and convolution kernel sizes
     based on the given arguments.
 
@@ -25,7 +27,7 @@ def get_pool_and_conv_props(
             - stride per axis for each convolution layer
             - kernel size per axis for each convolution layer
             - patch size that is divisible by the number of pooling
-            - 2 ** number of pooling per axis
+            - integer array to divide each axis of the input patch with
     """
     dim = len(spacing)
 
@@ -38,8 +40,9 @@ def get_pool_and_conv_props(
     num_pool_per_axis = [0] * dim
 
     while True:
-        # This is a problem because sometimes we have spacing 20, 50, 50 and we want to still keep pooling.
-        # Here we would stop however. This is not what we want! Fixed in get_pool_and_conv_propsv2
+        # This is a problem because sometimes we have spacing 20, 50, 50 and we want to still
+        # keep pooling. Here we would stop however. This is not what we want! Fixed in
+        # get_pool_and_conv_propsv2
         min_spacing = min(current_spacing)
         valid_axes_for_pool = [i for i in range(dim) if current_spacing[i] / min_spacing < 2]
         axes = []
@@ -101,7 +104,9 @@ def get_pool_and_conv_props(
     )
 
 
-def get_shape_must_be_divisible_by(num_pool_per_axis: tuple[int, ...]) -> np.ndarray:
+def get_shape_must_be_divisible_by(
+    num_pool_per_axis: Union[list[int], tuple[int, ...]]
+) -> np.ndarray:
     """Compute 2 ** number of pooling per axis to get the integers to divide each axis of the input
     patch with.
 
@@ -109,19 +114,19 @@ def get_shape_must_be_divisible_by(num_pool_per_axis: tuple[int, ...]) -> np.nda
         num_pool_per_axis: Number of pooling per axis.
 
     Returns:
-        Numpy array containing 2 ** number of pooling per axis.
+        Integer numpy array to divide each axis of the input patch with.
     """
     return 2 ** np.array(num_pool_per_axis)
 
 
 def pad_shape(
-    shape: tuple[int, ...],
+    shape: Union[list[int], tuple[int, ...]],
     must_be_divisible_by: Union[
         tuple[int, ...],
-        list[int, ...],
-        np.ndarray[int, ...],
+        list[int],
+        np.ndarray[Any, np.dtype[int]],
     ],
-) -> tuple[int, ...]:
+) -> np.ndarray[Any, np.dtype[int]]:
     """Pads ``shape`` so that it is divisibly by ``must_be_divisible_by``.
 
     Args:
@@ -131,6 +136,9 @@ def pad_shape(
 
     Returns:
         Padded shape that is divisible by ``must_be_divisible_by``.
+
+    Raises:
+        ValueError: If len(must_be_divisible_by) != len(shape).
     """
     if not isinstance(must_be_divisible_by, (tuple, list, np.ndarray)):
         must_be_divisible_by = [must_be_divisible_by] * len(shape)

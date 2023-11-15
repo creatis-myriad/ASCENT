@@ -18,10 +18,6 @@ class ConvNeXt(nn.Module):
         Liu et al. "A ConvNet for the 2020s". IEEE/CVF CVPR 2022.
     """
 
-    # define some static class attributes
-    MAX_NUM_FILTERS_2D = 480
-    MAX_NUM_FILTERS_3D = 320
-
     def __init__(
         self,
         in_channels: int,
