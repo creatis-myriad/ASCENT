@@ -17,8 +17,11 @@ class UNetDecoder(nn.Module):
 
     def __init__(
         self,
-        encoder: Literal[UNetEncoder, ConvNeXt],
+        encoder: Union[Type[UNetEncoder], Type[ConvNeXt]],
         num_classes: int,
+        kernels: Optional[
+            Union[int, list[Union[int, list[int]]], tuple[Union[int, tuple[int, ...]], ...]]
+        ] = None,
         num_conv_per_stage: Union[int, list[int], tuple[int, ...]] = 2,
         output_conv_bias: bool = True,
         deep_supervision: bool = True,
@@ -30,8 +33,14 @@ class UNetDecoder(nn.Module):
         """Initialize class instance.
 
         Args:
-            encoder: A U-Net encoder.
+            encoder: A U-Net type encoder that returns skip connections.
             num_classes: Number of classes to predict.
+            kernels: Size of the convolving kernel. If the value is None, the encoder kernels will
+                be used for the decoder. If the value is an integer, then the same value is used
+                for all spatial dimensions and all stages. If the value is a sequence of length
+                `num_stages`, then each value is used for each stage. If the value is a sequence of
+                length `num_stages` and each element is a sequence of length `dim`, then each value
+                is used for each stage and each spatial dimension.
             num_conv_per_stage: Number of convolutional layers per decoder stage.
             output_conv_bias: If True, add bias to the output convolutional layer.
             deep_supervision: If True, add deep supervision heads.
@@ -52,12 +61,35 @@ class UNetDecoder(nn.Module):
         self.num_classes = num_classes
         num_stages_encoder = len(encoder.filters_per_stage)
 
+        if kernels is not None:
+            if isinstance(kernels, int):
+                kernels = (kernels,) * (num_stages_encoder - 1)
+
+            if not len(kernels) == num_stages_encoder - 1:
+                raise ValueError(
+                    f"len(kernels) must be equal to num_stages_encoder - 1: "
+                    f"{num_stages_encoder - 1}"
+                )
+
+            decoder_kernels = [
+                [kernel] if isinstance(kernel, int) else list(kernel) for kernel in kernels
+            ]
+            # add the dummy bottleneck kernel
+            decoder_kernels.append(
+                [encoder.kernels[-1]]
+                if isinstance(encoder.kernels[-1], int)
+                else list(encoder.kernels[-1])
+            )
+        else:
+            decoder_kernels = encoder.kernels
+
         if isinstance(num_conv_per_stage, int):
             num_conv_per_stage = (num_conv_per_stage,) * (num_stages_encoder - 1)
 
         if not len(num_conv_per_stage) == num_stages_encoder - 1:
             raise ValueError(
-                f"len(n_conv_per_stage) must be equal to num_stages_encoder: {num_stages_encoder}"
+                f"len(n_conv_per_stage) must be equal to num_stages_encoder - 1: "
+                f"{num_stages_encoder - 1}"
             )
 
         # start with the bottleneck and work way up
@@ -73,7 +105,7 @@ class UNetDecoder(nn.Module):
                     num_conv_per_stage[stage - 1],
                     input_features_below,
                     input_features_skip,
-                    encoder.kernels[-(stage + 1)],
+                    decoder_kernels[-(stage + 1)],
                     stride_transpconv,
                     encoder.dim,
                     attention,
@@ -200,6 +232,7 @@ if __name__ == "__main__":
     unet_decoder = UNetDecoder(
         encoder=encoder,
         num_classes=4,
+        kernels=None,
         num_conv_per_stage=2,
         deep_supervision=True,
         attention=False,
