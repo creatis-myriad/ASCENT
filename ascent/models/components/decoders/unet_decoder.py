@@ -17,7 +17,7 @@ class UNetDecoder(nn.Module):
 
     def __init__(
         self,
-        encoder: Union[Type[UNetEncoder], Type[ConvNeXt]],
+        encoder: Union[UNetEncoder, ConvNeXt],
         num_classes: int,
         kernels: Optional[
             Union[int, list[Union[int, list[int]]], tuple[Union[int, tuple[int, ...]], ...]]

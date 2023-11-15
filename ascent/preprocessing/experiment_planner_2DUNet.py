@@ -60,8 +60,8 @@ class nnUNetPlanner2D:
 
     @staticmethod
     def static_estimate_VRAM_usage(
-        patch_size: Union[list[int], tuple[int, ...]],
-        encoder: Literal[Type[UNetEncoder], Type[ConvNeXt]],
+        patch_size: Union[list[int], tuple[int, ...], np.ndarray[Any, np.dtype[int]]],
+        encoder: Union[Type[UNetEncoder], Type[ConvNeXt]],
         encoder_kwargs: dict[str, Any],
         decoder: Type[UNetDecoder],
         decoder_kwargs: dict[str, Any],
@@ -78,6 +78,8 @@ class nnUNetPlanner2D:
         Returns:
             Rough VRAM usage of a 2D/3D U-Net.
         """
+        if isinstance(patch_size, np.ndarray):
+            patch_size = patch_size.tolist()
         encoder = encoder(**encoder_kwargs)
         decoder = decoder(encoder, **decoder_kwargs)
         net = UNet(patch_size, encoder, decoder)
@@ -86,7 +88,7 @@ class nnUNetPlanner2D:
     def get_properties(
         self,
         median_shape: np.array,
-        current_spacing: list,
+        current_spacing: list[float],
         num_cases: int,
         num_classes: int,
         num_modalities: int,

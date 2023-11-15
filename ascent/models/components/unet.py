@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Literal, Union
+from typing import Literal, Type, Union
 
 import torch
 from monai.data import MetaTensor
@@ -33,8 +33,8 @@ class UNet(nn.Module):
     def __init__(
         self,
         patch_size: Union[list[int], tuple[int, ...]],
-        encoder: Literal[UNetEncoder, ConvNeXt],
-        decoder: Literal[UNetDecoder],
+        encoder: Union[UNetEncoder, ConvNeXt],
+        decoder: Union[UNetDecoder, partial],
     ) -> None:
         """Initialize class instance.
 
