@@ -3,7 +3,6 @@ from typing import Literal, Optional, Union
 import numpy as np
 import torch
 from einops.layers.torch import Rearrange
-from omegaconf.listconfig import ListConfig
 from torch import Tensor, nn
 from torchvision.ops import StochasticDepth
 
@@ -67,14 +66,14 @@ class ConvBlock(nn.Module):
         if not num_conv > 0:
             raise ValueError("`num_conv` must be strictly greater than 0!")
 
-        if isinstance(out_channels, (tuple, list, ListConfig)):
-            if not len(out_channels) == num_conv:
-                raise ValueError(
-                    f"`out_channels` {out_channels} must be an integer or a tuple/list of length "
-                    f"{num_conv}!"
-                )
         if isinstance(out_channels, int):
             out_channels = (out_channels,) * num_conv
+
+        if not len(out_channels) == num_conv:
+            raise ValueError(
+                f"`out_channels` {out_channels} must be an integer or a tuple/list of length "
+                f"{num_conv}!"
+            )
 
         # Store stride, out_channels, and num_conv for computing total number of pixels/voxels in
         # the output feature map
@@ -192,14 +191,14 @@ class ResidBlock(nn.Module):
         if not num_conv > 1:
             raise ValueError("`num_conv` must be greater than 1!")
 
-        if isinstance(out_channels, (tuple, list, ListConfig)):
-            if not len(out_channels) == num_conv:
-                raise ValueError(
-                    f"`out_channels` {out_channels} must be an integer or a tuple/list of length "
-                    f"{num_conv}!"
-                )
         if isinstance(out_channels, int):
             out_channels = (out_channels,) * num_conv
+
+        if not len(out_channels) == num_conv:
+            raise ValueError(
+                f"`out_channels` {out_channels} must be an integer or a tuple/list of length "
+                f"{num_conv}!"
+            )
 
         # Store stride, out_channels, and num_convs for computing total number of pixels/voxels in
         # the output feature map
@@ -281,10 +280,13 @@ class ResidBlock(nn.Module):
         """Compute total number of pixels/voxels in the output feature map after convolutions.
 
         Args:
-            input_size: Size of the input image.
+            input_size: Size of the input image. (H, W(, D))
 
         Returns:
             Number of pixels/voxels in the output feature map after convolution.
+
+        Raises:
+            ValueError: If length of `input_size` is not equal to `dim`.
         """
         if not len(input_size) == len(self.stride):
             raise ValueError(
@@ -455,10 +457,13 @@ class ConvNeXtBlock(nn.Module):
         """Compute total number of pixels/voxels in the output feature map after convolutions.
 
         Args:
-            input_size: Size of the input image.
+            input_size: Size of the input image. (H, W(, D))
 
         Returns:
             Number of pixels/voxels in the output feature map after convolution.
+
+        Raises:
+            ValueError: If length of `input_size` is not equal to `dim`.
         """
         if not len(input_size) == len(self.stride):
             raise ValueError(
@@ -528,14 +533,14 @@ class UpsampleBlock(nn.Module):
         if not num_conv > 0:
             raise ValueError("`num_conv` must be strictly greater than 0!")
 
-        if isinstance(out_channels, (tuple, list, ListConfig)):
-            if not len(out_channels) == num_conv:
-                raise ValueError(
-                    f"`out_channels` {out_channels} must be an integer or a tuple/list of length "
-                    f"{num_conv}!"
-                )
         if isinstance(out_channels, int):
             out_channels = (out_channels,) * num_conv
+
+        if not len(out_channels) == num_conv:
+            raise ValueError(
+                f"`out_channels` {out_channels} must be an integer or a tuple/list of length "
+                f"{num_conv}!"
+            )
 
         # Store stride, in_channels, out_channels, and num_conv for computing total number of
         # pixels/voxels in the output feature map
@@ -605,10 +610,13 @@ class UpsampleBlock(nn.Module):
         """Compute total number of pixels/voxels in the output feature map after convolutions.
 
         Args:
-            input_size: Size of the input image.
+            input_size: Size of the input image. (H, W(, D))
 
         Returns:
             Number of pixels/voxels in the output feature map after convolution.
+
+        Raises:
+            ValueError: If length of `input_size` is not equal to `dim`.
         """
         if not len(input_size) == len(self.stride):
             raise ValueError(
@@ -669,10 +677,13 @@ class OutputBlock(nn.Module):
         """Compute total number of pixels/voxels in the output feature map after convolutions.
 
         Args:
-            input_size: Size of the input image.
+            input_size: Size of the input image. (H, W(, D))
 
         Returns:
             Number of pixels/voxels in the output feature map after convolution.
+
+        Raises:
+            ValueError: If length of `input_size` is not equal to `dim`.
         """
         if not len(input_size) == len(self.stride):
             raise ValueError(
@@ -680,58 +691,3 @@ class OutputBlock(nn.Module):
             )
 
         return np.prod([self.out_channels, *input_size], dtype=np.int64)
-
-
-if __name__ == "__main__":
-    from torchinfo import summary
-
-    kernels = 3
-    strides = 2
-    num_conv = 4
-    # conv = ResidBlock(
-    #     num_conv=num_conv,
-    #     in_channels=1,
-    #     out_channels=[16, 32, 64, 128],
-    #     kernel_size=kernels,
-    #     stride=strides,
-    #     dim=2,
-    #     norm_layer="instance",
-    #     activation="leakyrelu",
-    #     conv_kwargs=None,
-    #     norm_kwargs=None,
-    #     activation_kwargs={"inplace": True},
-    #     conv_bias=True,
-    #     drop_block=False,
-    # )
-    # conv = ConvNeXtBlock(
-    #     in_channels=16,
-    #     kernel_size=7,
-    #     stride=1,
-    #     dim=2,
-    #     norm_layer="layer",
-    #     activation="gelu",
-    #     conv_bias=True,
-    #     drop_block=False,
-    #     stochastic_depth_p=0.0,
-    #     layer_scale_init_value=1e-6,
-    # )
-    conv = OutputBlock(
-        in_channels=16,
-        out_channels=1,
-        dim=2,
-        conv_bias=True,
-        conv_kwargs=None,
-    )
-    print(conv)
-    dummy_input = torch.rand((2, 16, 640, 512))
-    out = conv(dummy_input)
-    print(conv.compute_pixels_in_output_feature_map((640, 512)))
-    print(
-        summary(
-            conv,
-            input_size=(2, 16, 640, 512),
-            device="cpu",
-            depth=4,
-            col_names=("input_size", "output_size", "num_params"),
-        )
-    )

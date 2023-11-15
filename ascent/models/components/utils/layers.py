@@ -2,7 +2,6 @@ from typing import Literal, Optional, Union
 
 import numpy as np
 from monai.utils import has_option
-from omegaconf.listconfig import ListConfig
 from torch import Tensor, nn
 
 from ascent.models.components.utils.normalization import LayerNorm
@@ -334,7 +333,7 @@ class ConvLayer(nn.Module):
         if drop_kwargs is None:
             drop_kwargs = {}
 
-        if not isinstance(kernel_size, (tuple, list, ListConfig)):
+        if isinstance(kernel_size, int):
             kernel_size = (kernel_size,) * dim
 
         if not len(kernel_size) == dim:
@@ -343,7 +342,7 @@ class ConvLayer(nn.Module):
                 f"{dim}!"
             )
 
-        if not isinstance(stride, (tuple, list, ListConfig)):
+        if isinstance(stride, int):
             stride = (stride,) * dim
 
         if not len(stride) == dim:
@@ -383,10 +382,13 @@ class ConvLayer(nn.Module):
         """Compute total number of pixels/voxels in the output feature map after convolution.
 
         Args:
-            input_size: Size of the input image.
+            input_size: Size of the input image. (H, W(, D))
 
         Returns:
             Number of pixels/voxels in the output feature map after convolution.
+
+        Raises:
+            ValueError: If length of `input_size` is not equal to `dim`.
         """
         if not len(input_size) == len(self.stride):
             raise ValueError(
@@ -462,10 +464,13 @@ class AttentionLayer(nn.Module):
         """Compute total number of pixels/voxels in the output feature map after convolution.
 
         Args:
-            input_size: Size of the input image.
+            input_size: Size of the input image. (H, W(, D))
 
         Returns:
             Number of pixels/voxels in the output feature map after convolution.
+
+        Raises:
+            ValueError: If length of `input_size` is not equal to `dim`.
         """
         if not len(input_size) == len(self.stride):
             raise ValueError(

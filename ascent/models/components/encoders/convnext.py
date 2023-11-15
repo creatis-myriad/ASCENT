@@ -87,6 +87,7 @@ class ConvNeXt(nn.Module):
         Raises:
             ValueError: When `len(kernels)` is not equal to `num_stages`.
             ValueError: When `len(strides)` is not equal to `num_stages`.
+            ValueError: When `len(expansion_rate)` is not equal to `num_stages`.
             ValueError: When `len(n_conv_per_stage)` is not equal to `num_stages`.
             ValueError: When `len(num_features_per_stage)` is not equal to `num_stages`.
         """
@@ -94,6 +95,9 @@ class ConvNeXt(nn.Module):
 
         if isinstance(stem_kernel, int):
             stem_kernel = (stem_kernel,) * dim
+
+        if isinstance(kernels, int):
+            kernels = (kernels,) * num_stages
 
         if isinstance(strides, int):
             strides = (strides,) * num_stages
@@ -112,6 +116,9 @@ class ConvNeXt(nn.Module):
 
         if not len(strides) == num_stages:
             raise ValueError(f"len(strides) must be equal to num_stages: {num_stages}")
+
+        if not len(expansion_rate) == num_stages:
+            raise ValueError(f"len(expansion_rate) must be equal to num_stages: {num_stages}")
 
         if not len(num_conv_per_stage) == num_stages:
             raise ValueError(f"len(num_conv_per_stage) must be equal to num_stages: {num_stages}")
@@ -250,10 +257,13 @@ class ConvNeXt(nn.Module):
         """Compute total number of pixels/voxels in the output feature map after convolutions.
 
         Args:
-            input_size: Size of the input image.
+            input_size: Size of the input image. (H, W(, D))
 
         Returns:
             Number of pixels/voxels in the output feature map after convolution.
+
+        Raises:
+            ValueError: If length of `input_size` is not equal to `dim`.
         """
         if not len(input_size) == len(self.strides[0]):
             raise ValueError(

@@ -132,10 +132,13 @@ class UNetDecoder(nn.Module):
         """Compute total number of pixels/voxels in the output feature map after convolutions.
 
         Args:
-            input_size: Size of the input image of the encoder.
+            input_size: Size of the input image. (H, W(, D))
 
         Returns:
             Number of pixels/voxels in the output feature map after convolution.
+
+        Raises:
+            ValueError: If length of `input_size` is not equal to `dim`.
         """
         if not len(input_size) == len(self.encoder_strides[0]):
             raise ValueError(
