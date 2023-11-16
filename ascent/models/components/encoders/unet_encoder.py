@@ -164,7 +164,11 @@ class UNetEncoder(nn.Module):
         # initialize weights
         init_kwargs = {}
         if activation == "leakyrelu":
-            if activation_kwargs is not None and "negative_slope" in activation_kwargs:
+            if (
+                activation_kwargs is not None
+                and "negative_slope" in activation_kwargs
+                and initialization == "kaiming_normal"
+            ):
                 init_kwargs["neg_slope"] = activation_kwargs["negative_slope"]
         self.apply(get_initialization(initialization, **init_kwargs))
 
