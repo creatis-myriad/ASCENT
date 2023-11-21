@@ -342,7 +342,7 @@ class nnUNetDataModule(LightningDataModule):
                 other_transforms.append(aug)
 
         if self.hparams.augmentation.get("intensity"):
-            for aug in self.hparams.augmentation.get("intensity"):
+            for name, aug in self.hparams.augmentation.get("intensity").items():
                 other_transforms.append(aug)
 
         if self.hparams.augmentation.get("flip"):
