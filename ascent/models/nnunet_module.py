@@ -431,7 +431,7 @@ class nnUNetLitModule(LightningModule):
             A dict with an `optimizer` key, and an optional `lr_scheduler` if a scheduler is used.
         """
         configured_optimizer = {"optimizer": self.hparams.optimizer(params=self.parameters())}
-        if self.hparams.scheduler is not None:
+        if self.hparams.scheduler:
             configured_optimizer["lr_scheduler"] = self.hparams.scheduler(
                 optimizer=configured_optimizer["optimizer"]
             )
