@@ -56,7 +56,7 @@ any of them based on your needs.
      ```
    - Modify the `rand_flip_x` probability to 0.2 during the training:
      ```bash
-     ascent_train experiment=camus_challenge_2d datamodule/augmentation/flip/rand_flip_x.prob=0.2
+     ascent_train experiment=camus_challenge_2d datamodule.augmentation.flip.rand_flip_x.prob=0.2
      ```
 
 ## Overriding data loading configurations
