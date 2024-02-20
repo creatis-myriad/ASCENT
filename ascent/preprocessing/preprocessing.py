@@ -78,6 +78,7 @@ def resample_image(
     lowres_axis: Optional[np.ndarray] = None,
     interp_order: int = 3,
     order_z: int = 0,
+    verbose: bool = False,
 ) -> np.ndarray:
     """Resample an image.
 
@@ -88,6 +89,7 @@ def resample_image(
         lowres_axis: Axis of lowest resolution.
         interp_order: Interpolation order of skimage.transform.resize.
         order_z: Interpolation order for the lowest resolution axis in case of anisotropic image.
+        verbose: Whether to log the resampling message.
 
     Returns:
         Resampled image.
@@ -98,7 +100,8 @@ def resample_image(
         image = image.astype(float)
         resized_channels = []
         if anisotropy_flag:
-            print("Anisotropic image, using separate z resampling")
+            if verbose:
+                print("Anisotropic image, using separate z resampling")
             axis = lowres_axis[0]
             if axis == 0:
                 new_shape_2d = new_shape[1:]
@@ -138,7 +141,8 @@ def resample_image(
                     )
                 resized_channels.append(resized.astype(dtype_data))
         else:
-            print("Not using separate z resampling")
+            if verbose:
+                print("Not using separate z resampling")
             for image_c in image:
                 resized = resize(
                     image_c,
@@ -153,7 +157,8 @@ def resample_image(
         reshaped = np.stack(resized_channels, axis=0)
         return reshaped.astype(dtype_data)
     else:
-        print("No resampling necessary")
+        if verbose:
+            print("No resampling necessary")
         return image
 
 
@@ -164,6 +169,7 @@ def resample_label(
     lowres_axis: Optional[np.ndarray] = None,
     interp_order: int = 1,
     order_z: int = 0,
+    verbose: bool = False,
 ) -> np.ndarray:
     """Resample a label.
 
@@ -174,6 +180,7 @@ def resample_label(
         lowres_axis: Axis of lowest resolution.
         interp_order: Interpolation order of skimage.transform.resize.
         order_z: Interpolation order for the lowest resolution axis in case of anisotropic label.
+        verbose: Whether to log the resampling message.
 
     Returns:
         Resampled label.
@@ -183,7 +190,8 @@ def resample_label(
         reshaped = np.zeros(new_shape, dtype=np.uint8)
         n_class = np.max(label)
         if anisotropy_flag:
-            print("Anisotropic label, using separate z resampling")
+            if verbose:
+                print("Anisotropic label, using separate z resampling")
             axis = lowres_axis[0]
             depth = shape[axis]
             if axis == 0:
@@ -236,7 +244,8 @@ def resample_label(
             else:
                 reshaped = reshaped_2d.astype(np.uint8)
         else:
-            print("Not using separate z resampling")
+            if verbose:
+                print("Not using separate z resampling")
             for class_ in range(1, int(n_class) + 1):
                 mask = label[0] == class_
                 resized = resize(
@@ -253,7 +262,8 @@ def resample_label(
         reshaped = np.expand_dims(reshaped, 0)
         return reshaped
     else:
-        print("No resampling necessary")
+        if verbose:
+            print("No resampling necessary")
         return label
 
 
@@ -275,6 +285,7 @@ class SegPreprocessor:
         do_normalize: bool = True,
         num_workers: int = 12,
         overwrite_existing: bool = False,
+        verbose: bool = False,
     ) -> None:
         """Initialize class instance.
 
@@ -284,6 +295,7 @@ class SegPreprocessor:
             do_normalize: Whether to normalize data.
             num_workers: Number of workers to run the preprocessing.
             overwrite_existing: Whether to overwrite the preprocessed data if it exists.
+            verbose: Whether to log the preprocessing message.
         """
         self.dataset_path = os.path.join(dataset_path, "raw")
         self.cropped_folder = os.path.join(dataset_path, "cropped")
@@ -295,6 +307,7 @@ class SegPreprocessor:
         self.do_normalize = do_normalize
         self.num_workers = num_workers
         self.overwrite_existing = overwrite_existing
+        self.verbose = verbose
         self.target_spacing = None
         self.intensity_properties = OrderedDict()
         self.all_size_reductions = []
@@ -490,7 +503,8 @@ class SegPreprocessor:
             properties["original_spacing"] = np.array(data["image"].meta["pixdim"][1:4].tolist())
             box_start, box_end = generate_spatial_bounding_box(data["image"])
             properties["crop_bbox"] = np.vstack([box_start, box_end])
-            print("\nCropping %s..." % properties["case_identifier"])
+            if self.verbose:
+                print("\nCropping %s..." % properties["case_identifier"])
             data = SpatialCropd(
                 keys=["image", "label"],
                 roi_start=box_start,
@@ -500,15 +514,16 @@ class SegPreprocessor:
             properties["cropping_size_reduction"] = np.prod(
                 properties["shape_after_cropping"]
             ) / np.prod(properties["original_shape"])
-            print(
-                "before crop:",
-                tuple([data["image"].shape[0], *properties["original_shape"].tolist()]),
-                "after crop:",
-                tuple([data["image"].shape[0], *properties["shape_after_cropping"].tolist()]),
-                "spacing:",
-                properties["original_spacing"],
-                "\n",
-            )
+            if self.verbose:
+                print(
+                    "before crop:",
+                    tuple([data["image"].shape[0], *properties["original_shape"].tolist()]),
+                    "after crop:",
+                    tuple([data["image"].shape[0], *properties["shape_after_cropping"].tolist()]),
+                    "spacing:",
+                    properties["original_spacing"],
+                    "\n",
+                )
 
             cropped_filename = os.path.join(
                 self.cropped_folder, "%s.npz" % properties["case_identifier"]
@@ -517,7 +532,8 @@ class SegPreprocessor:
                 self.cropped_folder, "%s.pkl" % properties["case_identifier"]
             )
             all_data = np.vstack([data["image"].array, data["label"].array])
-            print("\nSaving to", cropped_filename)
+            if self.verbose:
+                print("\nSaving to", cropped_filename)
             np.savez_compressed(cropped_filename, data=all_data)
             with open(properties_name, "wb") as f:
                 pickle.dump(properties, f)  # nosec B301
@@ -643,10 +659,12 @@ class SegPreprocessor:
                 use_nonzero_mask_for_norm[i] = False
             else:
                 if np.median(self.all_size_reductions) < 3 / 4.0:
-                    print("Using nonzero mask for normalization")
+                    if self.verbose:
+                        print("Using nonzero mask for normalization")
                     use_nonzero_mask_for_norm[i] = True
                 else:
-                    print("Not using nonzero mask for normalization")
+                    if self.verbose:
+                        print("Not using nonzero mask for normalization")
                     use_nonzero_mask_for_norm[i] = False
 
         use_nonzero_mask_for_normalization = use_nonzero_mask_for_norm
@@ -673,7 +691,8 @@ class SegPreprocessor:
         """
         data, seg, properties = self._load_cropped(case_identifier)
         if not self.do_resample:
-            print("\n", "Skip resampling...")
+            if self.verbose:
+                print("\n", "Skip resampling...")
             properties["resampling_flag"] = False
             properties["shape_after_resampling"] = np.array(data[0].shape)
             properties["spacing_after_resampling"] = properties["original_spacing"]
@@ -703,8 +722,8 @@ class SegPreprocessor:
                 properties["shape_after_cropping"],
                 self.target_spacing,
             )
-            data = resample_image(data, new_shape, anisotropy_flag, axis, 3, 0)
-            seg = resample_label(seg, new_shape, anisotropy_flag, axis, 1, 0)
+            data = resample_image(data, new_shape, anisotropy_flag, axis, 3, 0, self.verbose)
+            seg = resample_label(seg, new_shape, anisotropy_flag, axis, 1, 0, self.verbose)
             properties["anisotropy_flag"] = anisotropy_flag
             properties["shape_after_resampling"] = np.array(data[0].shape)
             properties["spacing_after_resampling"] = np.array(self.target_spacing)
@@ -713,11 +732,12 @@ class SegPreprocessor:
                 "spacing": properties["spacing_after_resampling"],
                 "data.shape (data is resampled)": data.shape,
             }
-
-            print("before:", before, "\nafter: ", after, "\n")
+            if self.verbose:
+                print("before:", before, "\nafter: ", after, "\n")
 
         if not self.do_normalize:
-            print("\nSkip normalization...")
+            if self.verbose:
+                print("\nSkip normalization...")
             properties["normalization_flag"] = False
         else:
             properties["normalization_flag"] = True
@@ -725,13 +745,14 @@ class SegPreprocessor:
             data, seg = self._normalize(data, seg)
 
         all_data = np.vstack((data, seg)).astype(np.float32)
-        print(
-            "Saving: ",
-            os.path.join(
-                self.preprocessed_folder, "data_and_properties", "%s.npz" % case_identifier
-            ),
-            "\n",
-        )
+        if self.verbose:
+            print(
+                "Saving: ",
+                os.path.join(
+                    self.preprocessed_folder, "data_and_properties", "%s.npz" % case_identifier
+                ),
+                "\n",
+            )
         np.savez_compressed(
             os.path.join(
                 self.preprocessed_folder, "data_and_properties", "%s.npz" % case_identifier
@@ -763,7 +784,8 @@ class SegPreprocessor:
         """
         if not len(self.use_nonzero_mask) == len(data):
             raise ValueError("use_nonzero_mask flags should have the same length as data")
-        print("Normalization...")
+        if self.verbose:
+            print("Normalization...")
         for c in range(len(data)):
             scheme = self.modalities[c]
             if scheme == "CT":
@@ -788,7 +810,8 @@ class SegPreprocessor:
                     data[c][mask].std() + 1e-8
                 )
                 data[c][mask == 0] = 0
-        print("Normalization done")
+        if self.verbose:
+            print("Normalization done")
         return data, seg
 
     def _get_all_shapes_after_resampling(
@@ -992,7 +1015,8 @@ class RegPreprocessor(SegPreprocessor):
             properties["original_spacing"] = np.array(data["image"].meta["pixdim"][1:4].tolist())
 
             properties["crop_bbox"] = []
-            print("\nSkip cropping %s..." % properties["case_identifier"])
+            if self.verbose:
+                print("\nSkip cropping %s..." % properties["case_identifier"])
             properties["shape_after_cropping"] = properties["original_shape"]
             properties["cropping_size_reduction"] = 1
 
@@ -1003,7 +1027,8 @@ class RegPreprocessor(SegPreprocessor):
                 self.cropped_folder, "%s.pkl" % properties["case_identifier"]
             )
             all_data = np.vstack([data["image"].array, data["label"].array])
-            print("\nSaving to", cropped_filename)
+            if self.verbose:
+                print("\nSaving to", cropped_filename)
             np.savez_compressed(cropped_filename, data=all_data)
             with open(properties_name, "wb") as f:
                 pickle.dump(properties, f)  # nosec B301
@@ -1063,7 +1088,8 @@ class RegPreprocessor(SegPreprocessor):
         """
         data, seg, properties = self._load_cropped(case_identifier)
         if not self.do_resample:
-            print("\n", "Skip resampling...")
+            if self.verbose:
+                print("\n", "Skip resampling...")
             properties["resampling_flag"] = False
             properties["shape_after_resampling"] = np.array(data[0].shape)
             properties["spacing_after_resampling"] = properties["original_spacing"]
@@ -1093,8 +1119,10 @@ class RegPreprocessor(SegPreprocessor):
                 properties["shape_after_cropping"],
                 self.target_spacing,
             )
-            data = resample_image(data, new_shape, anisotropy_flag, axis, 3, 0)
-            seg = resample_image(seg.astype(np.float32), new_shape, anisotropy_flag, axis, 3, 0)
+            data = resample_image(data, new_shape, anisotropy_flag, axis, 3, 0, self.verbose)
+            seg = resample_image(
+                seg.astype(np.float32), new_shape, anisotropy_flag, axis, 3, 0, self.verbose
+            )
 
             properties["anisotropy_flag"] = anisotropy_flag
             properties["shape_after_resampling"] = np.array(data[0].shape)
@@ -1104,11 +1132,12 @@ class RegPreprocessor(SegPreprocessor):
                 "spacing": properties["spacing_after_resampling"],
                 "data.shape (data is resampled)": data.shape,
             }
-
-            print("before:", before, "\nafter: ", after, "\n")
+            if self.verbose:
+                print("before:", before, "\nafter: ", after, "\n")
 
         if not self.do_normalize:
-            print("\nSkip normalization...")
+            if self.verbose:
+                print("\nSkip normalization...")
             properties["normalization_flag"] = False
         else:
             properties["normalization_flag"] = True
@@ -1116,13 +1145,14 @@ class RegPreprocessor(SegPreprocessor):
             data, seg = self._normalize(data, seg)
 
         all_data = np.vstack((data, seg.astype(np.float32))).astype(np.float32)
-        print(
-            "Saving: ",
-            os.path.join(
-                self.preprocessed_folder, "data_and_properties", "%s.npz" % case_identifier
-            ),
-            "\n",
-        )
+        if self.verbose:
+            print(
+                "Saving: ",
+                os.path.join(
+                    self.preprocessed_folder, "data_and_properties", "%s.npz" % case_identifier
+                ),
+                "\n",
+            )
         np.savez_compressed(
             os.path.join(
                 self.preprocessed_folder, "data_and_properties", "%s.npz" % case_identifier
@@ -1257,7 +1287,8 @@ class DealiasPreprocessor(RegPreprocessor):
         # contains the segmentation of aliased pixels
         data, seg, properties = self._load_cropped(case_identifier)
         if not self.do_resample:
-            print("\n", "Skip resampling...")
+            if self.verbose:
+                print("\n", "Skip resampling...")
             properties["resampling_flag"] = False
             properties["shape_after_resampling"] = np.array(data[0].shape)
             properties["spacing_after_resampling"] = properties["original_spacing"]
@@ -1304,10 +1335,12 @@ class DealiasPreprocessor(RegPreprocessor):
                 "data.shape (data is resampled)": data.shape,
             }
 
-            print("before:", before, "\nafter: ", after, "\n")
+            if self.verbose:
+                print("before:", before, "\nafter: ", after, "\n")
 
         if not self.do_normalize:
-            print("\nSkip normalization...")
+            if self.verbose:
+                print("\nSkip normalization...")
             properties["normalization_flag"] = False
         else:
             properties["normalization_flag"] = True
@@ -1315,13 +1348,14 @@ class DealiasPreprocessor(RegPreprocessor):
             data, seg = self._normalize(data, seg)
 
         all_data = np.vstack((data, seg)).astype(np.float32)
-        print(
-            "Saving: ",
-            os.path.join(
-                self.preprocessed_folder, "data_and_properties", "%s.npz" % case_identifier
-            ),
-            "\n",
-        )
+        if self.verbose:
+            print(
+                "Saving: ",
+                os.path.join(
+                    self.preprocessed_folder, "data_and_properties", "%s.npz" % case_identifier
+                ),
+                "\n",
+            )
         np.savez_compressed(
             os.path.join(
                 self.preprocessed_folder, "data_and_properties", "%s.npz" % case_identifier

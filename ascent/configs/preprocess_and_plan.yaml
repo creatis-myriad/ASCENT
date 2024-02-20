@@ -24,6 +24,9 @@ pl2d: True
 # set true to plan 3D experiment
 pl3d: True
 
+# set true to print preprocessing message
+verbose: False
+
 hydra:
   output_subdir: null
   run:
