@@ -92,15 +92,21 @@ class AscentPredictor(AscentTrainer):
 
         # check if potential output files already existed in the output folder and remove the existing
         # case ids from datalist
-        if overwrite_existing:
+        if not overwrite_existing:
             if os.listdir(output_folder):
-                output_files = subfiles(output_folder, suffix=".nii.gz", join=False, sort=True)
-                if output_files:
-                    existing_case_ids = [case[:-7] for case in output_files]
-                    for case in existing_case_ids:
-                        if case in maybe_case_ids:
-                            index = np.argwhere(maybe_case_ids == case)
-                            maybe_case_ids = np.delete(maybe_case_ids, index)
+                if "inference_raw" in os.listdir(output_folder):
+                    output_files = subfiles(
+                        os.path.join(output_folder, "inference_raw"),
+                        suffix=".nii.gz",
+                        join=False,
+                        sort=True,
+                    )
+                    if output_files:
+                        existing_case_ids = [case[:-7] for case in output_files]
+                        for case in existing_case_ids:
+                            if case in maybe_case_ids:
+                                index = np.argwhere(maybe_case_ids == case)
+                                maybe_case_ids = np.delete(maybe_case_ids, index)
 
         all_files = subfiles(input_folder, suffix=".nii.gz", join=False, sort=True)
         list_of_lists = [
