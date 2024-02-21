@@ -63,6 +63,7 @@ easily plug your own models in ASCENT pipeline.
   - [Experiment tracking](#experiment-tracking)
   - [Define custom data and logs path](#define-custom-data-and-logs-path)
   - [Advanced Hydra overriding](#advanced-hydra-overriding)
+- [Example in Jupyter Notebook](#example-in-jupyter-notebook)
 - [Resources](#resources)
 - [References](#references)
 
@@ -189,8 +190,9 @@ ascent_preprocess_and_plan -h
 
 With the preprocessing being done, you can now train the model. For all experiments, ASCENT
 automatically detects the presence of GPU and utilize the GPU if it is available. ASCENTS creates
-5-Fold cross validations with train/validation/test splits with 0.8/0.1/0.1/ ratio. You can disable
-the test splits by overriding `datamodule.test_splits=False`.
+10-Fold cross validations with train/validation/test splits with 0.8/0.1/0.1 ratio. You can disable
+the test splits by overriding `datamodule.test_splits=False` to create 5-Fold train/validation splits
+with 0.8/0.2 ratio.
 
 Below is an example to train a 2D model on CAMUS dataset with the pre-determined hyperparameters:
 
@@ -327,6 +329,11 @@ ascent_train experiment=camus_challenge_2d paths=custom
 
 If you wish to perform some advanced Hydra overriding, kindly refer to the these
 [documentations](documentations/hydra_config).
+
+# Example in Jupyter Notebook
+
+An example of how to use ASCENT on [ACDC](https://humanheart-project.creatis.insa-lyon.fr/database/#collection/637218c173e9f0047faa00fb)
+dataset in a Jupyter Notebook can be found [here](notebooks/acdc.ipynb).
 
 # Resources
 
