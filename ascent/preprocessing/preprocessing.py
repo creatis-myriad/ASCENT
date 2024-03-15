@@ -392,7 +392,7 @@ class SegPreprocessor:
         if has_aniso_spacing and has_aniso_voxels:
             spacings_of_that_axis = np.vstack(spacings)[:, worst_spacing_axis]
             target_spacing_of_that_axis = np.percentile(spacings_of_that_axis, 10)
-            # don't let the spacing of that axis get higher than the other axes
+            # don't let the resolution of that axis get higher than the other axes
             if target_spacing_of_that_axis < max(other_spacings):
                 target_spacing_of_that_axis = (
                     max(max(other_spacings), target_spacing_of_that_axis) + 1e-5
