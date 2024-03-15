@@ -285,6 +285,7 @@ class SegPreprocessor:
         do_normalize: bool = True,
         num_workers: int = 12,
         overwrite_existing: bool = False,
+        anisotropy_threshold: float = 3,
         verbose: bool = False,
     ) -> None:
         """Initialize class instance.
@@ -295,6 +296,7 @@ class SegPreprocessor:
             do_normalize: Whether to normalize data.
             num_workers: Number of workers to run the preprocessing.
             overwrite_existing: Whether to overwrite the preprocessed data if it exists.
+            anisotropy_threshold: Threshold to consider the spacing as anisotropic.
             verbose: Whether to log the preprocessing message.
         """
         self.dataset_path = os.path.join(dataset_path, "raw")
@@ -307,6 +309,7 @@ class SegPreprocessor:
         self.do_normalize = do_normalize
         self.num_workers = num_workers
         self.overwrite_existing = overwrite_existing
+        self.anisotropy_threshold = anisotropy_threshold
         self.verbose = verbose
         self.target_spacing = None
         self.intensity_properties = OrderedDict()
@@ -349,9 +352,8 @@ class SegPreprocessor:
 
     def _get_target_spacing(
         self,
-        datalist: list[dict[str, str]],
-        transforms: Callable,
-    ) -> list[float, ...]:
+        list_of_cropped_npz_files: list[str],
+    ) -> list[float]:
         """Calculate the target spacing.
 
         The calculation of the target spacing involves:
@@ -360,39 +362,67 @@ class SegPreprocessor:
             - Handling of the case where the median image spacing is anisotropic.
 
         Args:
-            datalist: List of dictionaries containing paths to the images and labels.
-            transforms: Compose of sequences of monai's transformations to read the path provided
-                in datalist and transform the data.
+            list_of_cropped_npz_files: Cropped npz files.
 
         Returns:
             Target spacing.
         """
-        spacings = self._run_parallel_from_raw(self._get_spacing, datalist, transforms)
-        spacings = np.array(spacings)
-        target_spacing = np.median(spacings, axis=0)
-        if max(target_spacing) / min(target_spacing) >= 3:
-            lowres_axis = np.argmin(target_spacing)
-            target_spacing[lowres_axis] = np.percentile(spacings[:, lowres_axis], 10)
-        return list(target_spacing)
+        spacings = self._run_parallel_from_cropped(self._get_spacing, list_of_cropped_npz_files)
+        sizes = self._run_parallel_from_cropped(self._get_size, list_of_cropped_npz_files)
+        target_spacing = np.percentile(np.vstack(spacings), 50, 0)
 
-    def _get_spacing(
-        self,
-        data: dict[str, str],
-        transforms: Callable,
-        **kwargs,
-    ) -> list[float, ...]:
-        """Get the image spacing from image in the data dictionary.
+        target_size = np.percentile(np.vstack(sizes), 50, 0)
+        # We need to identify datasets for which a different target spacing could be beneficial.
+        # These datasets have the following properties:
+        # - one axis which much lower resolution than the others
+        # - the lowres axis has much less voxels than the others
+        # - (the size in mm of the lowres axis is also reduced)
+        worst_spacing_axis = np.argmax(target_spacing)
+        other_axes = [i for i in range(len(target_spacing)) if i != worst_spacing_axis]
+        other_spacings = [target_spacing[i] for i in other_axes]
+        other_sizes = [target_size[i] for i in other_axes]
+
+        has_aniso_spacing = target_spacing[worst_spacing_axis] > (
+            self.anisotropy_threshold * max(other_spacings)
+        )
+        has_aniso_voxels = target_size[worst_spacing_axis] * self.anisotropy_threshold < min(
+            other_sizes
+        )
+
+        if has_aniso_spacing and has_aniso_voxels:
+            spacings_of_that_axis = np.vstack(spacings)[:, worst_spacing_axis]
+            target_spacing_of_that_axis = np.percentile(spacings_of_that_axis, 10)
+            # don't let the resolution of that axis get higher than the other axes
+            if target_spacing_of_that_axis < max(other_spacings):
+                target_spacing_of_that_axis = (
+                    max(max(other_spacings), target_spacing_of_that_axis) + 1e-5
+                )
+            target_spacing[worst_spacing_axis] = target_spacing_of_that_axis
+        return target_spacing
+
+    def _get_spacing(self, case_identifier: str) -> list[float]:
+        """Extract the spacing from the property .pkl file.
 
         Args:
-            data: Dictionary containing image and label tensors.
-            transforms: Compose of sequences of monai's transformations to read the path provided
-                in datalist and transform the data.
+            case_identifier: Case identifier of a data.
 
         Returns:
             Image spacing.
         """
-        data = transforms(data)
-        return data["image"].meta["pixdim"][1:4].tolist()
+        properties = self._load_properties_of_cropped(case_identifier)
+        return properties["original_spacing"].tolist()
+
+    def _get_size(self, case_identifier: str) -> list[int]:
+        """Extract the size from the property .pkl file.
+
+        Args:
+            case_identifier: Case identifier of a data.
+
+        Returns:
+            Size reduction after cropping.
+        """
+        properties = self._load_properties_of_cropped(case_identifier)
+        return properties["shape_after_cropping"].tolist()
 
     def _collect_intensities(
         self,
@@ -437,7 +467,7 @@ class SegPreprocessor:
         data: dict[str, str],
         transforms: Callable,
         **kwargs,
-    ) -> list[float, ...]:
+    ) -> list[float]:
         """Collect the intensities of a data.
 
         Gather the intensities of all the foreground pixels in an image.
@@ -569,7 +599,7 @@ class SegPreprocessor:
         case_identifier = os.path.basename(case)[:-4]
         return case_identifier
 
-    def _get_all_classes(self) -> list[int, ...]:
+    def _get_all_classes(self) -> list[int]:
         """Get list of classes excluding background from dataset.json.
 
         Returns:
@@ -582,8 +612,8 @@ class SegPreprocessor:
 
     def _get_all_size_reductions(
         self,
-        list_of_cropped_npz_files: list[str, ...],
-    ) -> list[float, ...]:
+        list_of_cropped_npz_files: list[str],
+    ) -> list[float]:
         """Gather all the size reductions after cropping the dataset.
 
         Args:
@@ -670,7 +700,7 @@ class SegPreprocessor:
         use_nonzero_mask_for_normalization = use_nonzero_mask_for_norm
         return use_nonzero_mask_for_normalization
 
-    def _preprocess(self, list_of_cropped_npz_files: list[str, ...]) -> None:
+    def _preprocess(self, list_of_cropped_npz_files: list[str]) -> None:
         """Preprocess (resample and normalize) the dataset.
 
         Args:
@@ -815,7 +845,7 @@ class SegPreprocessor:
         return data, seg
 
     def _get_all_shapes_after_resampling(
-        self, list_of_preprocessed_npz_files: list[str, ...]
+        self, list_of_preprocessed_npz_files: list[str]
     ) -> list[np.ndarray, ...]:
         """Get all shapes after resampling.
 
@@ -845,7 +875,7 @@ class SegPreprocessor:
             properties = pickle.load(f)  # nosec B301
         return properties["shape_after_resampling"]
 
-    def _save_dataset_properties(self, list_of_preprocessed_npz_files: list[str, ...]) -> None:
+    def _save_dataset_properties(self, list_of_preprocessed_npz_files: list[str]) -> None:
         """Save useful dataset properties that will be used during inference and for experiment
         planning.
 
@@ -926,9 +956,6 @@ class SegPreprocessor:
         log.info("Initializing to run preprocessing...")
         log.info(f"Cropped folder: {self.cropped_folder}")
         log.info(f"Preprocessed folder: {self.preprocessed_folder}")
-        # get target spacing
-        self.target_spacing = self._get_target_spacing(datalist, transforms)
-        log.info(f"Target spacing: {np.array(self.target_spacing)}.")
 
         # get intensity properties if input contains CT data
         if "CT" in self.modalities.values():
@@ -941,6 +968,10 @@ class SegPreprocessor:
         # crop to non zero
         self._crop_from_list_of_files(datalist, transforms)
         list_of_cropped_npz_files = subfiles(self.cropped_folder, True, None, ".npz", True)
+
+        # get target spacing
+        self.target_spacing = self._get_target_spacing(list_of_cropped_npz_files)
+        log.info(f"Target spacing: {np.array(self.target_spacing)}.")
 
         # get all size reductions
         self.all_size_reductions = self._get_all_size_reductions(list_of_cropped_npz_files)
@@ -1051,7 +1082,7 @@ class RegPreprocessor(SegPreprocessor):
 
         return use_nonzero_mask_for_norm
 
-    def _save_dataset_properties(self, list_of_preprocessed_npz_files: list[str, ...]) -> None:
+    def _save_dataset_properties(self, list_of_preprocessed_npz_files: list[str]) -> None:
         """Save useful dataset properties that will be used during inference and for experiment
         planning.
 
@@ -1181,9 +1212,6 @@ class RegPreprocessor(SegPreprocessor):
         log.info("Initializing to run preprocessing...")
         log.info(f"Cropped folder: {self.cropped_folder}")
         log.info(f"Preprocessed folder: {self.preprocessed_folder}")
-        # get target spacing
-        self.target_spacing = self._get_target_spacing(datalist, transforms)
-        log.info(f"Target spacing: {np.array(self.target_spacing)}.")
 
         # get intensity properties if input contains CT data
         if "CT" in self.modalities.values():
@@ -1195,8 +1223,11 @@ class RegPreprocessor(SegPreprocessor):
 
         # crop to non zero
         self._crop_from_list_of_files(datalist, transforms)
-
         list_of_cropped_npz_files = subfiles(self.cropped_folder, True, None, ".npz", True)
+
+        # get target spacing
+        self.target_spacing = self._get_target_spacing(list_of_cropped_npz_files)
+        log.info(f"Target spacing: {np.array(self.target_spacing)}.")
 
         # determine whether to use non zero mask for normalization
         self.use_nonzero_mask = self._determine_whether_to_use_mask_for_norm()

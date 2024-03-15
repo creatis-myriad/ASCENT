@@ -4,4 +4,5 @@ do_resample: ${resample}
 do_normalize: ${normalize}
 num_workers: 12
 overwrite_existing: ${overwrite}
+anisotropy_threshold: 3
 verbose: ${verbose}
