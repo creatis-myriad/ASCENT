@@ -1,5 +1,6 @@
 defaults:
   - model_checkpoint
+  - latest_checkpoint
   - model_summary
   - rich_progress_bar
   - learning_rate_monitor
@@ -7,11 +8,14 @@ defaults:
 
 model_checkpoint:
   dirpath: ${paths.output_dir}/checkpoints
-  filename: "epoch_{epoch:03d}"
+  filename: "best_epoch_{epoch:03d}"
   monitor: "val/dice_MA"
   mode: "max"
   save_last: True
   auto_insert_metric_name: False
+
+latest_checkpoint:
+  dirpath: ${paths.output_dir}/checkpoints
 
 model_summary:
   max_depth: -1
