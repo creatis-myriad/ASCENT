@@ -71,6 +71,14 @@ class AscentTrainer(ABC):
         log.info("Instantiating callbacks...")
         callbacks: List[Callback] = utils.instantiate_callbacks(cfg.get("callbacks"))
 
+        # Modify the last checkpoint name to differentiate between the best and last ckpt
+        for list_id, callback in enumerate(callbacks):
+            if isinstance(callback, pl.pytorch.callbacks.ModelCheckpoint):
+                if "best" in callback.filename:
+                    callback.CHECKPOINT_NAME_LAST = "best"
+                elif "latest" in callback.filename:
+                    callback.CHECKPOINT_NAME_LAST = "last"
+
         log.info("Instantiating loggers...")
         logger: List[Logger] = utils.instantiate_loggers(cfg.get("logger"))
 
@@ -101,29 +109,34 @@ class AscentTrainer(ABC):
             else:
                 trainer.fit(model=model, datamodule=datamodule)
 
+            # locate best and last ckpt path
+            best_model_path = None
+            last_model_path = None
+            for callback in trainer.checkpoint_callbacks:
+                if callback.CHECKPOINT_NAME_LAST == "best":
+                    best_model_path = callback.last_model_path
+                elif "latest" in callback.filename:
+                    last_model_path = callback.last_model_path
+
             if isinstance(trainer.logger, CometLogger) and cfg.comet_save_model:
-                if trainer.checkpoint_callback.best_model_path:
-                    trainer.logger.experiment.log_model(
-                        "best-model", trainer.checkpoint_callback.best_model_path
-                    )
-                if trainer.checkpoint_callback.last_model_path:
-                    trainer.logger.experiment.log_model(
-                        "last-model", trainer.checkpoint_callback.last_model_path
-                    )
+                if best_model_path:
+                    trainer.logger.experiment.log_model("best-model", best_model_path)
+                if last_model_path:
+                    trainer.logger.experiment.log_model("last-model", last_model_path)
 
         train_metrics = trainer.callback_metrics
 
         if cfg.get("test"):
             log.info("Starting testing!")
             if cfg.get("best_model"):
-                ckpt_path = trainer.checkpoint_callback.best_model_path
+                ckpt_path = best_model_path
                 if ckpt_path == "":
                     log.warning("Best ckpt not found! Using current weights for testing...")
                     ckpt_path = None
                 else:
                     log.info(f"Loading best ckpt: {ckpt_path}")
             else:
-                ckpt_path = trainer.checkpoint_callback.last_model_path
+                ckpt_path = last_model_path
                 if ckpt_path == "":
                     log.warning("Last ckpt not found! Using current weights for testing...")
                     ckpt_path = None
