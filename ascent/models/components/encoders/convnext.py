@@ -219,12 +219,11 @@ class ConvNeXt(nn.Module):
         # initialize weights
         init_kwargs = {}
         if activation == "leakyrelu":
-            if (
-                activation_kwargs is not None
-                and "negative_slope" in activation_kwargs
-                and initialization == "kaiming_normal"
-            ):
-                init_kwargs["neg_slope"] = activation_kwargs["negative_slope"]
+            if initialization == "kaiming_normal":
+                if activation_kwargs is not None and "negative_slope" in activation_kwargs:
+                    init_kwargs["neg_slope"] = activation_kwargs["negative_slope"]
+                else:
+                    init_kwargs["neg_slope"] = 0.01
         self.apply(get_initialization(initialization, **init_kwargs))
 
         # store some attributes that a potential decoder needs
