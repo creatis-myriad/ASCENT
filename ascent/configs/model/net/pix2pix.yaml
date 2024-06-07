@@ -1,0 +1,12 @@
+defaults:
+  - .@generator: unet
+  - encoder@discriminator: patch_gan
+
+_target_: ascent.models.components.pix2pix.Pix2PixGAN
+
+generator:
+  encoder:
+    dim: ${get_dim_from_patch_size:${model.net.generator.patch_size}}
+
+discriminator:
+  dim: ${get_dim_from_patch_size:${model.net.generator.patch_size}}

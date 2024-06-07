@@ -1,5 +1,6 @@
-from typing import Literal, Optional, Union
+from typing import Any, Literal, Optional, Tuple, Union
 
+import numpy as np
 import torch
 from monai.data import MetaTensor
 from torch import Tensor, nn
@@ -74,10 +75,10 @@ class PatchGAN(nn.Module):
         super().__init__()
 
         if isinstance(kernels, int):
-            kernels = (kernels,) * num_stages
+            kernels = ((kernels,) * dim,) * num_stages
 
         if isinstance(strides, int):
-            strides = (strides,) * num_stages
+            strides = ((strides,) * dim,) * num_stages
 
         if not len(kernels) == num_stages:
             raise ValueError(f"len(kernels) must be equal to num_stages: {num_stages}")
@@ -215,6 +216,25 @@ class PatchGAN(nn.Module):
             out = stage(out)
         return out
 
+    def get_output_shape(self, input_size: tuple[int, ...]) -> tuple[int, ...]:
+        """Get the output shape of the discriminator.
+
+        Args:
+            input_size: Size of the input image. (H, W(, D))
+
+        Returns:
+            Output shape of the discriminator.
+
+        Raises:
+            ValueError: If length of `input_size` is not equal to `dim`.
+        """
+        input_tensor = torch.rand(
+            (1, self.in_channels, *input_size), device=next(self.parameters()).device
+        )
+        with torch.no_grad():
+            out = self(input_tensor)
+        return tuple(list(out.shape[2:]))
+
 
 if __name__ == "__main__":
     from torchinfo import summary
@@ -244,6 +264,7 @@ if __name__ == "__main__":
     # Test the discriminator with a dummy input
     dummy_input = torch.rand((2, in_channels, *patch_size))
     out = discriminator(dummy_input)
+    print(discriminator.get_output_shape(patch_size))
     print(
         summary(
             discriminator,

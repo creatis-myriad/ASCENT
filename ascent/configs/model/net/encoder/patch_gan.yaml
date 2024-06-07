@@ -1,0 +1,14 @@
+_target_: ascent.models.components.encoders.patch_gan.PatchGAN
+
+in_channels: ???
+dim: ???
+kernels: ???
+strides: ???
+num_stages: ${get_num_stages_from_kernels:${model.net.discriminator.kernels}}
+start_features: 64
+conv_kwargs: null
+norm_layer: "instance"
+norm_kwargs: null
+activation: "leakyrelu"
+activation_kwargs: { "negative_slope": 0.2, "inplace": True }
+initialization: "kaiming_normal"
