@@ -1,0 +1,39 @@
+defaults:
+  - net: pix2pix
+  - loss: dice_ce
+  - optimizer: sgd
+  - scheduler: polylr
+  - loss@loss_d: mse
+  - optimizer@optimizer_d: adamw
+  - scheduler@scheduler_d: polylr
+
+_target_: ascent.models.pix2pix_module.Pix2PixGANLitModule
+
+tta: True
+save_predictions: True
+save_npz: False
+name: Pix2PixGAN
+
+net:
+  generator:
+    patch_size: [256, 256]
+    encoder:
+      in_channels: 1
+      kernels: [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
+      strides: [[1, 1], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2]]
+      num_stages: ${get_num_stages_from_kernels:${model.net.generator.encoder.kernels}}
+    decoder:
+      num_classes: 4
+
+  discriminator:
+    in_channels: 5
+    kernels: 4
+    strides: 2
+    num_stages: 4
+
+loss:
+  soft_dice_kwargs:
+    batch_dice: ${do_batch_dice:${model.net.generator.patch_size}}
+
+optimizer_d:
+  lr: 0.0001

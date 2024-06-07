@@ -1,0 +1,25 @@
+# @package _global_
+
+defaults:
+  - override /datamodule: camus256_2d
+  - override /model: camus_pix2pix_2d
+  - override /callbacks: nnunet
+  - override /logger: wandb
+  - override /trainer: nnunet
+  - override /hydra: nnunet
+
+tags: ["${model.name}_${nnUNet_variant}", "Fold${fold}"]
+task_name: "CAMUS256"
+fold: 0
+train: True
+test: True
+nnUNet_variant: 2D
+best_model: True
+logger:
+  wandb:
+    project: "${task_name}"
+    name: "${model.name}_${nnUNet_variant}"
+    tags: ["Fold${fold}"]
+
+trainer:
+  gradient_clip_val: null
