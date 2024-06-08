@@ -248,7 +248,11 @@ class nnUNetRegLitModule(nnUNetLitModule):
         properties_dict["shape_after_cropping"] = image_meta_dict["shape_after_cropping"][
             0
         ].tolist()
-        properties_dict["anisotropy_flag"] = image_meta_dict["anisotropy_flag"].item()
+        if properties_dict.get("resampling_flag"):
+            properties_dict["spacing_after_resampling"] = image_meta_dict[
+                "spacing_after_resampling"
+            ][0].tolist()
+            properties_dict["anisotropy_flag"] = image_meta_dict["anisotropy_flag"].item()
         if len(image_meta_dict["crop_bbox"]):
             properties_dict["crop_bbox"] = image_meta_dict["crop_bbox"][0].tolist()
         else:
