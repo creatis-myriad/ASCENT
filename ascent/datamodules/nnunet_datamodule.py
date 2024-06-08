@@ -281,6 +281,7 @@ class nnUNetDataModule(LightningDataModule):
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
             shuffle=False,
+            persistent_workers=True,
         )
 
     def get_train_val_test_loading_transforms(self) -> tuple[list[Callable], ...]:
