@@ -18,6 +18,7 @@ class Pix2PixGANLitModule(nnUNetLitModule):
         loss_d: torch.nn.Module,
         optimizer_d: torch.optim.Optimizer,
         scheduler_d: torch.optim.lr_scheduler._LRScheduler,
+        weight_seg: float = 5.0,
         **kwargs
     ):
         """Initialize class instance.
@@ -105,7 +106,7 @@ class Pix2PixGANLitModule(nnUNetLitModule):
         # segmentation loss
         loss = self.compute_loss(pred, label)
 
-        loss_g = loss + loss_d_fake_g
+        loss_g = self.hparams.weight_seg * loss + loss_d_fake_g
         g_opt.zero_grad()
         self.manual_backward(loss_g)
         # self.clip_gradients(g_opt, 12)

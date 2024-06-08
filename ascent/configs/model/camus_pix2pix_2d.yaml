@@ -13,6 +13,7 @@ tta: True
 save_predictions: True
 save_npz: False
 name: Pix2PixGAN
+weight_seg: 5.0
 
 net:
   generator:
