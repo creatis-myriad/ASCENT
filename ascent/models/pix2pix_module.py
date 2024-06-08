@@ -70,6 +70,8 @@ class Pix2PixGANLitModule(nnUNetLitModule):
         ##########################
         # Optimize Discriminator #
         ##########################
+        # enable backpropagation for discriminator
+        self.set_requires_grad(self.net.discriminator, True)
         # detach to avoid backprop through generator
         pred_fake = self.net.discriminator(img_pred.detach())
         loss_d_fake = self.loss_d(pred_fake, self.fake_label)
@@ -91,6 +93,8 @@ class Pix2PixGANLitModule(nnUNetLitModule):
         ######################
         # Optimize Generator #
         ######################
+        # disable backpropagation for discriminator
+        self.set_requires_grad(self.net.discriminator, False)
         # no detach here
         pred_fake = self.net.discriminator(img_pred)
 
@@ -153,3 +157,18 @@ class Pix2PixGANLitModule(nnUNetLitModule):
             )
         configured_optimizers.append(configured_optimizer_d)
         return tuple(configured_optimizers)
+
+    @staticmethod
+    def set_requires_grad(nets, requires_grad=False) -> None:
+        """Set `requies_grad=Fasle` for the networks to avoid unnecessary computations.
+
+        Args:
+            nets: List of networks
+            requires_grad: Whether to set requires_grad to True or False
+        """
+        if not isinstance(nets, list):
+            nets = [nets]
+        for net in nets:
+            if net is not None:
+                for param in net.parameters():
+                    param.requires_grad = requires_grad
