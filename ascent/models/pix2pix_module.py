@@ -7,6 +7,7 @@ from monai.transforms import AsDiscrete
 from torch import Tensor
 
 from ascent.models.nnunet_module import nnUNetLitModule
+from ascent.utils.softmax import softmax_helper
 
 
 class Pix2PixGANLitModule(nnUNetLitModule):
@@ -65,7 +66,7 @@ class Pix2PixGANLitModule(nnUNetLitModule):
         img, label = batch["image"], batch["label"]
 
         pred = self.forward(img)
-        img_pred = torch.cat([img, pred[0]], dim=1)
+        img_pred = torch.cat([img, softmax_helper(pred[0])], dim=1)
 
         ##########################
         # Optimize Discriminator #
