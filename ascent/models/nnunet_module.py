@@ -316,12 +316,15 @@ class nnUNetLitModule(LightningModule):
 
                 preds = resample_image(preds, shape_after_cropping, anisotropy_flag, axis, 1, 0)
 
-            box_start, box_end = properties_dict.get("crop_bbox")
-            min_w, min_h, min_d = box_start
-            max_w, max_h, max_d = box_end
-
             final_preds = np.zeros([preds.shape[0], *original_shape])
-            final_preds[:, min_w:max_w, min_h:max_h, min_d:max_d] = preds
+
+            if len(properties_dict.get("crop_bbox")):
+                box_start, box_end = properties_dict.get("crop_bbox")
+                min_w, min_h, min_d = box_start
+                max_w, max_h, max_d = box_end
+                final_preds[:, min_w:max_w, min_h:max_h, min_d:max_d] = preds
+            else:
+                final_preds = preds
 
             if self.trainer.datamodule.hparams.test_splits:
                 save_dir = os.path.join(self.trainer.default_root_dir, "testing_raw")
@@ -405,12 +408,15 @@ class nnUNetLitModule(LightningModule):
 
             preds = resample_image(preds, shape_after_cropping, anisotropy_flag, axis, 1, 0)
 
-        box_start, box_end = properties_dict.get("crop_bbox")
-        min_w, min_h, min_d = box_start
-        max_w, max_h, max_d = box_end
-
         final_preds = np.zeros([preds.shape[0], *original_shape])
-        final_preds[:, min_w:max_w, min_h:max_h, min_d:max_d] = preds
+
+        if len(properties_dict.get("crop_bbox")):
+            box_start, box_end = properties_dict.get("crop_bbox")
+            min_w, min_h, min_d = box_start
+            max_w, max_h, max_d = box_end
+            final_preds[:, min_w:max_w, min_h:max_h, min_d:max_d] = preds
+        else:
+            final_preds = preds
 
         save_dir = os.path.join(self.trainer.default_root_dir, "inference_raw")
 
@@ -658,13 +664,16 @@ class nnUNetLitModule(LightningModule):
             0
         ].tolist()
         if properties_dict.get("resampling_flag"):
+            properties_dict["spacing_after_resampling"] = image_meta_dict[
+                "spacing_after_resampling"
+            ][0].tolist()
             properties_dict["anisotropy_flag"] = image_meta_dict["anisotropy_flag"].item()
-        properties_dict["crop_bbox"] = image_meta_dict["crop_bbox"][0].tolist()
+        if len(image_meta_dict["crop_bbox"]):
+            properties_dict["crop_bbox"] = image_meta_dict["crop_bbox"][0].tolist()
+        else:
+            properties_dict["crop_bbox"] = []
         properties_dict["case_identifier"] = image_meta_dict["case_identifier"][0]
         properties_dict["original_spacing"] = image_meta_dict["original_spacing"][0].tolist()
-        properties_dict["spacing_after_resampling"] = image_meta_dict["spacing_after_resampling"][
-            0
-        ].tolist()
 
         return properties_dict
 
