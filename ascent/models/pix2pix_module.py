@@ -59,7 +59,7 @@ class Pix2PixGANLitModule(nnUNetLitModule):
     def forward(self, img: Union[Tensor, MetaTensor]) -> Union[Tensor, MetaTensor]:  # noqa: D102
         return self.net.generator(img)
 
-    def training_step(self, batch: dict[str, Tensor], batch_idx: int):
+    def training_step(self, batch: dict[str, Tensor], batch_idx: int):  # noqa: D102
         g_opt, d_opt = self.optimizers()
 
         img, label = batch["image"], batch["label"]
@@ -119,6 +119,13 @@ class Pix2PixGANLitModule(nnUNetLitModule):
             logger=True,
             batch_size=self.trainer.datamodule.hparams.batch_size,
         )
+
+    def on_train_epoch_end(self):  # noqa: D102
+        # step the lr schedulers
+        sch_g, sch_d = self.lr_schedulers()
+
+        sch_d.step()
+        sch_g.step()
 
     def configure_optimizers(self) -> tuple[Union[dict[str, Any], dict[str, Any]], ...]:
         """Configures optimizers/LR schedulers.
