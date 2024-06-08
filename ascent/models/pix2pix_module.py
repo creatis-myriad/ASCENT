@@ -107,7 +107,7 @@ class Pix2PixGANLitModule(nnUNetLitModule):
         loss_g = loss + loss_d_fake_g
         g_opt.zero_grad()
         self.manual_backward(loss_g)
-        self.clip_gradients(g_opt, 12)
+        # self.clip_gradients(g_opt, 12)
         g_opt.step()
 
         self.log_dict(
