@@ -18,6 +18,7 @@ class Pix2PixGANLitModule(nnUNetLitModule):
         loss_d: torch.nn.Module,
         optimizer_d: torch.optim.Optimizer,
         scheduler_d: torch.optim.lr_scheduler._LRScheduler,
+        softmax_before_discriminator: bool = False,
         weight_seg: float = 5.0,
         **kwargs
     ):
@@ -67,7 +68,11 @@ class Pix2PixGANLitModule(nnUNetLitModule):
         img, label = batch["image"], batch["label"]
 
         pred = self.forward(img)
-        img_pred = torch.cat([img, softmax_helper(pred[0])], dim=1)
+
+        if self.hparams.softmax_before_discriminator:
+            img_pred = torch.cat([img, softmax_helper(pred[0])], dim=1)
+        else:
+            img_pred = torch.cat([img, pred[0]], dim=1)
 
         ##########################
         # Optimize Discriminator #

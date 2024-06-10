@@ -14,6 +14,7 @@ save_predictions: True
 save_npz: False
 name: Pix2PixGAN
 weight_seg: 5.0
+softmax_before_discriminator: True
 
 net:
   generator:
