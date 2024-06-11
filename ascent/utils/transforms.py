@@ -538,6 +538,9 @@ class LoadNpyd(MapTransform):
                 image_meta_dict = load_pickle(d["image_meta_dict"])
                 d["image_meta_dict"] = {}
                 d["image_meta_dict"]["case_identifier"] = image_meta_dict["case_identifier"]
+                d["image_meta_dict"]["rotate_flag"] = image_meta_dict["rotate_flag"]
+                if d["image_meta_dict"]["rotate_flag"]:
+                    d["image_meta_dict"]["angle_rotation"] = image_meta_dict["angle_rotation"]
                 d["image_meta_dict"]["original_shape"] = image_meta_dict["original_shape"]
                 d["image_meta_dict"]["original_spacing"] = image_meta_dict["original_spacing"]
                 d["image_meta_dict"]["shape_after_cropping"] = image_meta_dict[

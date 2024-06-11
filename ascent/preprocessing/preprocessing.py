@@ -2,13 +2,19 @@ import itertools
 import os
 import pickle  # nosec B403
 from collections import OrderedDict
-from typing import Callable, Optional, Union
+from typing import Callable, Optional, Union, Mapping, Hashable
+from ast import literal_eval
+
+import SimpleITK as sitk
 
 import numpy as np
+import pandas as pd
+import skimage
 from einops.einops import rearrange
 from joblib import Parallel, delayed
+from monai.config import SequenceStr, NdarrayOrTensor, KeysCollection
 from monai.data import MetaTensor
-from monai.transforms import Compose, EnsureChannelFirstd, LoadImaged, SpatialCropd
+from monai.transforms import Compose, EnsureChannelFirstd, LoadImaged, SpatialCropd, Rotate
 from monai.transforms.utils import generate_spatial_bounding_box
 from skimage.transform import resize
 from torch import Tensor
@@ -267,6 +273,44 @@ def resample_label(
         return label
 
 
+def align_volumes(data: Mapping[Hashable, NdarrayOrTensor],
+                  point1: list,
+                  point2: list,
+                  keys: KeysCollection = ["image", "label"],
+                  mode: SequenceStr = ["bilinear","nearest"]):
+    d = dict(data)
+    angle = _compute_rotation_parameters(point1, point2)
+
+    for ind in range(len(keys)):
+        rotation = Rotate(angle=angle, mode=mode[ind])
+        key = keys[ind]
+        if len(d[key].shape) == 3:
+            d[key] = rotation(d[key])
+        else:
+            for slice in range(d[key].shape[3]):
+                d[key][:, :, :, slice] = rotation(d[key][:, :, :, slice])
+    return d, angle
+
+
+def _compute_rotation_parameters(point1, point2) -> int:
+    """Computes the angle of the rotation.
+
+        Angle is computed to apply to align the segmentation so that the RV center of mass is
+        always left of the LV/MYO center of mass on a straight horizontal line.
+
+        Args:
+            segmentation: for which to compute rotation parameters.
+
+        Returns:
+            Angle of the rotation to apply to align the segmentation so that the RV center of mass is always
+            left of the LV/MYO center of mass on a straight horizontal line.
+    """
+    centers_diff = point1[:-1] - point2[:-1]
+    rotation_angle = np.arctan2(centers_diff[1], centers_diff[0]) - np.pi/2
+
+    return rotation_angle
+
+
 class SegPreprocessor:
     """Preprocessor class that takes nnUNet's preprocessing method (https://github.com/MIC-
     DKFZ/nnUNet/blob/master/nnunet/preprocessing/preprocessing.py) for reference.
@@ -296,7 +340,6 @@ class SegPreprocessor:
             do_normalize: Whether to normalize data.
             num_workers: Number of workers to run the preprocessing.
             overwrite_existing: Whether to overwrite the preprocessed data if it exists.
-            anisotropy_threshold: Threshold to consider the spacing as anisotropic.
             verbose: Whether to log the preprocessing message.
         """
         self.dataset_path = os.path.join(dataset_path, "raw")
@@ -305,11 +348,19 @@ class SegPreprocessor:
         self.preprocessed_npz_folder = os.path.join(
             dataset_path, "preprocessed", "data_and_properties"
         )
+        if do_align_volumes:
+            self.points_align_coordinate = pd.read_csv(os.path.join(dataset_path, "points.csv"),
+                                                       converters={'Point1_coordinate': literal_eval,
+                                                                   'Point2_coordinate': literal_eval})
+            # Définir CASE comme index du dataframe
+            self.points_align_coordinate.set_index('CASE', inplace=True)
+
         self.do_resample = do_resample
         self.do_normalize = do_normalize
+        self.do_equalize_hist = do_equalize_hist
+        self.do_align_volumes = do_align_volumes
         self.num_workers = num_workers
         self.overwrite_existing = overwrite_existing
-        self.anisotropy_threshold = anisotropy_threshold
         self.verbose = verbose
         self.target_spacing = None
         self.intensity_properties = OrderedDict()
@@ -351,9 +402,10 @@ class SegPreprocessor:
         return datalist, modalities
 
     def _get_target_spacing(
-        self,
-        list_of_cropped_npz_files: list[str],
-    ) -> list[float]:
+            self,
+            datalist: list[dict[str, str]],
+            transforms: Callable,
+    ) -> list[float, ...]:
         """Calculate the target spacing.
 
         The calculation of the target spacing involves:
@@ -362,72 +414,44 @@ class SegPreprocessor:
             - Handling of the case where the median image spacing is anisotropic.
 
         Args:
-            list_of_cropped_npz_files: Cropped npz files.
+            datalist: List of dictionaries containing paths to the images and labels.
+            transforms: Compose of sequences of monai's transformations to read the path provided
+                in datalist and transform the data.
 
         Returns:
             Target spacing.
         """
-        spacings = self._run_parallel_from_cropped(self._get_spacing, list_of_cropped_npz_files)
-        sizes = self._run_parallel_from_cropped(self._get_size, list_of_cropped_npz_files)
-        target_spacing = np.percentile(np.vstack(spacings), 50, 0)
+        spacings = self._run_parallel_from_raw(self._get_spacing, datalist, transforms)
+        spacings = np.array(spacings)
+        target_spacing = np.median(spacings, axis=0)
+        if max(target_spacing) / min(target_spacing) >= 3:
+            lowres_axis = np.argmin(target_spacing)
+            target_spacing[lowres_axis] = np.percentile(spacings[:, lowres_axis], 10)
+        return list(target_spacing)
 
-        target_size = np.percentile(np.vstack(sizes), 50, 0)
-        # We need to identify datasets for which a different target spacing could be beneficial.
-        # These datasets have the following properties:
-        # - one axis which much lower resolution than the others
-        # - the lowres axis has much less voxels than the others
-        # - (the size in mm of the lowres axis is also reduced)
-        worst_spacing_axis = np.argmax(target_spacing)
-        other_axes = [i for i in range(len(target_spacing)) if i != worst_spacing_axis]
-        other_spacings = [target_spacing[i] for i in other_axes]
-        other_sizes = [target_size[i] for i in other_axes]
-
-        has_aniso_spacing = target_spacing[worst_spacing_axis] > (
-            self.anisotropy_threshold * max(other_spacings)
-        )
-        has_aniso_voxels = target_size[worst_spacing_axis] * self.anisotropy_threshold < min(
-            other_sizes
-        )
-
-        if has_aniso_spacing and has_aniso_voxels:
-            spacings_of_that_axis = np.vstack(spacings)[:, worst_spacing_axis]
-            target_spacing_of_that_axis = np.percentile(spacings_of_that_axis, 10)
-            # don't let the resolution of that axis get higher than the other axes
-            if target_spacing_of_that_axis < max(other_spacings):
-                target_spacing_of_that_axis = (
-                    max(max(other_spacings), target_spacing_of_that_axis) + 1e-5
-                )
-            target_spacing[worst_spacing_axis] = target_spacing_of_that_axis
-        return target_spacing
-
-    def _get_spacing(self, case_identifier: str) -> list[float]:
-        """Extract the spacing from the property .pkl file.
+    def _get_spacing(
+            self,
+            data: dict[str, str],
+            transforms: Callable,
+            **kwargs,
+    ) -> list[float, ...]:
+        """Get the image spacing from image in the data dictionary.
 
         Args:
-            case_identifier: Case identifier of a data.
+            data: Dictionary containing image and label tensors.
+            transforms: Compose of sequences of monai's transformations to read the path provided
+                in datalist and transform the data.
 
         Returns:
             Image spacing.
         """
-        properties = self._load_properties_of_cropped(case_identifier)
-        return properties["original_spacing"].tolist()
-
-    def _get_size(self, case_identifier: str) -> list[int]:
-        """Extract the size from the property .pkl file.
-
-        Args:
-            case_identifier: Case identifier of a data.
-
-        Returns:
-            Size reduction after cropping.
-        """
-        properties = self._load_properties_of_cropped(case_identifier)
-        return properties["shape_after_cropping"].tolist()
+        data = transforms(data)
+        return data["image"].meta["pixdim"][1:4].tolist()
 
     def _collect_intensities(
-        self,
-        datalist: list[dict[str, str]],
-        transforms: Callable,
+            self,
+            datalist: list[dict[str, str]],
+            transforms: Callable,
     ) -> dict[int, dict[str, float]]:
         """Collect the intensity properties of the whole dataset.
 
@@ -463,11 +487,11 @@ class SegPreprocessor:
         return intensity_properties
 
     def _get_intensities(
-        self,
-        data: dict[str, str],
-        transforms: Callable,
-        **kwargs,
-    ) -> list[float]:
+            self,
+            data: dict[str, str],
+            transforms: Callable,
+            **kwargs,
+    ) -> list[float, ...]:
         """Collect the intensities of a data.
 
         Gather the intensities of all the foreground pixels in an image.
@@ -489,9 +513,9 @@ class SegPreprocessor:
         return intensities
 
     def _crop_from_list_of_files(
-        self,
-        datalist: list[dict[str, str]],
-        transforms: Callable,
+            self,
+            datalist: list[dict[str, str]],
+            transforms: Callable,
     ) -> None:
         """Crop the dataset to non-zero region and save the cropped data.
 
@@ -507,10 +531,10 @@ class SegPreprocessor:
         self._run_parallel_from_raw(self._crop, datalist, transforms)
 
     def _crop(
-        self,
-        data: dict[str, str],
-        transforms: Callable,
-        **kwargs,
+            self,
+            data: dict[str, str],
+            transforms: Callable,
+            **kwargs,
     ) -> None:
         """Crop an image-label pair to non-zero region and save it.
 
@@ -522,15 +546,35 @@ class SegPreprocessor:
         list_of_data_files = data["image"]
         case_identifier = os.path.basename(list_of_data_files[0]).split(".nii.gz")[0][:-5]
         if self.overwrite_existing or (
-            not os.path.isfile(os.path.join(self.cropped_folder, "%s.npz" % case_identifier))
-            or not os.path.isfile(os.path.join(self.cropped_folder, "%s.pkl" % case_identifier))
+                not os.path.isfile(os.path.join(self.cropped_folder, "%s.npz" % case_identifier))
+                or not os.path.isfile(os.path.join(self.cropped_folder, "%s.pkl" % case_identifier))
         ):
             properties = OrderedDict()
             data = transforms(data)
+
             properties["case_identifier"] = case_identifier
             properties["list_of_data_files"] = list_of_data_files
             properties["original_shape"] = np.array(data["image"].shape[1:])
             properties["original_spacing"] = np.array(data["image"].meta["pixdim"][1:4].tolist())
+
+            if self.do_align_volumes:
+                properties["rotate_flag"] = True
+                point1, point2 = self.points_align_coordinate.loc[case_identifier, ['Point1_coordinate', 'Point2_coordinate']].values
+                point1 = np.asarray(point1)
+                point2 = np.asarray(point2)
+                data, angle = align_volumes(data, point1, point2)
+                properties["angle_rotation"] = angle
+
+                """img = sitk.GetImageFromArray(data["image"][0].permute(2, 1, 0))
+                img.SetSpacing(properties["original_spacing"])
+                label = sitk.GetImageFromArray(data["label"][0].permute(2, 1, 0))
+                label.SetSpacing(properties["original_spacing"])
+
+                sitk.WriteImage(img, os.path.join(self.cropped_folder, case_identifier + ".nii.gz"))
+                sitk.WriteImage(label, os.path.join(self.cropped_folder, case_identifier + "_gt.nii.gz"))"""
+            else:
+                properties["rotate_flag"] = False
+
             box_start, box_end = generate_spatial_bounding_box(data["image"])
             properties["crop_bbox"] = np.vstack([box_start, box_end])
             if self.verbose:
@@ -599,7 +643,7 @@ class SegPreprocessor:
         case_identifier = os.path.basename(case)[:-4]
         return case_identifier
 
-    def _get_all_classes(self) -> list[int]:
+    def _get_all_classes(self) -> list[int, ...]:
         """Get list of classes excluding background from dataset.json.
 
         Returns:
@@ -611,9 +655,9 @@ class SegPreprocessor:
         return all_classes
 
     def _get_all_size_reductions(
-        self,
-        list_of_cropped_npz_files: list[str],
-    ) -> list[float]:
+            self,
+            list_of_cropped_npz_files: list[str, ...],
+    ) -> list[float, ...]:
         """Gather all the size reductions after cropping the dataset.
 
         Args:
@@ -700,7 +744,7 @@ class SegPreprocessor:
         use_nonzero_mask_for_normalization = use_nonzero_mask_for_norm
         return use_nonzero_mask_for_normalization
 
-    def _preprocess(self, list_of_cropped_npz_files: list[str]) -> None:
+    def _preprocess(self, list_of_cropped_npz_files: list[str, ...]) -> None:
         """Preprocess (resample and normalize) the dataset.
 
         Args:
@@ -765,6 +809,14 @@ class SegPreprocessor:
             if self.verbose:
                 print("before:", before, "\nafter: ", after, "\n")
 
+        if not self.do_equalize_hist:
+            if self.verbose:
+                print("\nSkip equalize hist...")
+            properties["histo_equalization_flag"] = False
+        else:
+            properties["histo_equalization_flag"] = True
+            data = skimage.exposure.equalize_hist(data)
+
         if not self.do_normalize:
             if self.verbose:
                 print("\nSkip normalization...")
@@ -773,6 +825,14 @@ class SegPreprocessor:
             properties["normalization_flag"] = True
             properties["use_nonzero_mask_for_norm"] = self.use_nonzero_mask
             data, seg = self._normalize(data, seg)
+
+        """if not self.do_equalize_hist:
+            if self.verbose:
+                print("\nSkip equalize hist...")
+            properties["histo_equalization_flag"] = False
+        else:
+            properties["histo_equalization_flag"] = True
+            data = skimage.exposure.equalize_hist(data)"""
 
         all_data = np.vstack((data, seg)).astype(np.float32)
         if self.verbose:
@@ -790,10 +850,10 @@ class SegPreprocessor:
             data=all_data.astype(np.float32),
         )
         with open(
-            os.path.join(
-                self.preprocessed_folder, "data_and_properties", "%s.pkl" % case_identifier
-            ),
-            "wb",
+                os.path.join(
+                    self.preprocessed_folder, "data_and_properties", "%s.pkl" % case_identifier
+                ),
+                "wb",
         ) as f:
             pickle.dump(properties, f)  # nosec B301
 
@@ -837,7 +897,7 @@ class SegPreprocessor:
                 else:
                     mask = np.ones(seg.shape[1:], dtype=bool)
                 data[c][mask] = (data[c][mask] - data[c][mask].mean()) / (
-                    data[c][mask].std() + 1e-8
+                        data[c][mask].std() + 1e-8
                 )
                 data[c][mask == 0] = 0
         if self.verbose:
@@ -845,7 +905,7 @@ class SegPreprocessor:
         return data, seg
 
     def _get_all_shapes_after_resampling(
-        self, list_of_preprocessed_npz_files: list[str]
+            self, list_of_preprocessed_npz_files: list[str, ...]
     ) -> list[np.ndarray, ...]:
         """Get all shapes after resampling.
 
@@ -870,12 +930,12 @@ class SegPreprocessor:
             Numpy array containing case identifier's shape after resampling.
         """
         with open(
-            os.path.join(self.preprocessed_npz_folder, "%s.pkl" % case_identifier), "rb"
+                os.path.join(self.preprocessed_npz_folder, "%s.pkl" % case_identifier), "rb"
         ) as f:
             properties = pickle.load(f)  # nosec B301
         return properties["shape_after_resampling"]
 
-    def _save_dataset_properties(self, list_of_preprocessed_npz_files: list[str]) -> None:
+    def _save_dataset_properties(self, list_of_preprocessed_npz_files: list[str, ...]) -> None:
         """Save useful dataset properties that will be used during inference and for experiment
         planning.
 
@@ -902,11 +962,11 @@ class SegPreprocessor:
             pickle.dump(prop, f)  # nosec B301
 
     def _run_parallel_from_raw(
-        self,
-        func: Callable,
-        datalist: list[dict[str, str]],
-        transforms: Callable,
-        **kwargs,
+            self,
+            func: Callable,
+            datalist: list[dict[str, str]],
+            transforms: Callable,
+            **kwargs,
     ) -> list:
         """Parallel runs to perform operations on raw data.
 
@@ -926,7 +986,7 @@ class SegPreprocessor:
         )
 
     def _run_parallel_from_cropped(
-        self, func: Callable, list_of_cropped_npz_files: list[str, ...]
+            self, func: Callable, list_of_cropped_npz_files: list[str, ...]
     ) -> list:
         """Parallel runs to perform operations on cropped data.
 
@@ -956,6 +1016,9 @@ class SegPreprocessor:
         log.info("Initializing to run preprocessing...")
         log.info(f"Cropped folder: {self.cropped_folder}")
         log.info(f"Preprocessed folder: {self.preprocessed_folder}")
+        # get target spacing
+        self.target_spacing = self._get_target_spacing(datalist, transforms)
+        log.info(f"Target spacing: {np.array(self.target_spacing)}.")
 
         # get intensity properties if input contains CT data
         if "CT" in self.modalities.values():
@@ -968,10 +1031,6 @@ class SegPreprocessor:
         # crop to non zero
         self._crop_from_list_of_files(datalist, transforms)
         list_of_cropped_npz_files = subfiles(self.cropped_folder, True, None, ".npz", True)
-
-        # get target spacing
-        self.target_spacing = self._get_target_spacing(list_of_cropped_npz_files)
-        log.info(f"Target spacing: {np.array(self.target_spacing)}.")
 
         # get all size reductions
         self.all_size_reductions = self._get_all_size_reductions(list_of_cropped_npz_files)
@@ -993,10 +1052,10 @@ class RegPreprocessor(SegPreprocessor):
     """Preprocessor for regression."""
 
     def _get_intensities(
-        self,
-        data: dict[str, str],
-        transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
-        **kwargs,
+            self,
+            data: dict[str, str],
+            transforms: Callable[[dict[str, str]], dict[str, Union[MetaTensor, Tensor, str]]],
+            **kwargs,
     ) -> list[float, ...]:
         """Collect the intensities of a data.
 
@@ -1019,10 +1078,10 @@ class RegPreprocessor(SegPreprocessor):
         return intensities
 
     def _crop(
-        self,
-        data: dict[str, str],
-        transforms: Callable,
-        **kwargs,
+            self,
+            data: dict[str, str],
+            transforms: Callable,
+            **kwargs,
     ) -> None:
         """Crop an image-label pair to non-zero region and save it.
 
@@ -1035,8 +1094,8 @@ class RegPreprocessor(SegPreprocessor):
         list_of_data_files = data["image"]
         case_identifier = os.path.basename(list_of_data_files[0]).split(".nii.gz")[0][:-5]
         if self.overwrite_existing or (
-            not os.path.isfile(os.path.join(self.cropped_folder, "%s.npz" % case_identifier))
-            or not os.path.isfile(os.path.join(self.cropped_folder, "%s.pkl" % case_identifier))
+                not os.path.isfile(os.path.join(self.cropped_folder, "%s.npz" % case_identifier))
+                or not os.path.isfile(os.path.join(self.cropped_folder, "%s.pkl" % case_identifier))
         ):
             properties = OrderedDict()
             data = transforms(data)
@@ -1082,7 +1141,7 @@ class RegPreprocessor(SegPreprocessor):
 
         return use_nonzero_mask_for_norm
 
-    def _save_dataset_properties(self, list_of_preprocessed_npz_files: list[str]) -> None:
+    def _save_dataset_properties(self, list_of_preprocessed_npz_files: list[str, ...]) -> None:
         """Save useful dataset properties that will be used during inference and for experiment
         planning.
 
@@ -1191,10 +1250,10 @@ class RegPreprocessor(SegPreprocessor):
             data=all_data.astype(np.float32),
         )
         with open(
-            os.path.join(
-                self.preprocessed_folder, "data_and_properties", "%s.pkl" % case_identifier
-            ),
-            "wb",
+                os.path.join(
+                    self.preprocessed_folder, "data_and_properties", "%s.pkl" % case_identifier
+                ),
+                "wb",
         ) as f:
             pickle.dump(properties, f)  # nosec B301
 
@@ -1212,6 +1271,9 @@ class RegPreprocessor(SegPreprocessor):
         log.info("Initializing to run preprocessing...")
         log.info(f"Cropped folder: {self.cropped_folder}")
         log.info(f"Preprocessed folder: {self.preprocessed_folder}")
+        # get target spacing
+        self.target_spacing = self._get_target_spacing(datalist, transforms)
+        log.info(f"Target spacing: {np.array(self.target_spacing)}.")
 
         # get intensity properties if input contains CT data
         if "CT" in self.modalities.values():
@@ -1223,11 +1285,8 @@ class RegPreprocessor(SegPreprocessor):
 
         # crop to non zero
         self._crop_from_list_of_files(datalist, transforms)
-        list_of_cropped_npz_files = subfiles(self.cropped_folder, True, None, ".npz", True)
 
-        # get target spacing
-        self.target_spacing = self._get_target_spacing(list_of_cropped_npz_files)
-        log.info(f"Target spacing: {np.array(self.target_spacing)}.")
+        list_of_cropped_npz_files = subfiles(self.cropped_folder, True, None, ".npz", True)
 
         # determine whether to use non zero mask for normalization
         self.use_nonzero_mask = self._determine_whether_to_use_mask_for_norm()
@@ -1394,10 +1453,10 @@ class DealiasPreprocessor(RegPreprocessor):
             data=all_data.astype(np.float32),
         )
         with open(
-            os.path.join(
-                self.preprocessed_folder, "data_and_properties", "%s.pkl" % case_identifier
-            ),
-            "wb",
+                os.path.join(
+                    self.preprocessed_folder, "data_and_properties", "%s.pkl" % case_identifier
+                ),
+                "wb",
         ) as f:
             pickle.dump(properties, f)  # nosec B301
 
