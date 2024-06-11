@@ -1,0 +1,12 @@
+defaults:
+  - net: unet
+  - optimizer: adamw
+  - scheduler: polylr
+  - loss: dice_ce
+
+_target_: ascent.models.nnunet_module.nnUNetLitModule
+
+tta: True
+save_predictions: True
+save_npz: False
+name: nnUNet
