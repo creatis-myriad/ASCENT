@@ -329,6 +329,8 @@ class SegPreprocessor:
         do_normalize: bool = True,
         num_workers: int = 12,
         overwrite_existing: bool = False,
+        do_equalize_hist: bool = False,
+        do_align_volumes: bool = False,
         anisotropy_threshold: float = 3,
         verbose: bool = False,
     ) -> None:
