@@ -1,0 +1,20 @@
+defaults:
+  - nnunet
+  - override net: convnext
+  - override optimizer: adamw
+  - override scheduler: coslr
+
+net:
+  patch_size: [96, 80]
+  encoder:
+    in_channels: 1
+    stem_kernel: 7
+    kernels: [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
+    strides: [[1, 1], [2, 2], [2, 2], [2, 2], [2, 2]]
+    num_conv_per_stage: 2
+    num_features_per_stage: [32, 64, 128, 256, 380]
+    expansion_rate: 2
+  decoder:
+    num_classes: 5
+
+name: ConvNeXt
