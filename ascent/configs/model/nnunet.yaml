@@ -2,6 +2,7 @@ defaults:
   - net: unet
   - optimizer: sgd
   - scheduler: polylr
+  - scheduler_config: default
   - loss: dice_ce
 
 _target_: ascent.models.nnunet_module.nnUNetLitModule

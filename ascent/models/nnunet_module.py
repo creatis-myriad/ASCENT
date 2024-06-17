@@ -2,7 +2,7 @@ import os
 import time
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Literal, Optional, Union
+from typing import Any, Dict, Literal, Optional, Union
 
 import numpy as np
 import SimpleITK as sitk
@@ -34,6 +34,7 @@ class nnUNetLitModule(LightningModule):
         optimizer: torch.optim.Optimizer,
         loss: torch.nn.Module,
         scheduler: torch.optim.lr_scheduler._LRScheduler,
+        scheduler_config: dict[str, Any],
         tta: bool = True,
         sliding_window_overlap: float = 0.5,
         sliding_window_importance_map: bool = "gaussian",
@@ -430,15 +431,20 @@ class nnUNetLitModule(LightningModule):
 
         self.save_mask(final_preds, fname, spacing, save_dir)
 
-    def configure_optimizers(self) -> dict[Literal["optimizer", "lr_scheduler"], Any]:
+    def configure_optimizers(self) -> dict[str, Any]:
         """Configures optimizers/LR schedulers.
 
         Returns:
-            A dict with an `optimizer` key, and an optional `lr_scheduler` if a scheduler is used.
+            A dict with an `optimizer` key, and an optional `scheduler_config` if a scheduler is used.
         """
         configured_optimizer = {"optimizer": self.hparams.optimizer(params=self.parameters())}
         if self.hparams.scheduler:
-            configured_optimizer["lr_scheduler"] = self.hparams.scheduler(
+            configured_optimizer["lr_scheduler"] = dict(self.hparams.scheduler_config)
+            if configured_optimizer["lr_scheduler"].get("frequency"):
+                configured_optimizer["lr_scheduler"]["frequency"] = int(
+                    configured_optimizer["lr_scheduler"]["frequency"]
+                )
+            configured_optimizer["lr_scheduler"]["scheduler"] = self.hparams.scheduler(
                 optimizer=configured_optimizer["optimizer"]
             )
         return configured_optimizer
