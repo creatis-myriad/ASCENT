@@ -1,0 +1,41 @@
+defaults:
+  - net: unet
+  - optimizer: sgd
+  - scheduler: polylr
+  - loss: dice_ce
+  - optimizer@optimizer_d: adamw
+  - scheduler@scheduler_d: polylr
+
+
+_target_: ascent.models.nnunet_module_GAN.nnUNetLitModule
+
+tta: True
+save_predictions: True
+save_npz: False
+name: nnUNet_GAN
+adv_weight: 0.5
+
+net:
+  patch_size: [96, 80]
+  encoder:
+    in_channels: 1
+    kernels: [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
+    strides: [[1, 1], [2, 2], [2, 2], [2, 2], [2, 2]]
+  decoder:
+    num_classes: 5
+
+discriminator:
+    _target_: generative.networks.nets.PatchDiscriminator
+    spatial_dims: 2
+    num_layers_d: 3
+    num_channels: 32
+    in_channels: 6
+    out_channels: 1
+    norm: "INSTANCE"
+
+loss_d:
+    _target_: generative.losses.adversarial_loss.PatchAdversarialLoss
+    criterion: "least_squares"
+
+
+pretrained_weights_path: "logs/MYOSAIQ/nnUNet/2D/Fold_0/runs/2024-06-12_21-05-07_eqFold/checkpoints/epoch_825.ckpt"
