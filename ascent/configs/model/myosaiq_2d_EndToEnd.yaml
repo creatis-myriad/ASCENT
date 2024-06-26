@@ -1,0 +1,49 @@
+defaults:
+  - net@net: unet
+  - net@net_4cl: unet
+  - net@net_5cl: unet
+  - optimizer: sgd
+  - scheduler: polylr
+  - loss: dice_ce
+
+_target_: ascent.models.nnunet_module_EndToEnd.nnUNetLitModule
+
+tta: True
+save_predictions: True
+save_npz: False
+name: nnUNet
+
+net:
+  patch_size: [96, 80]
+  encoder:
+    in_channels: 1
+    kernels: [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
+    strides: [[1, 1], [2, 2], [2, 2], [2, 2], [2, 2]]
+  decoder:
+    num_classes: 3
+
+net_4cl:
+  patch_size: [96, 80]
+  encoder:
+    in_channels: 4
+    kernels: [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
+    strides: [[1, 1], [2, 2], [2, 2], [2, 2], [2, 2]]
+    num_stages: ${get_num_stages_from_kernels:${model.net_4cl.encoder.kernels}}
+    dim: ${get_dim_from_patch_size:${model.net_4cl.patch_size}}
+  decoder:
+    num_classes: 4
+
+net_5cl:
+  patch_size: [96, 80]
+  encoder:
+    in_channels: 5
+    kernels: [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
+    strides: [[1, 1], [2, 2], [2, 2], [2, 2], [2, 2]]
+    num_stages: ${get_num_stages_from_kernels:${model.net_5cl.encoder.kernels}}
+    dim: ${get_dim_from_patch_size:${model.net_5cl.patch_size}}
+  decoder:
+    num_classes: 5
+
+loss:
+  soft_dice_kwargs:
+    batch_dice: False

@@ -141,9 +141,10 @@ class SoftDiceLoss(nn.Module):
         if not self.do_bg:
             if self.batch_dice:
                 dc = dc[1:]
+                dc = dc.mean(0)
             else:
                 dc = dc[:, 1:]
-        dc = dc.mean()
+                dc = dc.mean(1)
 
         return -dc
 
@@ -229,9 +230,10 @@ class SoftDiceLossSquared(nn.Module):
         if not self.do_bg:
             if self.batch_dice:
                 dc = dc[1:]
+                dc = dc.mean(0)
             else:
                 dc = dc[:, 1:]
-        dc = dc.mean()
+                dc = dc.mean(1)
 
         return -dc
 
