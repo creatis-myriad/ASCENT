@@ -1,0 +1,11 @@
+defaults:
+  - nnunet
+
+net:
+  patch_size: [96, 80]
+  encoder:
+    in_channels: 2
+    kernels: [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
+    strides: [[1, 1], [2, 2], [2, 2], [2, 2], [2, 2]]
+  decoder:
+    num_classes: 4
