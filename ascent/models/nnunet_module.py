@@ -11,6 +11,7 @@ import torch.nn as nn
 from einops.einops import rearrange
 from lightning import LightningModule
 from monai.data import MetaTensor
+from monai.transforms import Rotate
 from torch import Tensor
 from torch.nn.functional import pad
 
@@ -29,17 +30,17 @@ class nnUNetLitModule(LightningModule):
     """
 
     def __init__(
-        self,
-        net: torch.nn.Module,
-        optimizer: torch.optim.Optimizer,
-        loss: torch.nn.Module,
-        scheduler: torch.optim.lr_scheduler._LRScheduler,
-        tta: bool = True,
-        sliding_window_overlap: float = 0.5,
-        sliding_window_importance_map: bool = "gaussian",
-        save_predictions: bool = True,
-        save_npz: bool = False,
-        name: str = "nnUNet",
+            self,
+            net: torch.nn.Module,
+            optimizer: torch.optim.Optimizer,
+            loss: torch.nn.Module,
+            scheduler: torch.optim.lr_scheduler._LRScheduler,
+            tta: bool = True,
+            sliding_window_overlap: float = 0.5,
+            sliding_window_importance_map: bool = "gaussian",
+            save_predictions: bool = True,
+            save_npz: bool = False,
+            name: str = "nnUNet"
     ):
         """Saves the system's configuration in `hparams`. Initialize variables for training and
         validation loop.
@@ -315,7 +316,10 @@ class nnUNetLitModule(LightningModule):
                         anisotropy_flag = False
 
                 preds = resample_image(preds, shape_after_cropping, anisotropy_flag, axis, 1, 0)
-
+            if properties_dict.get("rotate_flag"):
+                rotation = Rotate(angle=(0-properties_dict.get("angle_rotation")), mode="nearest")
+                for slice in range(preds.shape[3]):
+                    preds[:, :, :, slice] = rotation(preds[:, :, :, slice])
             final_preds = np.zeros([preds.shape[0], *original_shape])
 
             if len(properties_dict.get("crop_bbox")):
@@ -663,6 +667,9 @@ class nnUNetLitModule(LightningModule):
         properties_dict["shape_after_cropping"] = image_meta_dict["shape_after_cropping"][
             0
         ].tolist()
+        properties_dict["rotate_flag"] = image_meta_dict["rotate_flag"].item()
+        if properties_dict.get("rotate_flag"):
+            properties_dict["angle_rotation"] = image_meta_dict["angle_rotation"]
         if properties_dict.get("resampling_flag"):
             properties_dict["spacing_after_resampling"] = image_meta_dict[
                 "spacing_after_resampling"
