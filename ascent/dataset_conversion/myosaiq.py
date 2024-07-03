@@ -10,7 +10,7 @@ import seaborn as sns
 import SimpleITK as sitk
 from pandas import DataFrame, Series, concat
 from seaborn import PairGrid
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, StratifiedKFold
 from tqdm import tqdm
 
 from ascent.dataset_conversion.utils import generate_dataset_json
@@ -247,15 +247,18 @@ def main():
     parser = argparse.ArgumentParser(
         description=(
             "Script to convert MYOSAIQ challenge dataset to 'nnHPU' format and create balanced "
-            "train/val split."
+            "train/val or train/val/test split."
         )
     )
     parser.add_argument(
-        "data_dir", type=str, help="Path to the root directory of the downloaded MYOSAIQ data"
+        "--data_dir", type=str, default="../../data/MYOSAIQ_old/database", help="Path to the root directory of the downloaded MYOSAIQ data"
     )
-    parser.add_argument("output_dir", type=str, help="Path to the dataset/raw directory")
+    parser.add_argument("--output_dir", type=str, default="../../data", help="Path to the dataset/raw directory")
     parser.add_argument(
         "--create_split", type=bool, default=True, help="Whether to create train/val split"
+    )
+    parser.add_argument(
+        "--test_splits", type=bool, default=True, help="Whether to create train/val split"
     )
     parser.add_argument(
         "--save_fig",
@@ -267,7 +270,7 @@ def main():
     args = parser.parse_args()
 
     base = os.path.join(args.data_dir, "training")
-    dataset_name = "MYOSAIQ"
+    dataset_name = "MYOSAIQ_old"
     output_dir = os.path.join(args.output_dir, dataset_name, "raw")
     os.makedirs(args.output_dir, exist_ok=True)
 
@@ -295,45 +298,90 @@ def main():
     )
 
     if args.create_split:
-        # Compute attributes for d8, m1, and m12 patients
-        (
-            d8_patients_attributes,
-            m1_patients_attributes,
-            m12_patients_attributes,
-        ) = compute_attributes(labelsTr)
 
-        all_patients_attributes = concat(
-            [d8_patients_attributes, m1_patients_attributes, m12_patients_attributes]
-        )
+        if args.test_splits:
+            all_keys = []
+            for case in subfiles(labelsTr, suffix=".nii.gz"):
+                case_identifier = os.path.basename(case)[:-7]
+                all_keys.append(case_identifier)
 
-        # Generate train/val split for d8, m1, and m12 patients
-        d8_train, d8_val = generate_patients_splits(
-            d8_patients_attributes, "MVO", test_size=0.2, seed=12345
-        )
-        m1_train, m1_val = generate_patients_splits(
-            m1_patients_attributes, "Infart", test_size=0.2, seed=12345
-        )
-        m12_train, m12_val = generate_patients_splits(
-            m12_patients_attributes, "Infart", test_size=0.2, seed=12345
-        )
-
-        myosaiq_train = d8_train + m1_train + m12_train
-        myosaiq_val = d8_val + m1_val + m12_val
-
-        subsets = {"train": myosaiq_train, "val": myosaiq_val}
-
-        preprocessed_dir = os.path.join(output_dir, "../", "preprocessed")
-        os.makedirs(preprocessed_dir, exist_ok=True)
-        splits_file = os.path.join(preprocessed_dir, "splits_final.pkl")
-        do_splits(splits_file, myosaiq_train, myosaiq_val)
-
-        if args.save_fig:
-            g = plot_patients_distribution(
-                all_patients_attributes, ["Infart", "MVO"], subsets=subsets
+            splits = []
+            all_keys_sorted = np.sort(
+                all_keys
             )
-            print("Saving distribution figure...")
-            fig = g.fig
-            fig.savefig(os.path.join(output_dir, "distribution.png"))
+
+            d8_keys = [s for s in all_keys_sorted if s.endswith("_D8")]
+            m12_keys = [s for s in all_keys_sorted if s.endswith("_M12")]
+            m1_keys = [s for s in all_keys_sorted if s.endswith("_M1")]
+
+            # Combiner les clés pour qu'elles soient triées par type
+            all_keys_sorted = np.concatenate((d8_keys, m1_keys, m12_keys))
+
+            labels = np.zeros(len(all_keys_sorted))
+            labels[len(d8_keys): len(d8_keys) + len(m1_keys)] = 1
+            labels[len(d8_keys) + len(m1_keys):] = 2
+
+            kfold = StratifiedKFold(n_splits=10, shuffle=True, random_state=12345)
+            for i, (train_and_val_idx, test_idx) in enumerate(kfold.split(all_keys_sorted, labels)):
+                train_and_val_keys = np.array(all_keys_sorted)[train_and_val_idx]
+                train_and_val_labels = labels[train_and_val_idx]
+                test_keys = np.array(all_keys_sorted)[test_idx]
+
+                # Split train and validation sets (90% train, 10% val) with stratify
+                train_keys, val_keys, _, _ = train_test_split(
+                    train_and_val_keys, train_and_val_labels, train_size=0.9, random_state=12345,
+                    stratify=train_and_val_labels
+                )
+
+                splits.append(OrderedDict())
+                splits[-1]["train"] = train_keys
+                splits[-1]["val"] = val_keys
+                splits[-1]["test"] = test_keys
+
+            preprocessed_dir = os.path.join(output_dir, "../", "preprocessed")
+            splits_file = os.path.join(preprocessed_dir, "splits_final.pkl")
+            save_pickle(splits, splits_file)
+        else:
+
+            # Compute attributes for d8, m1, and m12 patients
+            (
+                d8_patients_attributes,
+                m1_patients_attributes,
+                m12_patients_attributes,
+            ) = compute_attributes(labelsTr)
+
+            all_patients_attributes = concat(
+                [d8_patients_attributes, m1_patients_attributes, m12_patients_attributes]
+            )
+
+            # Generate train/val split for d8, m1, and m12 patients
+            d8_train, d8_val = generate_patients_splits(
+                d8_patients_attributes, "MVO", test_size=0.2, seed=12345
+            )
+            m1_train, m1_val = generate_patients_splits(
+                m1_patients_attributes, "Infart", test_size=0.2, seed=12345
+            )
+            m12_train, m12_val = generate_patients_splits(
+                m12_patients_attributes, "Infart", test_size=0.2, seed=12345
+            )
+
+            myosaiq_train = d8_train + m1_train + m12_train
+            myosaiq_val = d8_val + m1_val + m12_val
+
+            subsets = {"train": myosaiq_train, "val": myosaiq_val}
+
+            preprocessed_dir = os.path.join(output_dir, "../", "preprocessed")
+            os.makedirs(preprocessed_dir, exist_ok=True)
+            splits_file = os.path.join(preprocessed_dir, "splits_final.pkl")
+            do_splits(splits_file, myosaiq_train, myosaiq_val)
+
+            if args.save_fig:
+                g = plot_patients_distribution(
+                    all_patients_attributes, ["Infart", "MVO"], subsets=subsets
+                )
+                print("Saving distribution figure...")
+                fig = g.fig
+                fig.savefig(os.path.join(output_dir, "distribution.png"))
 
 
 if __name__ == "__main__":
