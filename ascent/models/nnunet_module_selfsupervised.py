@@ -4,7 +4,6 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Literal, Optional, Union
 
-import matplotlib.pyplot as plt
 import monai
 import numpy as np
 import SimpleITK as sitk
@@ -149,9 +148,6 @@ class nnUNetLitModule(LightningModule):
         # Only the highest resolution output is returned during the validation
         pred = self.forward(masked_img)
         loss = self.loss(pred, img)
-        if batch_idx==0:
-            plt.imshow(pred[0, 0, :, :].detach().cpu())
-            plt.show()
 
         test_ssim = self.ssim(img, pred).mean()
 
@@ -208,7 +204,7 @@ class nnUNetLitModule(LightningModule):
         masked_img = img * mask
 
         start_time = time.time()
-        preds = self.predict(masked_img, apply_softmax=False)
+        preds = self.tta_predict(img, apply_softmax=False) if self.hparams.tta else self.predict(img, apply_softmax=False)
         print(f"\nPrediction took {round(time.time() - start_time, 4)} (s).")
 
         self.ssim = monai.metrics.regression.SSIMMetric(spatial_dims=len(preds.shape)-2, win_size=5)

@@ -188,7 +188,6 @@ class nnUNetDataModule(LightningDataModule):
                 self.test_files = [
                     {
                         "data": os.path.join(self.full_data_dir, "%s.npy" % key),
-                        "key": key
                     }
                     for key in val_keys
                 ]
