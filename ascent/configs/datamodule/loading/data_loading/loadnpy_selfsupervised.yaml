@@ -1,0 +1,4 @@
+_target_: ascent.utils.transforms.LoadNpyd_selfsupervised
+keys:
+  - "data"
+allow_missing_keys: False

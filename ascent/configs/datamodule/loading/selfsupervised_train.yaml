@@ -1,0 +1,5 @@
+defaults:
+  - data_loading: loadnpy_selfsupervised
+  - pad: spatial_pad
+  - crop: rand_spatial_crop
+  - utility@maybe_squeeze: maybe_squeeze

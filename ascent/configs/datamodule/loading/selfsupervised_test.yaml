@@ -1,0 +1,4 @@
+defaults:
+  - data_loading: loadnpy_selfsupervised
+  - utility@maybe_squeeze: maybe_squeeze
+

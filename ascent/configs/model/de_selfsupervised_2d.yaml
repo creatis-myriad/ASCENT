@@ -1,0 +1,21 @@
+defaults:
+  - net: unet
+  - optimizer: sgd
+  - scheduler: polylr
+  - loss: mse
+
+_target_: ascent.models.nnunet_module_selfsupervised.nnUNetLitModule
+
+net:
+  patch_size: [96, 80]
+  encoder:
+    in_channels: 1
+    kernels: [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
+    strides: [[1, 1], [2, 2], [2, 2], [2, 2], [2, 2]]
+  decoder:
+    num_classes: 1
+
+tta: True
+save_predictions: True
+save_npz: False
+name: nnUNet

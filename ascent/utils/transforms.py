@@ -561,6 +561,56 @@ class LoadNpyd(MapTransform):
         return d
 
 
+class LoadNpyd_selfsupervised(MapTransform):
+    """Load numpy array from .npy files.
+
+    Self supervised preprocessing saving images to .npz files.
+    The .npz files will be unpacked to .npy before training.
+
+    data: .npy file containing an array of shape (c, w, h, d)
+    """
+
+    def __init__(
+            self,
+            keys: KeysCollection,
+            allow_missing_keys: bool = False
+    ) -> None:
+        """Initialize class instance.
+
+        Args:
+            keys: Keys of the corresponding items to be transformed.
+            allow_missing_keys: Don't raise exception if key is missing.
+        """
+
+        super().__init__(keys, allow_missing_keys)
+
+    def __call__(self, data: dict[str, Union[str, Path]]):
+        """Load .npy image file and/or .pkl properties file.
+
+        Args:
+            data: Dict to transform.
+
+        Returns:
+            d: Dict containing {"image"}
+
+        Raises:
+            ValueError: If the image is not 4D (c, w, h, d)
+            NotImplementedError: If the data contains a path that is not a .npy.
+        """
+        d = dict(data)
+        for key in self.key_iterator(d):
+            if d[key].endswith(".npy"):
+                case_all_data = LoadImage(image_only=True, channel_dim=0)(d[key])
+                d.pop(key, None)
+                d["image"] = MetaTensor(case_all_data.astype(np.float32))
+                del case_all_data
+                if not len(d["image"].shape) == 4:
+                    raise ValueError("Image should be (c, w, h, d)")
+            else:
+                raise NotImplementedError
+        return d
+
+
 class DealiasLoadNpyd(MapTransform):
     """Load numpy array from .npy files. (Specific to deep unfolding for dealiasing)
 

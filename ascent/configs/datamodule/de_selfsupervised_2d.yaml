@@ -1,0 +1,20 @@
+defaults:
+  - augmentation: selfsupervised_2d
+  - loading@loading.train: selfsupervised_train
+  - loading@loading.test: selfsupervised_test
+
+_target_: ascent.datamodules.nnunet_datamodule_selfsupervised.nnUNetDataModule
+data_dir: ${paths.data_dir}
+batch_size: 32
+dataset_name: DE
+patch_size: ${model.net.patch_size}
+in_channels: ${get_in_channels_from_model_net:${model.net}}
+# Whether to do dummy 2D data augmentation during the training of 3D-UNet
+do_dummy_2D_data_aug: False
+fold: ${fold}
+num_workers: 12
+pin_memory: True
+data_keys:
+  image_key: "image"
+  all_keys:
+    - ${datamodule.data_keys.image_key}
