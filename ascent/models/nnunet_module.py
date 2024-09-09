@@ -35,6 +35,8 @@ class nnUNetLitModule(LightningModule):
             optimizer: torch.optim.Optimizer,
             loss: torch.nn.Module,
             scheduler: torch.optim.lr_scheduler._LRScheduler,
+            pretrained_weights_path: str = None,
+            level: int = 1,
             tta: bool = True,
             sliding_window_overlap: float = 0.5,
             sliding_window_importance_map: bool = "gaussian",
@@ -92,6 +94,18 @@ class nnUNetLitModule(LightningModule):
         self.validation_step_outputs = []
         self.test_step_outputs = []
 
+        self.level = level
+        # Load model weights in self.net if specified path
+        """if pretrained_weights_path is not None:
+            pretrained_dict = torch.load(pretrained_weights_path)["state_dict"]
+            model_dict = self.state_dict()
+            pretrained_dict = {k: v for k, v in pretrained_dict.items() if (k in model_dict and ("decoder.output" not in k) and ("decoder.deep_supervision" not in k))}
+            model_dict.update(pretrained_dict)
+            self.load_state_dict(model_dict)
+
+        for param in self.net.encoder.parameters():
+            param.requires_grad_(False)"""
+
     def setup(self, stage: Optional[str] = None) -> None:  # noqa: D102
         # to initialize some class variables that depend on the model
         self.threeD = len(self.net.patch_size) == 3
@@ -115,6 +129,20 @@ class nnUNetLitModule(LightningModule):
     ) -> dict[str, Tensor]:  # noqa: D102
         img, label = batch["image"], batch["label"]
 
+        if self.level is not None:
+            if self.level == 1:
+                label = torch.where((label == 4) | (label == 3), torch.tensor(2), label)
+
+            if self.level == 2:
+                labelSecondLevel = torch.where((label == 4) | (label == 3), torch.tensor(2), label)
+                label = torch.where((label == 4), torch.tensor(3), label)
+                img = torch.cat([img, labelSecondLevel], dim=1)
+
+            if self.level == 3:
+                labelThirdLevel = torch.where((label == 4), torch.tensor(3), label)
+                img = torch.cat([img, labelThirdLevel], dim=1)
+
+
         # Need to handle carefully the multi-scale outputs from deep supervision heads
         pred = self.forward(img)
         loss = self.compute_loss(pred, label)
@@ -134,6 +162,19 @@ class nnUNetLitModule(LightningModule):
         self, batch: dict[str, Tensor], batch_idx: int
     ) -> dict[str, Tensor]:  # noqa: D102
         img, label = batch["image"], batch["label"]
+
+        if self.level is not None:
+            if self.level == 1:
+                label = torch.where((label == 4) | (label == 3), torch.tensor(2), label)
+
+            if self.level == 2:
+                labelSecondLevel = torch.where((label == 4) | (label == 3), torch.tensor(2), label)
+                label = torch.where((label == 4), torch.tensor(3), label)
+                img = torch.cat([img, labelSecondLevel], dim=1)
+
+            if self.level == 3:
+                labelThirdLevel = torch.where((label == 4), torch.tensor(3), label)
+                img = torch.cat([img, labelThirdLevel], dim=1)
 
         # Only the highest resolution output is returned during the validation
         pred = self.forward(img)
@@ -250,6 +291,19 @@ class nnUNetLitModule(LightningModule):
         self, batch: dict[str, Tensor], batch_idx: int
     ) -> dict[str, Tensor]:  # noqa: D102
         img, label, image_meta_dict = batch["image"], batch["label"], batch["image_meta_dict"]
+
+        if self.level is not None:
+            if self.level == 1:
+                label = torch.where((label == 4) | (label == 3), torch.tensor(2), label)
+
+            if self.level == 2:
+                labelSecondLevel = torch.where((label == 4) | (label == 3), torch.tensor(2), label)
+                label = torch.where((label == 4), torch.tensor(3), label)
+                img = torch.cat([img, labelSecondLevel], dim=1)
+
+            if self.level == 3:
+                labelThirdLevel = torch.where((label == 4), torch.tensor(3), label)
+                img = torch.cat([img, labelThirdLevel], dim=1)
 
         start_time = time.time()
         preds = self.tta_predict(img) if self.hparams.tta else self.predict(img)
@@ -380,6 +434,14 @@ class nnUNetLitModule(LightningModule):
 
     def predict_step(self, batch: dict[str, Tensor], batch_idx: int):  # noqa: D102
         img, image_meta_dict = batch["image"], batch["image_meta_dict"]
+        if self.level is not None:
+            if self.level == 2:
+                labelFirstLevel = batch["label"]
+                img = torch.cat([img, labelFirstLevel], dim=1)
+
+            if self.level == 3:
+                labelSecondLevel = batch["label"]
+                img = torch.cat([img, labelSecondLevel], dim=1)
 
         start_time = time.time()
         preds = self.tta_predict(img) if self.hparams.tta else self.predict(img)

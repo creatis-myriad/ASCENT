@@ -9,3 +9,5 @@ net:
     strides: [[1, 1], [2, 2], [2, 2], [2, 2], [2, 2]]
   decoder:
     num_classes: 5
+
+level: 3
