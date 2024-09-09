@@ -18,6 +18,9 @@ dataset: ???
 # input folder containing data for inference
 input_folder: ???
 
+# input folder containing data for inference
+input_label_folder: null
+
 # output folder to save predictions
 output_folder: ???
 

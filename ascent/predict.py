@@ -6,6 +6,7 @@ from typing import Callable, Tuple, Union
 import hydra
 import numpy as np
 from lightning import LightningModule, Trainer
+from monai.config import KeysCollection
 from monai.data import CacheDataset, DataLoader
 from monai.transforms import Compose, EnsureChannelFirstd, LoadImaged, ToTensord
 from omegaconf import DictConfig
@@ -24,9 +25,11 @@ class AscentPredictor(AscentTrainer):
     @staticmethod
     def check_input_folder_and_return_datalist(
         input_folder: Union[str, Path],
+        input_label_folder: Union[str, Path],
         output_folder: Union[str, Path],
         overwrite_existing: bool,
         expected_num_modalities: int,
+        only_D8: bool = False
     ) -> list[dict[str, str]]:
         """Analyze input folder and convert the nifti files to datalist.
 
@@ -49,7 +52,7 @@ class AscentPredictor(AscentTrainer):
         log.info(f"This model expects {expected_num_modalities} input modalities for each image.")
         files = subfiles(input_folder, suffix=".nii.gz", join=False, sort=True)
 
-        maybe_case_ids = np.unique([i[:-12] for i in files])
+        maybe_case_ids = np.unique([i[:-12] for i in files if ((not only_D8) or i[:-12].endswith("D8"))])
 
         remaining = deepcopy(files)
         missing = []
@@ -66,7 +69,14 @@ class AscentPredictor(AscentTrainer):
                 if not os.path.isfile(os.path.join(input_folder, expected_output_file)):
                     missing.append(expected_output_file)
                 else:
-                    remaining.remove(expected_output_file)
+                    if input_label_folder is not None:
+                        expected_label_file = c + ".nii.gz"
+                        if not os.path.isfile(os.path.join(input_label_folder, expected_label_file)):
+                            missing.append(expected_output_file)
+                        else:
+                            remaining.remove(expected_output_file)
+                    else:
+                        remaining.remove(expected_output_file)
 
         log.info(
             f"Found {len(maybe_case_ids)} unique case ids, here are some examples: "
@@ -118,12 +128,19 @@ class AscentPredictor(AscentTrainer):
             for j in maybe_case_ids
         ]
 
-        datalist = [{"image": image_paths} for image_paths in list_of_lists]
+        if input_label_folder is None:
+            datalist = [{"image": image_paths} for image_paths in list_of_lists]
+
+        else:
+            datalist = []
+            for image_paths in list_of_lists:
+                case = os.path.split(image_paths[0])[-1][:-12]
+                datalist.append({"image": image_paths, "label": [f"{input_label_folder}/{case}.nii.gz"]})
 
         return datalist
 
     @staticmethod
-    def get_predict_transforms(dataset_properties: dict) -> Callable:
+    def get_predict_transforms(dataset_properties: dict, keys: KeysCollection) -> Callable:
         """Build transforms compose to read and preprocess inference data.
 
         Args:
@@ -133,20 +150,21 @@ class AscentPredictor(AscentTrainer):
             Monai Compose(transforms)
         """
         load_transforms = [
-            LoadImaged(keys="image", image_only=True),
-            EnsureChannelFirstd(keys="image"),
+            LoadImaged(keys=keys, image_only=True),
+            EnsureChannelFirstd(keys=keys),
         ]
 
         sample_transforms = [
             Preprocessd(
-                keys="image",
+                keys=keys,
                 target_spacing=dataset_properties["spacing_after_resampling"],
                 intensity_properties=dataset_properties["intensity_properties"],
                 do_resample=dataset_properties["do_resample"],
                 do_normalize=dataset_properties["do_normalize"],
                 modalities=dataset_properties["modalities"],
+                do_equalize_hist=False,
             ),
-            ToTensord(keys="image", track_meta=True),
+            ToTensord(keys=keys, track_meta=True),
         ]
 
         return Compose(load_transforms + sample_transforms)
@@ -198,12 +216,24 @@ class AscentPredictor(AscentTrainer):
                 "dataset_properties.pkl",
             )
         )
-        transforms = AscentPredictor.get_predict_transforms(dataset_properties)
+
+        if cfg.model.level is None or cfg.model.level == 1:
+            keys = ["image"]
+            input_label_folder = None
+
+        else:
+            keys = ["image", "label"]
+            input_label_folder = cfg.input_label_folder
+
+
+        transforms = AscentPredictor.get_predict_transforms(dataset_properties, keys)
         datalist = AscentPredictor.check_input_folder_and_return_datalist(
             cfg.input_folder,
+            input_label_folder,
             cfg.output_folder,
             cfg.overwrite_existing,
             len(dataset_properties["modalities"].keys()),
+            only_D8=True
         )
 
         dataset = CacheDataset(data=datalist, transform=transforms, cache_rate=1.0)
