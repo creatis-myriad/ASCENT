@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Hashable, Mapping, Optional, Union
 
 import numpy as np
+import skimage
 import torch
 from einops.einops import rearrange
 from monai.config import KeysCollection
@@ -371,7 +372,7 @@ class Preprocessd(MapTransform):
     """
 
     def __init__(
-        self, keys, target_spacing, intensity_properties, do_resample, do_normalize, modalities
+        self, keys, target_spacing, intensity_properties, do_resample, do_normalize, modalities, rotate_flag=False, angle_rotation=None, do_equalize_hist=False
     ) -> None:
         """Initialize class instance.
 
@@ -387,6 +388,9 @@ class Preprocessd(MapTransform):
         self.do_resample = do_resample
         self.do_normalize = do_normalize
         self.modalities = modalities
+        self.rotate_flag = rotate_flag
+        self.angle_rotation = angle_rotation
+        self.do_equalize_hist = do_equalize_hist
 
     def __call__(self, data: Mapping[Hashable, NdarrayOrTensor]):
         # load data
@@ -403,6 +407,10 @@ class Preprocessd(MapTransform):
         image_meta_dict["original_spacing"] = np.array(image._meta["pixdim"][1:4].tolist())
 
         image_meta_dict["resampling_flag"] = self.do_resample
+
+        image_meta_dict["rotate_flag"] = self.rotate_flag
+        if image_meta_dict["rotate_flag"]:
+            image_meta_dict["angle_rotation"] = self.angle_rotation
 
         box_start, box_end = generate_spatial_bounding_box(image)
         image = SpatialCrop(roi_start=box_start, roi_end=box_end)(image)
@@ -444,6 +452,10 @@ class Preprocessd(MapTransform):
                     label = resample_label(label, resample_shape, anisotropy_flag, axis, 1, 0)
 
         image_meta_dict["anisotropy_flag"] = anisotropy_flag
+
+        if self.do_equalize_hist:
+            image_meta_dict["histo_equalization_flag"] = True
+            image = skimage.exposure.equalize_hist(image)
 
         if self.do_normalize:
             for c in range(len(image)):
