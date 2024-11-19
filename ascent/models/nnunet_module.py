@@ -1,3 +1,4 @@
+import gc
 import os
 import time
 from collections import OrderedDict
@@ -174,6 +175,7 @@ class nnUNetLitModule(LightningModule):
 
         self.validation_step_outputs.append({"val/loss": loss})
 
+        gc.collect()
         return {"val/loss": loss}
 
     def on_validation_epoch_end(self):  # noqa: D102
