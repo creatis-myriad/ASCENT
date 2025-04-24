@@ -1,0 +1,8 @@
+defaults:
+  - nnunet
+  - override augmentation: default_2d
+
+batch_size: 2
+dataset_name: A3C
+do_dummy_2D_data_aug: False
+num_workers: 12
