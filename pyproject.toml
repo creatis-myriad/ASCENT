@@ -54,6 +54,8 @@ medpy = "*"
 matplotlib = "*"
 holoviews = "*"
 seaborn = "*"
+onnx = "==1.16.1"
+onnxruntime = "*"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^2.20.0"
@@ -75,6 +77,7 @@ ascent_train = "ascent.train:main"
 ascent_evaluate = "ascent.eval:main"
 ascent_predict = "ascent.predict:main"
 ascent_preprocess_and_plan = "ascent.preprocess_and_plan:main"
+ascent_onnx = "ascent.convert_onnx:main"
 
 [tool.pytest.ini_options]
 addopts = [
