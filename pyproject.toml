@@ -78,6 +78,7 @@ ascent_evaluate = "ascent.eval:main"
 ascent_predict = "ascent.predict:main"
 ascent_preprocess_and_plan = "ascent.preprocess_and_plan:main"
 ascent_onnx = "ascent.convert_onnx:main"
+ascent_torchscript = "ascent.convert_torchscript:main"
 
 [tool.pytest.ini_options]
 addopts = [
