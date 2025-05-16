@@ -1,0 +1,26 @@
+defaults:
+  - model: mnist
+  - paths: default
+  - override hydra/hydra_logging: disabled
+  - _self_
+
+# model checkpoint path
+ckpt_path: ???
+
+# dir to save the converted TorchScript model
+save_dir: ???
+
+output_name: ???
+
+cpu: True # set true to save the model for CPU inference
+
+gpu: True # set true to save the model for GPU inference
+
+# set some default configs to avoid interpolation errors as not all experiment configs are loaded
+model:
+  scheduler:
+    max_decay_steps: 1000
+hydra:
+  output_subdir: null
+  run:
+    dir: .
