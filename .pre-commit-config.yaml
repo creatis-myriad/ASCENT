@@ -1,9 +1,9 @@
 default_language_version:
-  python: python3
+  python: python3.10
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: v6.0.0
     hooks:
       # list of supported hooks: https://pre-commit.com/hooks.html
       - id: trailing-whitespace
@@ -45,11 +45,19 @@ repos:
         args: [--py38-plus]
 
   # python docstring formatting
-  - repo: https://github.com/PyCQA/docformatter
-    rev: eb1df347edd128b30cd3368dddc3aa65edcfac38
+  - repo: local
     hooks:
       - id: docformatter
-        args: [--in-place, --wrap-summaries=99, --wrap-descriptions=99]
+        name: docformatter
+        description: Formats docstrings to follow PEP 257.
+        entry: python -Im docformatter
+        additional_dependencies:
+          - docformatter == 1.7.5
+          - tomli
+        args: [--in-place, --config, ./pyproject.toml]
+        language: python
+        types:
+          - python
 
   # python check (PEP8), programming errors and code complexity
   - repo: https://github.com/PyCQA/flake8
@@ -60,7 +68,7 @@ repos:
 
   # python security linter
   - repo: https://github.com/PyCQA/bandit
-    rev: "1.7.5"
+    rev: "1.7.9"
     hooks:
       - id: bandit
         args: ["-c", "pyproject.toml"]
@@ -82,7 +90,7 @@ repos:
 
   # md formatting
   - repo: https://github.com/executablebooks/mdformat
-    rev: 0.7.16
+    rev: 0.7.22
     hooks:
       - id: mdformat
         args: ["--number"]
@@ -95,7 +103,7 @@ repos:
 
   # word spelling linter
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.2.5
+    rev: v2.3.0
     hooks:
       - id: codespell
         args:
