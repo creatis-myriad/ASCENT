@@ -105,7 +105,12 @@ class AscentTrainer(ABC):
         if cfg.get("train"):
             log.info("Starting training!")
             if not cfg.transfer_training:
-                trainer.fit(model=model, datamodule=datamodule, ckpt_path=cfg.get("ckpt_path"))
+                trainer.fit(
+                    model=model,
+                    datamodule=datamodule,
+                    ckpt_path=cfg.get("ckpt_path"),
+                    weights_only=False,
+                )
             else:
                 trainer.fit(model=model, datamodule=datamodule)
 
@@ -142,7 +147,12 @@ class AscentTrainer(ABC):
                     ckpt_path = None
                 else:
                     log.info(f"Loading last ckpt: {ckpt_path}")
-            trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+            trainer.test(
+                model=model,
+                datamodule=datamodule,
+                ckpt_path=ckpt_path,
+                weights_only=False,
+            )
 
         test_metrics = trainer.callback_metrics
 

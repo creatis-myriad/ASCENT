@@ -25,7 +25,7 @@ packages = [
 
 [tool.poetry.dependencies]
 python = "~3.10"
-torch = ">=2.1.0"
+torch = "~=2.8.0"
 torchvision = ">=0.16.0"
 lightning = ">=2.0.0"
 torchmetrics = ">=0.11.4"
@@ -43,7 +43,7 @@ SimpleITK = "*"
 scikit-image = "*"
 scikit-learn = "*"
 nibabel = "*"
-monai= "==1.2.0"
+monai= "==1.5.1"
 einops = "*"
 "ruamel.yaml" = "*"
 joblib = "*"

@@ -94,7 +94,7 @@ ASCENT has been tested on Linux (Ubuntu 20, Red Hat 7.6), macOS and Windows 10/1
    Grab the one with GPU for faster training:
    ```bash
    # example for linux or Windows
-   conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
+   pip install torch==2.8.0 torchvision==0.23.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
    ```
 4. Install the project in editable mode and its dependencies:
    ```bash

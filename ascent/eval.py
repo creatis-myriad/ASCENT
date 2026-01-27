@@ -65,7 +65,12 @@ class AscentEvaluator(AscentTrainer):
 
         log.info("Starting testing!")
         log.info(f"Using checkpoint: {cfg.ckpt_path}")
-        trainer.test(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
+        trainer.test(
+            model=model,
+            datamodule=datamodule,
+            ckpt_path=cfg.ckpt_path,
+            weights_only=False,
+        )
 
         metric_dict = trainer.callback_metrics
 

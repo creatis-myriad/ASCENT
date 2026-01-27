@@ -218,7 +218,12 @@ class AscentPredictor(AscentTrainer):
 
         log.info("Starting predicting!")
         log.info(f"Using checkpoint: {cfg.ckpt_path}")
-        trainer.predict(model=model, dataloaders=dataloader, ckpt_path=cfg.ckpt_path)
+        trainer.predict(
+            model=model,
+            dataloaders=dataloader,
+            ckpt_path=cfg.ckpt_path,
+            weights_only=False,
+        )
 
         metric_dict = trainer.callback_metrics
 
