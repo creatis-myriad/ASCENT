@@ -263,7 +263,7 @@ class DC_and_CE_loss(nn.Module):
         Args:
             soft_dice_kwargs: Key arguments to be passed to soft dice loss.
             ce_kwargs: Key arguments to be passed to cross entropy loss.
-            aggregate: Aggragation to be done on dice loss and cross entropy loss. Only ``sum`` is
+            aggregate: Aggregation to be done on dice loss and cross entropy loss. Only ``sum`` is
                 supported.
             square_dice: Whether to use squared soft dice loss.
             weight_ce: Weight of cross entropy loss.

@@ -115,6 +115,11 @@ profile = "black"
 line_length = 99
 src_paths = ["ascent"]
 
+[tool.docformatter]
+wrap-summaries = 99
+wrap-descriptions = 99
+non-cap = ["nnUNet"]
+
 [tool.bandit]
 exclude_dirs = ["tests"]
 skips = ["B301"]

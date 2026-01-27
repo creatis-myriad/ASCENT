@@ -8,7 +8,8 @@ log = pylogger.get_pylogger(__name__)
 
 @rank_zero_only
 def log_hyperparameters(object_dict: dict) -> None:
-    """Controls which config parts are saved by lightning loggers. Additionally saves:
+    """Controls which config parts are saved by lightning loggers. Additionally
+    saves:
 
     - Number of model parameters
     """

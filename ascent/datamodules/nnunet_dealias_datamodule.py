@@ -15,7 +15,7 @@ from ascent.utils.transforms import Convert2Dto3Dd, Convert3Dto2Dd, LoadNpyd, Ma
 
 
 class nnUNetDealiasDataModule(nnUNetDataModule):
-    """Data module for dealiasing using segmentation/deep unfolding/primal-dual."""
+    """Data module for dealiasing using segmentation/deep unfolding/primal- dual."""
 
     def __init__(
         self,
