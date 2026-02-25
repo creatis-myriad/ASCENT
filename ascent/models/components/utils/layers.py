@@ -30,6 +30,7 @@ activations = {
     "gelu": nn.GELU,
     "tanh": nn.Tanh,
     "sigmoid": nn.Sigmoid,
+    "silu": nn.SiLU,
 }
 
 dropouts = {

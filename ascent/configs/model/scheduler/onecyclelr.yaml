@@ -1,0 +1,16 @@
+_target_: torch.optim.lr_scheduler.OneCycleLR
+
+_partial_: true
+max_lr: ${model.optimizer.lr}
+total_steps: null
+epochs: ${trainer.max_epochs}
+steps_per_epoch: ${trainer.limit_train_batches}
+pct_start: 0.07
+anneal_strategy: "cos"
+cycle_momentum: true
+base_momentum: 0.85
+max_momentum: 0.95
+div_factor: 25
+final_div_factor: 1e4
+three_phase: false
+last_epoch: -1
